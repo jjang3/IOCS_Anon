@@ -23,4 +23,4 @@ Repository for the Waterfall project
 3) From the root directory, `mkdir build && cd build`
 4) `cmake .. && make`, this will first build the `SVF` library, then `waterfall`.
 5) Insert an input file to `./inputs`
-6) `bash waterfall.sh <source code name> waterfall-pass (e.g., `bash waterfall.sh vuln_srv waterfall-pass`)
+6) `bash waterfall.sh <source code name> waterfall (e.g., `bash waterfall.sh vuln_srv waterfall`)
