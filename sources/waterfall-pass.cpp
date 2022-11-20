@@ -10,7 +10,7 @@
 /// module level and work per cascading calls.
 ///
 //===----------------------------------------------------------------------===//
-#include "../include/waterfall-analysis.h"
+#include "../include/waterfall-icfg.h"
 
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Casting.h"
@@ -32,7 +32,7 @@ namespace {
     {
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &MAM) 
         {
-            auto waterfallAnalysisResult = MAM.getResult<waterfallAnalysis>(M);
+            auto waterfallAnalysisResult = MAM.getResult<waterfallICFGAnalysis>(M);
             return PreservedAnalyses::all();
         }
     };
@@ -53,7 +53,7 @@ bool registerPipeline(StringRef Name, ModulePassManager &MPM,
 }
 
 void registerAnalyses(ModuleAnalysisManager &MAM) {
-    MAM.registerPass([&] { return waterfallAnalysis(); });
+    MAM.registerPass([&] { return waterfallICFGAnalysis(); });
 }
 
 llvm::PassPluginLibraryInfo getWorklistPluginInfo() 

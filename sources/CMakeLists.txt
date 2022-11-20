@@ -40,7 +40,7 @@ set(PASSES
   
 set(waterfall_SOURCES
   waterfall-pass.cpp
-  waterfall-analysis.cpp
+  waterfall-icfg.cpp
   )
 
 
