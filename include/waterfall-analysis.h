@@ -1,41 +1,30 @@
-#include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/PassManager.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/GlobalVariable.h"
-#include "llvm/IR/InstVisitor.h"
-#include "llvm/Analysis/LoopInfo.h"
-#include "llvm/Analysis/PostDominators.h"
-#include "llvm/ADT/SetVector.h"
+#include "llvm/Passes/PassBuilder.h"
+#include "llvm/Passes/PassPlugin.h"
+#include "llvm/Support/raw_ostream.h"
 
-#include "SVF-FE/LLVMUtil.h"
-#include "Graphs/SVFG.h"
-#include "WPA/Andersen.h"
-#include "SVF-FE/SVFIRBuilder.h"
-#include "Util/Options.h"
+#include <iostream>
 
 using namespace llvm;
-using namespace SVF;
 
-#define UNUSED(x) (void)(x);
+// This is the actual analysis that will perform some operation
+class waterfallAnalysis : public AnalysisInfoMixin<waterfallAnalysis> {
+  // needed so that AnalysisInfoMixin<waterfallAnalysis> can access
+  // private members of waterfallAnalysis
+  friend AnalysisInfoMixin<waterfallAnalysis>;
+  static AnalysisKey Key;
 
-namespace root {
-
-struct WorklistAnalysis : public llvm::AnalysisInfoMixin<WorklistAnalysis> {
-    using Result = std::vector<FunctionInfo>;
-    //using worklistResult = std::map <Function*, int>;
-    using worklistResult = std::vector<Function*>;
-    Result run(Module &M, ModuleAnalysisManager &MAM);
-    worklistResult buildWorklist(Module &M);
-    static llvm::AnalysisKey Key;
-    static bool isRequired() { return true; }
-};
-
-//------------------------------------------------------------------------------
-// New PM interface for the printer pass
-//------------------------------------------------------------------------------
-class worklistInstrument : public llvm::PassInfoMixin<worklistInstrument> {
 public:
-  llvm::PreservedAnalyses run(Module &M, ModuleAnalysisManager &MAM);
+  // You need to define a result. This can also be some other class.
+  using Result = std::string;
+  Result run(Module &M, ModuleAnalysisManager &MAM);
 };
 
-}
+// This is the analysis pass that will be invocable via opt
+class waterfallAnalysisPass : public AnalysisInfoMixin<waterfallAnalysisPass> {
+  raw_ostream &OS;
+
+public:
+  explicit waterfallAnalysisPass(raw_ostream &OS) : OS(OS) {}
+  PreservedAnalyses run(Module &M, ModuleAnalysisManager &MAM);
+};

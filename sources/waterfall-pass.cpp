@@ -10,6 +10,7 @@
 /// module level and work per cascading calls.
 ///
 //===----------------------------------------------------------------------===//
+#include "../include/waterfall-analysis.h"
 
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Casting.h"
@@ -31,24 +32,12 @@ namespace {
     {
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &MAM) 
         {
-            auto fileName = M.getSourceFileName();
-            auto bitcodeName = M.getModuleIdentifier();
-            errs() << "Input file: " << bitcodeName << "\n";
+            auto waterfallAnalysisResult = MAM.getResult<waterfallAnalysis>(M);
             return PreservedAnalyses::all();
         }
     };
 
 }
-
-
-
-
-
-
-
-
-
-
 
 //-----------------------------------------------------------------------------
 // New PM Registration
@@ -61,6 +50,10 @@ bool registerPipeline(StringRef Name, ModulePassManager &MPM,
         return true;
     }
     return false;
+}
+
+void registerAnalyses(ModuleAnalysisManager &MAM) {
+    MAM.registerPass([&] { return waterfallAnalysis(); });
 }
 
 llvm::PassPluginLibraryInfo getWorklistPluginInfo() 
@@ -77,6 +70,9 @@ llvm::PassPluginLibraryInfo getWorklistPluginInfo()
                     PB.registerLoopAnalyses(LAM);
                     PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
                     PB.registerPipelineParsingCallback(registerPipeline);
+                    // register the pipeline to be used for opt
+                    PB.registerAnalysisRegistrationCallback(registerAnalyses); 
+                    // register the analysis to be used for getResult
                 }
            };
 }
