@@ -20,10 +20,16 @@ std::string waterfallICFGAnalysis::run(Module &M, ModuleAnalysisManager &MAM)
 
     std::string output;
 
+    std::vector<std::string> moduleNameVec;
     auto fileName = M.getSourceFileName();
     auto bitcodeName = M.getModuleIdentifier();
     errs() << "Input file: " << bitcodeName << "\n";
+
+    SVFModule* svfModule = LLVMModuleSet::getLLVMModuleSet()->buildSVFModule(moduleNameVec);
+    svfModule->getAliasSet();
+
     return output;
+
 }
 
 // Definition of the run function of the analysis pass that

@@ -1,10 +1,20 @@
-#include "llvm/IR/PassManager.h"
+#include "llvm/ADT/SetVector.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
-#include "llvm/Support/raw_ostream.h"
 
-#include <iostream>
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InstVisitor.h"
+#include "llvm/IR/InstrTypes.h"
 
+#include "SVF-LLVM/LLVMUtil.h"
+#include "Graphs/SVFG.h"
+#include "WPA/Andersen.h"
+#include "SVF-LLVM/SVFIRBuilder.h"
+#include "Util/Options.h"
+
+using namespace SVF;
 using namespace llvm;
 
 // This is the actual analysis that will perform some operation

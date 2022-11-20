@@ -18,7 +18,10 @@ find_package(LLVM REQUIRED CONFIG)
 
 # HelloWorld includes headers from LLVM - update the include paths accordingly
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS} 
-"${CMAKE_CURRENT_SOURCE_DIR}/../SVF/include")
+"${CMAKE_SOURCE_DIR}/SVF/include")
+
+message("${CMAKE_SOURCE_DIR}/SVF/include")
+
 
 #===============================================================================
 # BUILD CONFIGURATION
@@ -43,12 +46,6 @@ set(waterfall_SOURCES
   waterfall-icfg.cpp
   )
 
-
-  
-#set(xxx_SOURCES
-#  *.cpp
-#  )
-  
 file (GLOB waterfall_HEADERS "../include/*.h")
 #foreach( pass ${PASSES} )
 # Create a library corresponding to 'plugin'
