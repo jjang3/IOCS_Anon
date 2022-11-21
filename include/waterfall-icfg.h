@@ -9,12 +9,15 @@
 #include "llvm/IR/InstrTypes.h"
 
 #include "SVF-LLVM/LLVMUtil.h"
-#include "Graphs/SVFG.h"
 #include "WPA/Andersen.h"
 #include "SVF-LLVM/SVFIRBuilder.h"
+#include "Util/CallGraphBuilder.h"
 #include "Util/Options.h"
+#include "Graphs/ICFG.h"
+#include "Graphs/SVFG.h"
 
 using namespace SVF;
+
 using namespace llvm;
 
 // This is the actual analysis that will perform some operation

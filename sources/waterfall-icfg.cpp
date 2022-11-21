@@ -6,6 +6,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <iostream>
+#include <regex>
 
 using namespace llvm;
 
@@ -19,14 +20,22 @@ std::string waterfallICFGAnalysis::run(Module &M, ModuleAnalysisManager &MAM)
     // to build a pseudo-inter-procedural graph.
 
     std::string output;
-
-    std::vector<std::string> moduleNameVec;
     auto fileName = M.getSourceFileName();
     auto bitcodeName = M.getModuleIdentifier();
+    auto resultName = std::regex_replace(bitcodeName, std::regex("\\/[a-z]*.bc"), "");
+    auto graphName = resultName + "/callgraph";
     errs() << "Input file: " << bitcodeName << "\n";
 
-    SVFModule* svfModule = LLVMModuleSet::getLLVMModuleSet()->buildSVFModule(moduleNameVec);
-    svfModule->getAliasSet();
+    SVFModule* svfModule = LLVMModuleSet::getLLVMModuleSet()->buildSVFModule({bitcodeName});
+    /// Build Program Assignment Graph (SVFIR)
+    SVFIRBuilder builder(svfModule);
+    SVFIR* pag = builder.build();
+    /// Create Andersen's pointer analysis
+    Andersen* ander = AndersenWaveDiff::createAndersenWaveDiff(pag);
+
+    /// Call Graph
+    PTACallGraph* callgraph = ander->getPTACallGraph();
+    callgraph->dump(graphName);
 
     return output;
 
