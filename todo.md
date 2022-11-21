@@ -7,3 +7,4 @@
 
 ## Tasks
 1. Create an ICFG analysis pass
+2. This is interprocedural at the moment, is it possible to make this intraprocedural per function?
