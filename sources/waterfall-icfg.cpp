@@ -20,33 +20,36 @@ std::vector<std::pair<PTACallGraphNode*, SetVector<std::pair<int,int>>>> extract
     for (auto F = inputCG->begin(), FE = inputCG->end(); F != FE; ++F)
     {
         auto cgNode = F->second;
-        SVFUtil::errs() << "Function: " << cgNode->getFunction()->getName() << "ID: " << cgNode->getId() << "\n";
+        //SVFUtil::errs() << "Function: " << cgNode->getFunction()->getName() << "ID: " << cgNode->getId() << "\n";
         for (PTACallGraphNode::const_iterator it = cgNode->InEdgeBegin(), eit = cgNode->InEdgeEnd(); it != eit; ++it)
         {
             PTACallGraphEdge* callEdge = (*it);
-            const SVFFunction *caller = callEdge->getSrcNode()->getFunction();
-            const SVFFunction *callee  = callEdge->getDstNode()->getFunction();
+            // const SVFFunction *caller = callEdge->getSrcNode()->getFunction();
+            // const SVFFunction *callee  = callEdge->getDstNode()->getFunction();
             auto callerID = callEdge->getSrcNode()->getId();
             auto calleeID = callEdge->getDstNode()->getId();
             callerToCallee.insert(std::pair<int,int>(callerID,calleeID)); 
-            SVFUtil::errs() << "Fun: " << callerID << " to " << calleeID << "\n";
+            //SVFUtil::errs() << "Fun: " << callerID << " to " << calleeID << "\n";
         }   
         //SVFUtil::errs() << "Fun: " << cgNode->getFunction()->getName() << "\n\tID: " << cgNode->getId() << "\n";
     }
 
-    for (auto CTCitem : callerToCallee) 
+    SetVector<std::pair<int,int>> relationVector;
+
+    //SVFUtil::errs() << CTCitem.first << " -> " << CTCitem.second << "\n";
+    for (auto F = inputCG->begin(), FE = inputCG->end(); F != FE; ++F)
     {
-        //SVFUtil::errs() << CTCitem.first << " -> " << CTCitem.second << "\n";
-        for (auto F = inputCG->begin(), FE = inputCG->end(); F != FE; ++F)
+        for (auto CTCitem : callerToCallee)
         {
-            if (F->first == CTCitem.first) 
-            {
-                SetVector<std::pair<int,int>> relationVector;
+            if (F->first == (const unsigned int)CTCitem.first) 
+            {   
                 relationVector.insert(std::pair<NodeID,NodeID>(F->first,CTCitem.second));
-                extractedResult.push_back(std::pair<PTACallGraphNode*,SetVector<std::pair<int,int>>>(F->second, relationVector));
+                //extractedResult.push_back(std::pair<PTACallGraphNode*,SetVector<std::pair<int,int>>>(F->second, relationVector));
             }
-        }   
-    }
+        }
+        extractedResult.push_back(std::pair<PTACallGraphNode*,SetVector<std::pair<int,int>>>(F->second, relationVector));
+        relationVector.clear();
+    }   
 
     #if 1
     for (auto ERitem : extractedResult) {
@@ -55,6 +58,7 @@ std::vector<std::pair<PTACallGraphNode*, SetVector<std::pair<int,int>>>> extract
         {
             SVFUtil::errs() << pairing.first << " -> " << pairing.second << "\n";
         }
+        SVFUtil::errs() << "\n";
     }
     #endif
     
