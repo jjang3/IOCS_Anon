@@ -20,6 +20,8 @@ using namespace SVF;
 using namespace SVFUtil;
 using namespace llvm;
 
+PTACallGraph *buildNonintrinsicCG(SVFModule *input, ICFG *icfg);
+
 // This is the actual analysis that will perform some operation
 class waterfallICFGAnalysis : public AnalysisInfoMixin<waterfallICFGAnalysis> {
   // needed so that AnalysisInfoMixin<waterfallAnalysis> can access

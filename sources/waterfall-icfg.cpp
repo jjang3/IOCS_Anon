@@ -1,5 +1,5 @@
 #include "../include/waterfall-icfg.h"
-
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
@@ -12,23 +12,12 @@ using namespace llvm;
 
 AnalysisKey waterfallICFGAnalysis::Key;
 
-// Definition of the run function of the analysis.
-// Here the actual stuff happens!!!
-std::string waterfallICFGAnalysis::run(Module &M, ModuleAnalysisManager &MAM) 
+PTACallGraph *buildNonintrinsicCG(SVFModule *input, ICFG *icfg)
 {
-    // This analysis pass iterates over the module and build call graph
-    // to build a pseudo-inter-procedural graph.
-
-    std::string output;
-    auto fileName = M.getSourceFileName();
-    auto bitcodeName = M.getModuleIdentifier();
-    auto resultName = std::regex_replace(bitcodeName, std::regex("\\/[a-z]*.bc"), "");
-    auto graphName = resultName + "/callgraph";
-    //errs() << "Input file: " << bitcodeName << "\n";
-
-    SVFModule* svfModule = LLVMModuleSet::getLLVMModuleSet()->buildSVFModule({bitcodeName});
-    PTACallGraph* callgraph = new PTACallGraph();
-    for (SVFModule::const_iterator F = svfModule->begin(), FE = svfModule->end(); F != FE; ++F)
+    SmallVector<const SVFFunction*> nonIntrinsicList;
+    PTACallGraph *output = new PTACallGraph();
+    #if 1
+    for (SVFModule::const_iterator F = input->begin(), FE = input->end(); F != FE; ++F)
     {
         bool nonIntrinsic = false;
         const SVFFunction *svfFun = *F;
@@ -46,9 +35,60 @@ std::string waterfallICFGAnalysis::run(Module &M, ModuleAnalysisManager &MAM)
         }
         if (nonIntrinsic)
         {
-            callgraph->addCallGraphNode(*F);
+             SVFUtil::errs() << "Insert " << svfFun->toString() << "\n";
+            nonIntrinsicList.push_back(svfFun);
+            output->addCallGraphNode(*F);
         }
     }
+    for (SVFModule::const_iterator F = input->begin(), E = input->end(); F != E; ++F)
+    {
+        for (const SVFBasicBlock* svfbb : (*F)->getBasicBlockList())
+        {
+            for (const SVFInstruction* inst : svfbb->getInstructionList())
+            {
+                if (SVFUtil::isNonInstricCallSite(inst))
+                {
+                    const SVFFunction* callee = getCallee(inst);
+                    for (auto item : nonIntrinsicList) {
+                        if (item == callee) {
+                            const CallICFGNode* callBlockNode = icfg->getCallICFGNode(inst);
+                            output->addDirectCallGraphEdge(callBlockNode,*F,callee);
+                            SVFUtil::errs() << "Found: " << inst->toString() << " " << inst->getFunction()->toString() << "\n";
+                        }
+                    }
+                }
+            }
+        }
+    }
+    #endif
+    return output;
+}
+
+// Definition of the run function of the analysis.
+// Here the actual stuff happens!!!
+std::string waterfallICFGAnalysis::run(Module &M, ModuleAnalysisManager &MAM) 
+{
+    // This analysis pass iterates over the module and build call graph
+    // to build a pseudo-inter-procedural graph.
+
+    std::string output;
+    auto fileName = M.getSourceFileName();
+    auto bitcodeName = M.getModuleIdentifier();
+    auto resultName = std::regex_replace(bitcodeName, std::regex("\\/[a-z]*.bc"), "");
+    auto graphName = resultName + "/callgraph";
+    //errs() << "Input file: " << bitcodeName << "\n";
+
+    SVFModule* svfModule = LLVMModuleSet::getLLVMModuleSet()->buildSVFModule({bitcodeName});
+    // Build Program Assignment Graph (SVFIR)
+    SVFIRBuilder builder(svfModule);
+    SVFIR* pag = builder.build();
+    /// Create Andersen's pointer analysis
+    Andersen* ander = AndersenWaveDiff::createAndersenWaveDiff(pag);
+    
+    PTACallGraph* callgraph = new PTACallGraph();
+
+    // Create graph nodes without intrinsic functions
+    callgraph = buildNonintrinsicCG(svfModule, ander->getICFG());
     callgraph->dump(graphName);
     #if 0
     // Minimalistic example to get the call graph to work.
@@ -57,6 +97,7 @@ std::string waterfallICFGAnalysis::run(Module &M, ModuleAnalysisManager &MAM)
     SVFIR* pag = builder.build();
     /// Create Andersen's pointer analysis
     Andersen* ander = AndersenWaveDiff::createAndersenWaveDiff(pag);
+    
     /// Call Graph
     PTACallGraph* callgraph = ander->getPTACallGraph();
     PointerAnalysis::CallGraphSCC* callgraphSCC = new PointerAnalysis::CallGraphSCC(callgraph);
