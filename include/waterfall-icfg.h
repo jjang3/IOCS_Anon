@@ -20,6 +20,8 @@ using namespace SVF;
 using namespace SVFUtil;
 using namespace llvm;
 
+std::vector<std::pair<PTACallGraphNode*, SetVector<std::pair<int,int>>>> extractCallGraph(PTACallGraph* inputCG);
+
 PTACallGraph *buildNonintrinsicCG(SVFModule *input, ICFG *icfg);
 
 // This is the actual analysis that will perform some operation
@@ -31,7 +33,7 @@ class waterfallICFGAnalysis : public AnalysisInfoMixin<waterfallICFGAnalysis> {
 
 public:
   // You need to define a result. This can also be some other class.
-  using Result = std::string;
+  using Result = std::vector<std::pair<PTACallGraphNode*, SetVector<std::pair<int,int>>>>;
   Result run(Module &M, ModuleAnalysisManager &MAM);
 };
 
