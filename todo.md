@@ -17,3 +17,10 @@
 - [x] Use a `callGraphID` in the `callgraph` to determine whether it exceeds the count of 16 (ARM MTE limitation is 16 tags)
 - [x] Create a transfer relation table
 - [ ] Begin instrumenting deterministic tag entry point functions for all functions in a program
+  - [x] Create a new instrumentation file for compartmentalization
+  - [ ] Create a user-space version of instrumentation to test out the idea
+    - [ ] Generate a random key at the entry point of the function.
+      - Question, do I need to first generate index of all transfer relation, then store the key depending on the index value of the source fun? How to do this efficiently?
+    - [ ] Create a transfer-relationship table with random key.
+    - [ ] Tag everything in a target function with the same tag.
+    - [ ] Retrieving the tag once you are in a different function.

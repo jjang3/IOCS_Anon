@@ -35,6 +35,7 @@ namespace {
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &MAM) 
         {
             auto waterfallAnalysisResult = MAM.getResult<waterfallICFGAnalysis>(M);
+            waterfallCompartmentalization(M, waterfallAnalysisResult);
             return PreservedAnalyses::all();
         }
     };
