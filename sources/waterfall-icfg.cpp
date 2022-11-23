@@ -12,9 +12,11 @@ using namespace llvm;
 
 AnalysisKey waterfallICFGAnalysis::Key;
 
-std::vector<std::pair<PTACallGraphNode*, SetVector<std::pair<int,int>>>> extractCallGraph(PTACallGraph* inputCG)
+std::vector<FunctionInfo> extractCallGraph(PTACallGraph* inputCG)
 {
-    std::vector<std::pair<PTACallGraphNode*, SetVector<std::pair<int,int>>>> extractedResult;
+    std::vector<FunctionInfo> extractedResults;
+
+    //std::vector<std::pair<PTACallGraphNode*, SetVector<std::pair<int,int>>>> extractedResult;
     SetVector<std::pair<int,int>> callerToCallee;
     SVFUtil::errs() << "\nTotal Node Number: " << inputCG->getTotalNodeNum() << "\n";
     for (auto F = inputCG->begin(), FE = inputCG->end(); F != FE; ++F)
@@ -35,34 +37,43 @@ std::vector<std::pair<PTACallGraphNode*, SetVector<std::pair<int,int>>>> extract
     }
 
     SetVector<std::pair<int,int>> relationVector;
-
+    SetVector<int> dstIDs;
+    FunctionInfo funInfo;
+    #if 1
     //SVFUtil::errs() << CTCitem.first << " -> " << CTCitem.second << "\n";
     for (auto F = inputCG->begin(), FE = inputCG->end(); F != FE; ++F)
     {
+        funInfo.ID = F->first;
+        funInfo.PTACGNode = F->second;
         for (auto CTCitem : callerToCallee)
         {
             if (F->first == (const unsigned int)CTCitem.first) 
             {   
-                relationVector.insert(std::pair<NodeID,NodeID>(F->first,CTCitem.second));
+                //relationVector.insert(std::pair<NodeID,NodeID>(F->first,CTCitem.second));
+                funInfo.dstIDs.insert(CTCitem.second);
                 //extractedResult.push_back(std::pair<PTACallGraphNode*,SetVector<std::pair<int,int>>>(F->second, relationVector));
             }
         }
-        extractedResult.push_back(std::pair<PTACallGraphNode*,SetVector<std::pair<int,int>>>(F->second, relationVector));
-        relationVector.clear();
+        //extractedResult.push_back(std::pair<PTACallGraphNode*,SetVector<std::pair<int,int>>>(F->second, relationVector));
+        //relationVector.clear();
+        extractedResults.push_back(funInfo);
+        dstIDs.clear();
+        funInfo = (const struct FunctionInfo){ 0 };
     }   
-
+    #endif
     #if 1
-    for (auto ERitem : extractedResult) {
-        SVFUtil::errs() << ERitem.first->getFunction()->getName() << " ID: " << ERitem.first->getId() << "\n";
-        for (auto pairing : ERitem.second)
+    for (auto ERitem : extractedResults) {
+        
+        SVFUtil::errs() << ERitem.PTACGNode->getFunction()->getName() << " ID: " << ERitem.ID << "\n";
+        for (auto dstID : ERitem.dstIDs)
         {
-            SVFUtil::errs() << pairing.first << " -> " << pairing.second << "\n";
+            SVFUtil::errs() << ERitem.ID  << " -> " << dstID << "\n";
         }
         SVFUtil::errs() << "\n";
     }
     #endif
-    
-    return extractedResult;
+    return extractedResults;
+    //return extractedResult;
 }
 
 PTACallGraph *buildNonIntrinsicCG(SVFModule *input, ICFG *icfg)
@@ -124,6 +135,8 @@ waterfallICFGAnalysis::Result waterfallICFGAnalysis::run(Module &M, ModuleAnalys
     // This analysis pass iterates over the module and build call graph
     // to build a pseudo-inter-procedural graph.
 
+    std::vector<FunctionInfo> funInfoResults;
+
    // PTACallGraph* output;
     std::vector<std::pair<PTACallGraphNode*, SetVector<std::pair<int,int>>>> analysisResult;
     PTACallGraph* callgraph = new PTACallGraph();
@@ -144,10 +157,10 @@ waterfallICFGAnalysis::Result waterfallICFGAnalysis::run(Module &M, ModuleAnalys
     callgraph = buildNonIntrinsicCG(svfModule, ander->getICFG());
     callgraph->dump(graphName);
     // Extract the generated call graph
-    analysisResult = extractCallGraph(callgraph);
-
-    return analysisResult;
-
+    //analysisResult = extractCallGraph(callgraph);
+    funInfoResults = extractCallGraph(callgraph);
+    //return analysisResult;
+    return funInfoResults;
 }
 
 // Definition of the run function of the analysis pass that

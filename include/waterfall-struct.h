@@ -16,9 +16,19 @@
 #include "Graphs/ICFG.h"
 #include "Graphs/SVFG.h"
 
-#include "../include/waterfall-struct.h"
+using namespace llvm;
 
 using namespace SVF;
 using namespace SVFUtil;
-using namespace llvm;
 
+#ifndef UNIQUE_IDENTIFIER_HERE
+#define UNIQUE_IDENTIFIER_HERE
+
+struct FunctionInfo {
+    PTACallGraphNode* PTACGNode;
+    uint32_t ID;
+    SetVector<int> dstIDs;
+};
+
+
+#endif // ndef UNIQUE_IDENTIFIER_HERE

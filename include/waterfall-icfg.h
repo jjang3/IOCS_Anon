@@ -16,11 +16,13 @@
 #include "Graphs/ICFG.h"
 #include "Graphs/SVFG.h"
 
+#include "../include/waterfall-struct.h"
+
 using namespace SVF;
 using namespace SVFUtil;
 using namespace llvm;
 
-std::vector<std::pair<PTACallGraphNode*, SetVector<std::pair<int,int>>>> extractCallGraph(PTACallGraph* inputCG);
+std::vector<FunctionInfo> extractCallGraph(PTACallGraph* inputCG);
 
 PTACallGraph *buildNonintrinsicCG(SVFModule *input, ICFG *icfg);
 
@@ -33,7 +35,8 @@ class waterfallICFGAnalysis : public AnalysisInfoMixin<waterfallICFGAnalysis> {
 
 public:
   // You need to define a result. This can also be some other class.
-  using Result = std::vector<std::pair<PTACallGraphNode*, SetVector<std::pair<int,int>>>>;
+  //using Result = std::vector<std::pair<PTACallGraphNode*, SetVector<std::pair<int,int>>>>;
+  using Result = std::vector<FunctionInfo>;
   Result run(Module &M, ModuleAnalysisManager &MAM);
 };
 

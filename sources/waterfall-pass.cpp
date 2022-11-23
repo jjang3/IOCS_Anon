@@ -11,6 +11,8 @@
 ///
 //===----------------------------------------------------------------------===//
 #include "../include/waterfall-icfg.h"
+#include "../include/waterfall-compart.h"
+#include "../include/waterfall-struct.h"
 
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Casting.h"
@@ -47,13 +49,14 @@ bool registerPipeline(StringRef Name, ModulePassManager &MPM,
                       ArrayRef<PassBuilder::PipelineElement>) {    
     if (Name == "waterfall-pass") {
         MPM.addPass(waterfallPass());
+        MPM.addPass(waterfallICFGAnalysisPass());
         return true;
     }
     return false;
 }
 
 void registerAnalyses(ModuleAnalysisManager &MAM) {
-    MAM.registerPass([&] { return waterfallICFGAnalysis(); });
+    MAM.registerPass([&] { return waterfallICFGAnalysis(); });   
 }
 
 llvm::PassPluginLibraryInfo getWorklistPluginInfo() 
