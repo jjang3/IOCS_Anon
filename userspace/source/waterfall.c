@@ -16,9 +16,6 @@
 #  define ElfW(type) Elf32_##type
 #endif
 
-
-
-
 int mte_enabled () {
     /*
     * Enable the tagged address ABI, synchronous or asynchronous MTE
