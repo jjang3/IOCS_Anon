@@ -1,6 +1,6 @@
 #!/bin/sh
 
-CFLAGS="-shared -fPIC -target aarch64-linux-gnu -march=armv8.5-a+memtag+rng"
+CFLAGS="-shared -fPIC -target aarch64-linux-gnu -march=armv8.5-a+memtag+rng -v"
 
 # Environment variables
 BASE_DIR=$(pwd)
@@ -15,6 +15,6 @@ if [ ! -d "$LIB_DIR" ]; then
     mkdir $LIB_DIR
 fi
 
-clang $CFLAGS "$SOURCE_DIR/waterfall.c" -Wall -o "$LIB_DIR/userwaterfall.so"
+clang $CFLAGS "$SOURCE_DIR/waterfall.c" -Wall -o "$LIB_DIR/libuserwater.so"
 clang -c  -target aarch64-linux-gnu -march=armv8.5-a+memtag+rng  "$SOURCE_DIR/waterfall.c" -o "$LIB_DIR/userwaterfall_static.o"
 ar rc "$LIB_DIR/userwaterfall_static.a" "$LIB_DIR/userwaterfall_static.o"

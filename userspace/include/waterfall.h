@@ -38,3 +38,7 @@
 # define PR_MTE_TAG_SHIFT       3
 # define PR_MTE_TAG_MASK        (0xffffUL << PR_MTE_TAG_SHIFT)
 # define MTE_GRANULE_SIZE       16
+
+void elf_init(char *file);
+int mte_enabled ();
+char *mte_init(char *address);
