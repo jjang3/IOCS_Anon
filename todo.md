@@ -1,4 +1,4 @@
-# Todo notes
+# TODO notes
 
 ## Tasks
 | Task                            | Current Status  | Finished      | 
