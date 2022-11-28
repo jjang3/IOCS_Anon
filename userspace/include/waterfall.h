@@ -13,6 +13,24 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "arm_acle.h"
+//#include <libunwind.h>
+
+
+/*
+    * Insert a random logical tag into the given pointer.
+    */
+#define insert_random_tag(ptr) ({                       \
+        uint64_t __val;                                 \
+        asm("irg %0, %1" : "=r" (__val) : "r" (ptr));   \
+        __val;                                          \
+})
+/*
+    * Set the allocation tag on the destination address.
+    */
+#define set_tag(tagged_addr) do {                                      \
+        asm volatile("stg %0, [%0]" : : "r" (tagged_addr) : "memory"); \
+} while (0)
+
 
 /*
  * From arch/arm64/include/uapi/asm/hwcap.h
@@ -40,5 +58,7 @@
 # define MTE_GRANULE_SIZE       16
 
 void elf_init(char *file);
+void backtrace();
 int mte_enabled ();
-char *mte_init(char *address);
+char *rand_mte_init(char *address);
+char *deter_mte_init(char *address, int id);

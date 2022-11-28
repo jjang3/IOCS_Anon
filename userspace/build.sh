@@ -1,6 +1,9 @@
 #!/bin/sh
+#CC=/home/jay/gcc-10.3/bin/aarch64-none-linux-gnu-gcc
 
+CC=clang
 CFLAGS="-shared -fPIC -target aarch64-linux-gnu -march=armv8.5-a+memtag+rng -v"
+LIBFLAGS="-I/home/jay/Waterfall/libunwind/arm_build/include -L/home/jay/Waterfall/libunwind/arm_build/lib"
 
 # Environment variables
 BASE_DIR=$(pwd)
@@ -18,6 +21,8 @@ if [ ! -d "$LIB_DIR" ]; then
     mkdir $LIB_DIR
 fi
 
-clang -L$LIBUNWIND_DIR/arm_build/lib -I$LIBUNWIND_DIR/arm_build/include $CFLAGS "$SOURCE_DIR/waterfall.c" -Wall -o "$LIB_DIR/libuserwater.so"
+$CC $CFLAGS $LIBFLAGS "$SOURCE_DIR/waterfall.c" -Wall -o "$LIB_DIR/libuserwater.so"
+#clang $CFLAGS "$SOURCE_DIR/waterfall.c" -Wall -o "$LIB_DIR/libuserwater.so"
 #clang -c -target aarch64-linux-gnu -march=armv8.5-a+memtag+rng  "$SOURCE_DIR/waterfall.c" -o "$LIB_DIR/userwaterfall_static.o"
 #ar rc "$LIB_DIR/userwaterfall_static.a" "$LIB_DIR/userwaterfall_static.o"
+#/home/jay/gcc-10.3/bin/aarch64-none-linux-gnu-gcc -I/home/jay/Waterfall/libunwind/arm_build/include -L/home/jay/Waterfall/libunwind/arm_build/lib libunwind_example.c -o libunwind_example -lunwind

@@ -2,19 +2,12 @@
  * shroud.c
 *************/
 #include "../include/waterfall.h"
-#include <libunwind.h>
 #include <elf.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-
-#if __x86_64__
-#  define ElfW(type) Elf64_##type
-#else
-#  define ElfW(type) Elf32_##type
-#endif
 
 int mte_enabled () {
     /*
@@ -34,7 +27,39 @@ int mte_enabled () {
 }
 
 
-char *mte_init(char *address) {
+char *rand_mte_init(char *address) {
+    #if 1
+    printf(" _______________________\n");
+    printf("|                       |\n");
+    printf("|       MTE Init        |\n");
+    printf("|_______________________|\n");
+
+    printf("MTE-C Initialization\n");
+    #endif
+    
+    unsigned long page_sz = sysconf(_SC_PAGESIZE);
+
+    if (mte_enabled()) {
+        //printf("MTE enabled\n");  
+    } 
+    else { 
+        printf("MTE not enabled\n");  
+        exit(1); 
+    }
+
+    if (mprotect((char *) ((uintptr_t) address & ~(uintptr_t) 0xfffUL), page_sz, PROT_READ | PROT_WRITE | PROT_MTE)) {
+        perror("mprotect() failed");
+        exit(1); 
+    }
+
+    address = __arm_mte_create_random_tag((char *)address, 0x0); 
+    __arm_mte_set_tag(address);
+    printf("Compartmentalized: %p\n", address);
+    return address;
+}
+
+
+char *deter_mte_init(char *address, int id) {
     #if 1
     printf(" _______________________\n");
     printf("|                       |\n");
@@ -59,13 +84,13 @@ char *mte_init(char *address) {
         exit(1); 
     }
     
-    address = __arm_mte_create_random_tag((char *)address, 0x0); 
-    // __arm_mte_set_tag(address);
+    address = __arm_mte_create_random_tag((char *)address, ~(1 << id)); 
+    __arm_mte_set_tag(address);
     printf("Compartmentalized: %p\n", address);
     return address;
 }
 
-
+#if 0
 // Call this function to get a backtrace.
 void backtrace() {
   unw_cursor_t cursor;
@@ -92,3 +117,4 @@ void backtrace() {
     }
   }
 }
+#endif
