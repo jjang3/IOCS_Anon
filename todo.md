@@ -8,25 +8,42 @@
 | Unwinding the stack to obtain the current function in runtime | In progress | :white_large_square: |
 | Deterministic tagging per function (Instrumentation) | In progress | :white_large_square: |
 
-## Notes
-### File organization
+<!---
+Legend:
+:white_check_mark: - Task finished
+:white_large_square: - Task not finished
+:o: - Progress finished
+:x: - Failed
+:recycle: - In-progress
+:soon: - Next progress to be started
+-->
+
+### LLVM pass organization
 - Separate each analysis pass into its own analysis file. Do not mix them.
-  - ICFG analysis: `creates pseudo-inter-procedural graphs`
+  - ICFG analysis: `creating pseudo-inter-procedural graph / ID relationship to be passed through compartmentlization analysis`
   - Compartmentalization analysis: `based on the input call graph and deterministic instrument a compartmentalization tag per each functions`
 
+
+## Progress
+
+### ICFG analysis
+- [x] :o: Use the [SVF](https://github.com/SVF-tools/SVF) tool to generate pseudo inter-proecdural graph.
+  - [x] :o: Using a `callGraphID` in the `callgraph` to determine the transfer between functions and check whether it exceeds the count of 16 (ARM MTE limitation is 16 tags)
+
 ### Compartmentalization analysis
-- [x] Use a `callGraphID` in the `callgraph` to determine whether it exceeds the count of 16 (ARM MTE limitation is 16 tags)
-- [ ] Create a transfer relation table
-  - [ ] 1) Need to unwind calls from a function (this will be used as an index)
-    - [ ] `libunwind` -  I was able to successfully cross-compile a shared library into the `aarch64` architecture, but there is a problem with `glibc` which is preventing the execution of the test program.
-    - [ ] `ELF utility` - Tried creating a test program by traversing through the secction names, but too complicated, hence abandoned.
-    - [ ] `ARM specific unwind table` - Apparently there exists an `ARM` specific unwind table that can be used? Could not find any additional detail regarding it.
+- [ ] :recycle: Create a transfer relation table
+  - [ ] 1) Need to unwind calls from a function (this will be used as an index) - [Solutions](https://stackoverflow.com/questions/3899870/print-call-stack-in-c-or-c)
+    - [x] :x: `libunwind` -  I was able to successfully cross-compile a shared library into the `aarch64` architecture, but there is a problem with `glibc` which is preventing the execution of the test program.
+    - [ ] :recycle: `ELF utility` - Tried creating a test program by traversing through the secction names, but too complicated, hence abandoned.
+    - [ ] :recycle: `ARM specific unwind table` - Apparently there exists an `ARM` specific unwind table that can be used? Utilizing link register? [Potential Solution](https://community.silabs.com/s/article/how-to-read-the-link-register-lr-for-an-arm-cortex-m-series-device?language=en_US#:~:text=Link%20Register-,On%20an%20ARM%20Cortex%20M%20series%20device%2C%20the%20link%20register,%2C%200xFFFFFFF9%2C%20or%200xFFFFFFFD)
   - [ ] 2) Each function will generate its own unique encryption key (this will be used as a value to the key).
-- [ ] Begin instrumenting deterministic tag entry point functions for all functions in a program
-  - [x] Create a new instrumentation file for compartmentalization
-  - [ ] Create a user-space version of instrumentation to test out the idea
+    - [x] :o: Function to generate encryption key (derive it from `SHROUD`).
+    - [ ] :soon: Upon generating the encryption key, insert this key into the table with unwind information
+- [ ] :soon: Begin instrumenting deterministic tag entry point functions for all functions in a program
+  - [x] Create a userspace deterministic tagging API
+    - [x] :o: Tagging pointers in a target function with the same tag.
+  - [ ] Create a full version of userspace instrumentation and test out the idea
     - [ ] Generate a random key at the entry point of the function.
       - Question, do I need to first generate index of all transfer relation, then store the key depending on the index value of the source fun? How to do this efficiently?
     - [ ] Create a transfer-relationship table with random key.
-    - [ ] Tag everything in a target function with the same tag.
     - [ ] Retrieving the tag once you are in a different function.
