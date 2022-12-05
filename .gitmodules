@@ -1,3 +1,4 @@
 [submodule "libdft64"]
 	path = libdft64
 	url = https://github.com/AngoraFuzzer/libdft64.git
+	ignore = dirty
