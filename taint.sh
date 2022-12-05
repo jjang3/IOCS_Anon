@@ -9,3 +9,5 @@ rm pin-3.20-98437-gf02b61307-gcc-linux.tar.gz
 
 export PIN_ROOT="$PWD"/pin-3.20
 echo $PIN_ROOT
+
+cd libdft64 && make -j4
