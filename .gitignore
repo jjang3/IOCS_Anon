@@ -3,3 +3,4 @@ results
 inputs
 userspace/bin/*
 pin-3.20
+*.out
