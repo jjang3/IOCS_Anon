@@ -10,3 +10,5 @@ if [ ! -d "$RESULTS_DIR" ]; then
 fi
 
 mv dft.out $RESULTS_DIR
+
+kill $(lsof -t -i:8080)
