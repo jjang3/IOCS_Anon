@@ -16,3 +16,5 @@ echo $PIN_ROOT
 cd libdft64 && make -j4
 
 cp $SOURCE_DIR/* $LIBDFT_DIR/tools/
+
+cd $LIBDFT_DIR/tools/ && make -j4
