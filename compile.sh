@@ -3,7 +3,7 @@
 BASE_DIR=$(pwd)
 LIBDFT_DIR=$(pwd)/libdft64
 SOURCE_DIR=$(pwd)/sources
-RESULTS_DIR=$BASE_DIR/results
+RESULTS_DIR=$BASE_DIR/lib
 LIB_DIR=$LIBDFT_DIR/tools/obj-intel64/
 
 cp $SOURCE_DIR/libdft-mod.cpp $LIBDFT_DIR/tools/
