@@ -712,24 +712,14 @@ post_open_hook(THREADID tid, syscall_ctx_t *ctx)
 }
 static std::unordered_map<ADDRINT, std::string> str_of_ins_at;
 
-VOID printip(VOID *ip, ADDRINT addr) 
-{
-  std::string ins_str = str_of_ins_at[addr];
-  printf("%s\n", ins_str.c_str());
-}
-
-static INS per_ins;
-VOID RecordMemWrite(VOID *ip, VOID *addr)
+VOID RecordMemWrite(ADDRINT ip, ADDRINT addr)
 {
 	// print when addr is tagged.
 	if (tagmap_getl(size_t(addr)))
 	{
-		INS_Disassemble(per_ins);
-		//string rtn_name = RTN_FindNameByAddress(ip);
-		//printf("%s\n", rtn_name.c_str());
-		
-		printf("RecordMemWrite\n");
-		fprintf(trace, "%p: W %p\n", ip, addr);
+		string rtn_name = RTN_FindNameByAddress(ip);
+		//printf("Tagged Mem Write (TMW)\n");
+		fprintf(trace, "TMW: %s\n", rtn_name.c_str());
 	}
 }
 
@@ -738,21 +728,12 @@ VOID RecordMemRead(ADDRINT ip, ADDRINT addr)
 	// print when addr is tagged.
 	if (tagmap_getl(size_t(addr)))
 	{
-		//printip(ip, addr);
 		string rtn_name = RTN_FindNameByAddress(ip);
-		string rtn_name_2 = RTN_FindNameByAddress(addr);
-		printf("%s next: %s\n", rtn_name.c_str(), rtn_name_2.c_str());
-		//INS_Disassemble(ip);
-		printf("RecordMemRead\n");
-		//fprintf(trace, "%p: R %p\n", ip, addr);
-		fprintf(trace, "%s\n", rtn_name.c_str());
+		//printf("Tagged Mem Read (TMR)\n");
+		fprintf(trace, "TMR: %s\n", rtn_name.c_str());
 	}	
 }
 
-/* 
- * Add by xiaoguang. 
- * Instrument on every memory write.
- * */
 VOID Instruction(INS ins, VOID *v)
 {
 	UINT32 memOperands = INS_MemoryOperandCount(ins);
@@ -765,7 +746,6 @@ VOID Instruction(INS ins, VOID *v)
 					(AFUNPTR)RecordMemWrite, IARG_INST_PTR,
 					IARG_MEMORYOP_EA, memOp, IARG_END);
 		}	
-		// IARG_INST_PTR
 		// Instructions have memory read
 		if (INS_MemoryOperandIsRead(ins, memOp)) {
 			INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
