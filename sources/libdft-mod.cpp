@@ -719,7 +719,7 @@ VOID RecordMemWrite(ADDRINT ip, ADDRINT addr)
 	{
 		string rtn_name = RTN_FindNameByAddress(ip);
 		//printf("Tagged Mem Write (TMW)\n");
-		fprintf(trace, "TMW: %s\n", rtn_name.c_str());
+		fprintf(trace, "TMW: %s | %p\n", rtn_name.c_str(), (void *)ip);
 	}
 }
 
@@ -730,7 +730,7 @@ VOID RecordMemRead(ADDRINT ip, ADDRINT addr)
 	{
 		string rtn_name = RTN_FindNameByAddress(ip);
 		//printf("Tagged Mem Read (TMR)\n");
-		fprintf(trace, "TMR: %s\n", rtn_name.c_str());
+		fprintf(trace, "TMR: %s | %p\n", rtn_name.c_str(), (void *)ip);
 	}	
 }
 

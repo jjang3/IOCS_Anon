@@ -22,3 +22,4 @@ Repository for the Waterfall project
 ## How to use (To-do)
 1) `bash taint.sh` - This will initialize everyhting.
 2) `bash compile.sh` - This will compile a library and store it in the new `lib` folder
+3) `python3 function_analysis.py input-file` 
