@@ -61,6 +61,78 @@ static KNOB<size_t> fs(KNOB_MODE_WRITEONCE, "pintool", "f", "1", "");
 static KNOB<size_t> net(KNOB_MODE_WRITEONCE, "pintool", "n", "1", "");
 
 /* 
+	Custom functions added
+ */
+
+VOID RecordMemWrite(ADDRINT ip, ADDRINT addr)
+{
+	// print when addr is tagged.
+	if (tagmap_getl(size_t(addr)))
+	{
+		string rtn_name = RTN_FindNameByAddress(ip);
+		//printf("Tagged Mem Write (TMW)\n");
+		fprintf(trace, "TMW: %s | %p\n", rtn_name.c_str(), (void *)ip);
+	}
+}
+
+VOID RecordMemRead(ADDRINT ip, ADDRINT addr)
+{
+	// print when addr is tagged.
+	if (tagmap_getl(size_t(addr)))
+	{
+		string rtn_name = RTN_FindNameByAddress(ip);
+		//printf("Tagged Mem Read (TMR)\n");
+		fprintf(trace, "TMR: %s | %p\n", rtn_name.c_str(), (void *)ip);
+	}	
+}
+
+VOID Instruction(INS ins, VOID *v)
+{
+	UINT32 memOperands = INS_MemoryOperandCount(ins);
+	for (UINT32 memOp = 0; memOp < memOperands; memOp++) {
+		// Instructions have memory write
+		if (INS_MemoryOperandIsWritten(ins, memOp)) {
+			INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+					(AFUNPTR)RecordMemWrite, IARG_INST_PTR,
+					IARG_MEMORYOP_EA, memOp, IARG_END);
+		}	
+		// Instructions have memory read
+		if (INS_MemoryOperandIsRead(ins, memOp)) {
+			INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+					(AFUNPTR)RecordMemRead, IARG_INST_PTR,
+					IARG_MEMORYOP_EA, memOp, IARG_END);
+		}
+	}
+}
+
+VOID Fini(INT32 code, VOID *v)
+{
+//	fprintf(trace, "#eof\n");
+	fclose(trace);
+	
+}
+
+static void
+post_openat_hook(THREADID tid, syscall_ctx_t *ctx)
+{
+	int fd;
+	const char *fname = (char*)ctx->arg[SYSCALL_ARG1];
+
+    if(strstr(fname, ".so") || strstr(fname, ".so.")) 
+	{
+		printf("Ignore shared library\n");
+        return;
+    }
+	else 
+	{
+		fd = (int)ctx->ret;
+		fdset.insert(fd);
+	}
+	printf("Opening %s at fd %u\n", fname, fd);
+}
+
+
+/* 
  * DTA/DFT alert
  *
  * @ins:	address of the offending instruction
@@ -422,17 +494,21 @@ dta_instrument_ret(INS ins)
 static void
 post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 {
-        /* read() was not successful; optimized branch */
-        if (unlikely((long)ctx->ret <= 0))
-                return;
-	
+	/* read() was not successful; optimized branch */
+	if (unlikely((long)ctx->ret <= 0))
+			return;
+
 	/* taint-source */
-	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end())
+	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end()){
         	/* set the tag markings */
+			printf("Tagging\n");
 	        tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
-	else
+	}
+	else {
         	/* clear the tag markings */
+			printf("Clearing\n");
 	        tagmap_clrn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret);
+	}
 }
 
 /*
@@ -707,58 +783,9 @@ post_open_hook(THREADID tid, syscall_ctx_t *ctx)
 	
 	/* ignore dynamic shared libraries */
 	if (strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF) == NULL &&
-		strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF_ALT) == NULL)
+		strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF_ALT) == NULL) {
 		fdset.insert((int)ctx->ret);
-}
-static std::unordered_map<ADDRINT, std::string> str_of_ins_at;
-
-VOID RecordMemWrite(ADDRINT ip, ADDRINT addr)
-{
-	// print when addr is tagged.
-	if (tagmap_getl(size_t(addr)))
-	{
-		string rtn_name = RTN_FindNameByAddress(ip);
-		//printf("Tagged Mem Write (TMW)\n");
-		fprintf(trace, "TMW: %s | %p\n", rtn_name.c_str(), (void *)ip);
 	}
-}
-
-VOID RecordMemRead(ADDRINT ip, ADDRINT addr)
-{
-	// print when addr is tagged.
-	if (tagmap_getl(size_t(addr)))
-	{
-		string rtn_name = RTN_FindNameByAddress(ip);
-		//printf("Tagged Mem Read (TMR)\n");
-		fprintf(trace, "TMR: %s | %p\n", rtn_name.c_str(), (void *)ip);
-	}	
-}
-
-VOID Instruction(INS ins, VOID *v)
-{
-	UINT32 memOperands = INS_MemoryOperandCount(ins);
-
-  	str_of_ins_at[INS_Address(ins)] = INS_Disassemble(ins);
-	for (UINT32 memOp = 0; memOp < memOperands; memOp++) {
-		// Instructions have memory write
-		if (INS_MemoryOperandIsWritten(ins, memOp)) {
-			INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
-					(AFUNPTR)RecordMemWrite, IARG_INST_PTR,
-					IARG_MEMORYOP_EA, memOp, IARG_END);
-		}	
-		// Instructions have memory read
-		if (INS_MemoryOperandIsRead(ins, memOp)) {
-			INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
-					(AFUNPTR)RecordMemRead, IARG_INST_PTR,
-					IARG_MEMORYOP_EA, memOp, IARG_END);
-		}
-	}
-}
-
-VOID Fini(INT32 code, VOID *v)
-{
-//	fprintf(trace, "#eof\n");
-	fclose(trace);
 }
 
 /* 
@@ -849,6 +876,8 @@ main(int argc, char **argv)
 				post_open_hook);
 		(void)syscall_set_post(&syscall_desc[__NR_creat],
 				post_open_hook);
+		(void)syscall_set_post(&syscall_desc[__NR_openat],
+				post_openat_hook);
 	}
 	
 	/* add stdin to the interesting descriptors set */

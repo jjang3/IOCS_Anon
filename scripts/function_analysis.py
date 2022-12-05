@@ -46,6 +46,7 @@ with open(in_file, "r") as infile:
         fun_name_regex = re.search(r'(.*)(?=\s\|)', fun_name)        
         target_functions.add(fun_name_regex.group(0))
 
+print(len(target_functions))
 for item in target_functions:
     print(item)
 
