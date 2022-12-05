@@ -6,17 +6,19 @@ Repository for the Waterfall project
 ```
 ./
 ├── sources
+├── tests
+├── scripts
 ├── libdft64 (submodule)
+├── compile.sh
 └── taint.sh
 ```
 - `sources` = contains taint analysis source file
+- `tests` = contains test input files 
+- `scripts` = contains script files for test applications
 - `libdft64` = libdft64 submodule
 - `taint.sh` = a script for initialization
+- `compile.sh` = a script for compiling a library
 
 ## How to use (To-do)
-1) `bash taint.sh`
-2) Change `LT_LLVM_INSTALL_DIR` in `CMakeLists.txt` file to the full directory of where the built `LLVM` project exists.
-3) From the root directory, `mkdir build && cd build`
-4) `cmake .. && make`, this will first build the `SVF` library, then `waterfall`.
-5) Insert an input file to `./inputs`
-6) `bash waterfall.sh <source code name> waterfall (e.g., `bash waterfall.sh vuln_srv waterfall`)
+1) `bash taint.sh` - This will initialize everyhting.
+2) `bash compile.sh` - This will compile a library and store it in the new `lib` folder
