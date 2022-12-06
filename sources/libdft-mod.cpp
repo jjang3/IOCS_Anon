@@ -161,12 +161,19 @@ VOID RecordMemRead(ADDRINT ip, ADDRINT addr)
 
 VOID do_call(ADDRINT addr)
 {
+	uintptr_t tag_addr = (uintptr_t)(addr & ~(uintptr_t) 0xfffffffffffUL);
+	tag_addr = tag_addr >> 44;
 	
+	//printf("%d\n", (int)tag_addr);
+	if (tag_addr == 5)
+	{
+		uintptr_t exec_addr = (uintptr_t)addr - (uintptr_t)offset_addr;
+		//printf("%p\n", (void*)(exec_addr));
+		fprintf(trace, "\n%p: [%s]\n", (void*)(exec_addr), (Target2String(addr)->c_str())); //(INS_Disassemble(ins)).c_str()
+    	fflush(trace);
+	}
 	//printf("%p - %s\n", (uintptr_t*)(addr & ~(uintptr_t) 0xfffffffffffUL), Target2String(addr)->c_str());
 	//printf("%p - %s\n", (uintptr_t*)(addr), Target2String(addr)->c_str());
-	
-    fprintf(trace, "\n[%s]\n", (Target2String(addr)->c_str())); //(INS_Disassemble(ins)).c_str()
-    fflush(trace);
 }
 
 

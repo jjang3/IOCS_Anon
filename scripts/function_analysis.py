@@ -39,6 +39,8 @@ target_functions = set()
 
 with open(in_file, "r") as infile:
     for line in infile:
+        print(line)
+        """
         fun_name = line.split(':')[1]
         #print(fun_name)
         addr = line.split('|')[1]
@@ -46,10 +48,11 @@ with open(in_file, "r") as infile:
             continue
         fun_name_regex = re.search(r'(.*)(?=\s\|)', fun_name)        
         target_functions.add(fun_name_regex.group(0))
+        """
 
-print(len(target_functions))
-for item in target_functions:
-    print(item)
+#print(len(target_functions))
+#for item in target_functions:
+#    print(item)
 
 
 # ----- Start of binary ninja ----- #
