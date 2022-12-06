@@ -1,27 +1,5 @@
-import collections
-import importlib
-import os
-import os.path
-import argparse
-import subprocess
-import re
-import fileinput
-import functools
-import operator 
-import codecs
-import time
-import shutil
-
-from pprint import pprint
-from pathlib import Path
-from ropper import RopperService
-from math import ceil, e, log
-from operator import itemgetter 
-from bitarray import bitarray
-from textwrap import wrap
-from io import BytesIO
-from os import path
 from binaryninja import *
+import argparse
 
 parser = argparse.ArgumentParser(description="Running reassembly tool for the example")
 # ----- Parser arguments ----- #
@@ -66,6 +44,7 @@ if (args.binary != None):
         print("Step: Binary Ninja")
         for (fun_index, fun) in enumerate(bv.functions):
             print(fun.name, hex(fun.start))
+            
             # ----- Indirect call analysis ----- #
             """
             for block in fun.medium_level_il:
