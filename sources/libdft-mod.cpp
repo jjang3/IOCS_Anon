@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <set>
+#include <fstream>
+#include <iostream>
 #include <unistd.h>
 #include <unordered_map>
 using namespace std;
@@ -25,8 +27,34 @@ using namespace std;
 #define	TAG 	0x01U
 
 
-FILE *trace;
+/* ===================================================================== */
+/* Names of malloc and free */
+/* ===================================================================== */
+#if defined(TARGET_MAC)
+#define MALLOC "_malloc"
+#define FREE "_free"
+#else
+#define MALLOC "malloc"
+#define SCANF "scanf"
+#define ISOCSCANF "__isoc99_scanf"
+#define FREE "free"
+#define READ "read"
+#define GETS "gets"
+#define FGETS "fgets"
+#define STRCPY "strcpy"
+#define STRNCPY "strncpy"
+#define MEMCPY "memcpy"
+#define PRINTF "printf"
+#define FPRINTF "fprintf"
+#define SPRINTF "sprintf"
+#define SNPRINTF "snprintf"
+#endif
 
+const CHAR* targetFuns[] = {MALLOC, SCANF, ISOCSCANF, FREE, READ, GETS, FGETS, STRCPY, STRNCPY, MEMCPY, PRINTF, FPRINTF, SPRINTF, SNPRINTF};
+
+
+/* trace file */
+FILE *trace;
 
 /* thread context */
 extern thread_ctx_t *threads_ctx;
@@ -43,6 +71,9 @@ static set<int> fdset;
 /* log file path (auditing) */
 static KNOB<string> logpath(KNOB_MODE_WRITEONCE, "pintool", "l",
 		LOGFILE_DFL, "");
+
+/* map between target rtn names and address */
+std::map<ADDRINT, string> rtn_to_addr;
 
 /*
  * flag variables
@@ -63,6 +94,48 @@ static KNOB<size_t> net(KNOB_MODE_WRITEONCE, "pintool", "n", "1", "");
 /* 
 	Custom functions added
  */
+void *offset_addr;
+#if 1
+VOID parse_funRtns(IMG img, void *v)
+{
+	if (IMG_IsMainExecutable(img))
+	{
+		offset_addr = (void*)IMG_LoadOffset(img);
+		printf("Offset: %p\n", (void*)IMG_LoadOffset(img));
+	}
+	#if 0
+	if(!IMG_Valid(img)) return;
+	int targetFunNums = sizeof(targetFuns)/sizeof(string);
+	RTN targetRtns[targetFunNums];
+
+	for (int i=0; i<targetFunNums; i++)
+	{
+		targetRtns[i] = RTN_FindByName(img, targetFuns[i]);
+		if (RTN_Valid(targetRtns[i]))
+		{
+			rtn_to_addr[RTN_Address(targetRtns[i])] = RTN_Name(targetRtns[i]).c_str();
+			//fprintf(trace, "Target function: %s %p\n", RTN_Name(targetRtns[i]).c_str(), (void*)RTN_Address(targetRtns[i]));
+		}
+	}
+
+	/* Custom Checking */
+	for (auto item : rtn_to_addr) {
+		//printf("Item: %s - %p\n", item.first.c_str(), (void*)item.second);
+	}
+	#endif// Walk through the symbols in the symbol table.
+}
+#endif
+
+string invalid = "invalid_rtn";
+const string *Target2String(ADDRINT target)
+{
+    string name = RTN_FindNameByAddress(target);
+    if (name == "")
+        return &invalid;
+    else
+        return new string(name);
+}
+
 
 VOID RecordMemWrite(ADDRINT ip, ADDRINT addr)
 {
@@ -70,7 +143,7 @@ VOID RecordMemWrite(ADDRINT ip, ADDRINT addr)
 	if (tagmap_getl(size_t(addr)))
 	{
 		string rtn_name = RTN_FindNameByAddress(ip);
-		//printf("Tagged Mem Write (TMW)\n");
+		printf("Tagged Mem Write (TMW)\n");
 		fprintf(trace, "TMW: %s | %p\n", rtn_name.c_str(), (void *)ip);
 	}
 }
@@ -81,13 +154,35 @@ VOID RecordMemRead(ADDRINT ip, ADDRINT addr)
 	if (tagmap_getl(size_t(addr)))
 	{
 		string rtn_name = RTN_FindNameByAddress(ip);
-		//printf("Tagged Mem Read (TMR)\n");
+		printf("Tagged Mem Read (TMR)\n");
 		fprintf(trace, "TMR: %s | %p\n", rtn_name.c_str(), (void *)ip);
 	}	
 }
 
+VOID do_call(ADDRINT addr)
+{
+	
+	//printf("%p - %s\n", (uintptr_t*)(addr & ~(uintptr_t) 0xfffffffffffUL), Target2String(addr)->c_str());
+	//printf("%p - %s\n", (uintptr_t*)(addr), Target2String(addr)->c_str());
+	
+    fprintf(trace, "\n[%s]\n", (Target2String(addr)->c_str())); //(INS_Disassemble(ins)).c_str()
+    fflush(trace);
+}
+
+
 VOID Instruction(INS ins, VOID *v)
 {
+	if (INS_IsCall(ins))
+    {
+        if (INS_IsDirectBranchOrCall(ins))
+        {
+            const ADDRINT target = INS_DirectBranchOrCallTargetAddress(ins);
+            INS_InsertPredicatedCall(ins, IPOINT_BEFORE, AFUNPTR(do_call),
+                IARG_PTR, target, IARG_FUNCARG_CALLSITE_VALUE, 0, IARG_END);
+
+        }
+    }
+
 	UINT32 memOperands = INS_MemoryOperandCount(ins);
 	for (UINT32 memOp = 0; memOp < memOperands; memOp++) {
 		// Instructions have memory write
@@ -102,6 +197,7 @@ VOID Instruction(INS ins, VOID *v)
 					(AFUNPTR)RecordMemRead, IARG_INST_PTR,
 					IARG_MEMORYOP_EA, memOp, IARG_END);
 		}
+		
 	}
 }
 
@@ -307,6 +403,30 @@ dta_instrument_jmp_call(INS ins)
 {
 	/* temporaries */
 	REG reg;
+
+	/* custom addition */
+	#if 1
+	if (INS_IsDirectCall(ins))
+	{
+		//int arg_num = 0;
+		#if 0
+		//printf("%p\n", (void*)INS_DirectBranchOrCallTargetAddress(ins) );
+		if ((void*)INS_DirectBranchOrCallTargetAddress(ins) == target) {
+			printf("Found\n");
+		}
+		#endif
+		#if 0
+    	std::string func = RTN_FindNameByAddress(INS_DirectBranchOrCallTargetAddress(ins));
+		if (funcnames[INS_DirectBranchOrCallTargetAddress(ins)] != "") {
+			printf("%s\n", funcnames[INS_DirectBranchOrCallTargetAddress(ins)].c_str());
+		}
+		if (strcmp(func.c_str(), "read") == 0)
+		{
+			printf("%s | %p\n", func.c_str(), (void *)INS_DirectBranchOrCallTargetAddress(ins));
+		}
+		#endif
+	}
+	#endif
 
 	/* 
 	 * we only care about indirect calls;
@@ -551,7 +671,6 @@ post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
 		else
                 	/* clear the tag markings */
                 	tagmap_clrn((size_t)iov->iov_base, iov_tot);
-
                 /* housekeeping */
                 tot -= iov_tot;
         }
@@ -800,11 +919,12 @@ main(int argc, char **argv)
 {
 	/* initialize symbol processing */
 	PIN_InitSymbols();
-	
 	/* initialize Pin; optimized branch */
 	if (unlikely(PIN_Init(argc, argv)))
 		/* Pin initialization failed */
 		goto err;
+
+	IMG_AddInstrumentFunction(parse_funRtns, 0);
 
 	/* initialize the core tagging engine */
 	if (unlikely(libdft_init() != 0))
@@ -824,7 +944,11 @@ main(int argc, char **argv)
 	 * success or failure
 	 */
 
-	/* instrument call */
+	/* instrument call pre */
+	//(void)ins_set_pre(&ins_desc[XED_ICLASS_CALL_NEAR],
+	//		dta_instrument_call);
+
+	/* instrument call post */
 	(void)ins_set_post(&ins_desc[XED_ICLASS_CALL_NEAR],
 			dta_instrument_jmp_call);
 	
@@ -885,7 +1009,6 @@ main(int argc, char **argv)
 		fdset.insert(STDIN_FILENO);
 
 
-	/* Xiaoguang */
 	INS_AddInstrumentFunction(Instruction, 0);
 	PIN_AddFiniFunction(Fini, 0);
 

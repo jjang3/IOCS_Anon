@@ -40,6 +40,7 @@ target_functions = set()
 with open(in_file, "r") as infile:
     for line in infile:
         fun_name = line.split(':')[1]
+        #print(fun_name)
         addr = line.split('|')[1]
         if (addr[3] == "7"): # Ignore libc function which will have an address of 0x7
             continue
@@ -61,8 +62,7 @@ if (args.binary != None):
     with open_view(bin_file) as bv:                
         print("Step: Binary Ninja")
         for (fun_index, fun) in enumerate(bv.functions):
-            #print(fun.name)
-            None
+            print(fun.name, hex(fun.start))
             # ----- Indirect call analysis ----- #
             """
             for block in fun.medium_level_il:
