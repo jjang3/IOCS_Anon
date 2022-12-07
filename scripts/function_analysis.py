@@ -1,4 +1,5 @@
 import argparse
+import pprint
 from binaryninja import *
 
 parser = argparse.ArgumentParser(description="Running reassembly tool for the example")
@@ -14,7 +15,7 @@ in_folder       = os.path.join(cwd, args.input)
 in_file         = os.path.join(in_folder, "dft.out")
 
 target_functions = set()
-
+rtn_collections = dict()
 with open(in_file, "r") as infile:
     for line in infile:
         if (line.find(':') != -1):
@@ -28,23 +29,12 @@ with open(in_file, "r") as infile:
         else:
             rtn_regex = re.search(r'([0-9].*)(?=\s-).+(?<=\[)(.+?)(?=\])', line)
             if rtn_regex:
-                print(rtn_regex.group(1), rtn_regex.group(2))
-            #print(rtn_regex)
-            #print(line)#|(?<=\[)(.+?)(?=\])
-            #print(rtn_regex.group(1), rtn_regex.group())
-            #(?<=\[).+?(?=\])
-            #([0-9].*)(?=\s-)
-            
-
-
-#print(len(target_functions))
-#for item in target_functions:
-#    print(item)
-
+                rtn_collections[rtn_regex.group(1)] = rtn_regex.group(2)
 
 # ----- Start of binary ninja ----- #
 bin_debug           = 0
-
+# Before update
+# print(rtn_collections)
 if (args.binary != None):
     bin_folder      = os.path.join(parent, "tests")
     bin_file        = os.path.join(bin_folder, args.binary)
@@ -52,12 +42,9 @@ if (args.binary != None):
     with open_view(bin_file) as bv:                
         print("Step: Binary Ninja")
         for (fun_index, fun) in enumerate(bv.functions):
-            print(fun.name, hex(fun.start))
-            
-            # ----- Indirect call analysis ----- #
-            """
-            for block in fun.medium_level_il:
-                for inst in block:
-                    #print(inst)
-                    None
-            """
+            #print(fun.name, hex(fun.start))
+            if (hex(fun.start)) in rtn_collections:
+                rtn_collections[hex(fun.start)] = fun.name
+
+# After update
+pprint.pprint(rtn_collections)
