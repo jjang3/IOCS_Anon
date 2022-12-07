@@ -1,5 +1,5 @@
-from binaryninja import *
 import argparse
+from binaryninja import *
 
 parser = argparse.ArgumentParser(description="Running reassembly tool for the example")
 # ----- Parser arguments ----- #
@@ -17,16 +17,25 @@ target_functions = set()
 
 with open(in_file, "r") as infile:
     for line in infile:
-        print(line)
-        """
-        fun_name = line.split(':')[1]
-        #print(fun_name)
-        addr = line.split('|')[1]
-        if (addr[3] == "7"): # Ignore libc function which will have an address of 0x7
-            continue
-        fun_name_regex = re.search(r'(.*)(?=\s\|)', fun_name)        
-        target_functions.add(fun_name_regex.group(0))
-        """
+        if (line.find(':') != -1):
+            fun_name = line.split(':')[1]
+            addr = line.split('|')[1]
+            if (addr[3] == "7"): # Ignore libc function which will have an address of 0x7
+                continue
+            fun_name_regex = re.search(r'(.*)(?=\s\|)', fun_name)
+            print(fun_name_regex)
+            target_functions.add(fun_name_regex.group(0))
+        else:
+            rtn_regex = re.search(r'([0-9].*)(?=\s-).+(?<=\[)(.+?)(?=\])', line)
+            if rtn_regex:
+                print(rtn_regex.group(1), rtn_regex.group(2))
+            #print(rtn_regex)
+            #print(line)#|(?<=\[)(.+?)(?=\])
+            #print(rtn_regex.group(1), rtn_regex.group())
+            #(?<=\[).+?(?=\])
+            #([0-9].*)(?=\s-)
+            
+
 
 #print(len(target_functions))
 #for item in target_functions:
