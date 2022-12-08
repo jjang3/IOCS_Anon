@@ -161,22 +161,6 @@ VOID RecordMemRead(ADDRINT ip, ADDRINT addr)
 	}	
 }
 
-VOID do_call(ADDRINT addr)
-{
-	uintptr_t tag_addr = (uintptr_t)(addr & ~(uintptr_t) 0xfffffffffffUL);
-	tag_addr = tag_addr >> 44;
-	//printf("%p\n", (void*)((uintptr_t)source - (uintptr_t)offset_addr));
-	fprintf(trace, "Here?\n");
-	if (tag_addr == 5)
-	{
-		uintptr_t exec_addr = (uintptr_t)addr - (uintptr_t)offset_addr;
-		//printf("%p\n", (void*)(exec_addr));
-		fprintf(trace, " >  %p - [%s]\n", (void*)(exec_addr), (Target2String(addr)->c_str())); //(INS_Disassemble(ins)).c_str()
-    	//fflush(trace);
-	}
-}
-
-
 VOID Instruction(INS ins, VOID *v)
 {
 	
@@ -184,29 +168,16 @@ VOID Instruction(INS ins, VOID *v)
     {
         if (INS_IsDirectBranchOrCall(ins))
         {
-			//printf("%p\n", (void*)(INS_Address(ins)));
 			uintptr_t tag_addr = (uintptr_t)(INS_Address(ins) & ~(uintptr_t) 0xfffffffffffUL);
 			tag_addr = tag_addr >> 44;
-			//fprintf(trace, "%p\n", (void*)tag_addr);
 			if (tag_addr == 5)
 			{
-				//printf("%p\n", (void*)INS_Address(ins));
-				//printf("\n", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr));
-				fprintf(trace, "%p ", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr));
+				fprintf(trace, "%p > ", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr));
+				const ADDRINT target = INS_DirectBranchOrCallTargetAddress(ins);
 
-				//fflush(trace);
-				//printf("%p\n", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr));
-				//printf("%p - %s\n", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr), INS_Disassemble(ins).c_str());
+				uintptr_t exec_addr = (uintptr_t)target - (uintptr_t)offset_addr;
+				fprintf(trace, "%p - [%s]\n", (void*)exec_addr, (Target2String(target)->c_str()));
 			}
-			//fprintf(trace, "%p\n", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr));
-			//printf("%p - %s\n", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr),
-			//						INS_Disassemble(ins).c_str());
-            const ADDRINT target = INS_DirectBranchOrCallTargetAddress(ins);
-			fprintf(trace, "%s", (Target2String(target)->c_str()));
-			//Predicated
-            INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(do_call),
-                IARG_PTR, target, IARG_FUNCARG_CALLSITE_VALUE, 0, IARG_END);
-			
         }
     }
 
