@@ -67,4 +67,4 @@ if (args.binary != None):
 # After update
 #pprint.pprint(rtn_collections)
 print("============Tainted functions============")
-print(tainted_funs)
+pprint.pprint(tainted_funs)
