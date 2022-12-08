@@ -1,37 +1,30 @@
-
-0x1000 - [_init]
-
-0x1080 - [.plt.sec]
-
-0x1189 - [foo]
-
-0x1090 - [.plt.sec]
-TMR: _IO_file_underflow | 0x7f89dfe28bc3
-TMR: _IO_default_uflow | 0x7f89dfe29f97
-TMR: _IO_sputbackc | 0x7f89dfe2a917
-TMR: psiginfo | 0x7f89dfdfd18c
-TMW: psiginfo | 0x7f89dfdfd251
-TMR: psiginfo | 0x7f89dfdfd229
-TMW: psiginfo | 0x7f89dfdfd251
-TMR: psiginfo | 0x7f89dfdfd229
-TMW: psiginfo | 0x7f89dfdfd251
-TMR: psiginfo | 0x7f89dfdfd229
-TMW: psiginfo | 0x7f89dfdfd251
-TMR: psiginfo | 0x7f89dfdfd229
-TMR: _IO_sputbackc | 0x7f89dfe2a917
-
-0x1070 - [.plt.sec]
-TMW: printf | 0x7f89dfdf9cad
-TMR: strlen | 0x7f89dff206e5
-TMR: _IO_file_xsputn | 0x7f89dfe2770c
-TMR: _IO_file_xsputn | 0x7f89dfe2770c
-TMR: _IO_file_xsputn | 0x7f89dfe2770c
-TMR: _IO_file_xsputn | 0x7f89dfe2770c
-TMR: memcpy | 0x7f89dff23778
-TMR: memcpy | 0x7f89dff2377c
-TMW: memcpy | 0x7f89dff2377e
-TMW: memcpy | 0x7f89dff23782
-
-0x1060 - [.plt.got]
-
-0x10d0 - [deregister_tm_clones]
+0x122c >  0x1000 - [_init]
+0x11dd >  0x1080 - [.plt.sec]
+0x11ed >  0x1189 - [foo]
+0x11ac >  0x1090 - [.plt.sec]
+	TMR: _IO_file_underflow | 0x7f037bc16bc3
+	TMR: _IO_default_uflow | 0x7f037bc17f97
+	TMR: _IO_sputbackc | 0x7f037bc18917
+	TMR: psiginfo | 0x7f037bbeb18c
+	TMW: psiginfo | 0x7f037bbeb251
+	TMR: psiginfo | 0x7f037bbeb229
+	TMW: psiginfo | 0x7f037bbeb251
+	TMR: psiginfo | 0x7f037bbeb229
+	TMW: psiginfo | 0x7f037bbeb251
+	TMR: psiginfo | 0x7f037bbeb229
+	TMW: psiginfo | 0x7f037bbeb251
+	TMR: psiginfo | 0x7f037bbeb229
+	TMR: _IO_sputbackc | 0x7f037bc18917
+0x11c4 >  0x1070 - [.plt.sec]
+	TMW: printf | 0x7f037bbe7cad
+	TMR: strlen | 0x7f037bd0e6e5
+	TMR: _IO_file_xsputn | 0x7f037bc1570c
+	TMR: _IO_file_xsputn | 0x7f037bc1570c
+	TMR: _IO_file_xsputn | 0x7f037bc1570c
+	TMR: _IO_file_xsputn | 0x7f037bc1570c
+	TMR: memcpy | 0x7f037bd11778
+	TMR: memcpy | 0x7f037bd1177c
+	TMW: memcpy | 0x7f037bd1177e
+	TMW: memcpy | 0x7f037bd11782
+0x1162 >  0x1060 - [.plt.got]
+0x1167 >  0x10d0 - [deregister_tm_clones]

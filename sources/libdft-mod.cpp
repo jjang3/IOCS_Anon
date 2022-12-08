@@ -48,9 +48,10 @@ using namespace std;
 #define FPRINTF "fprintf"
 #define SPRINTF "sprintf"
 #define SNPRINTF "snprintf"
+#define CLOSE "close"
 #endif
 
-const CHAR* targetFuns[] = {MALLOC, SCANF, ISOCSCANF, FREE, READ, GETS, FGETS, STRCPY, STRNCPY, MEMCPY, PRINTF, FPRINTF, SPRINTF, SNPRINTF};
+const CHAR* targetFuns[] = {MALLOC, SCANF, ISOCSCANF, FREE, READ, GETS, FGETS, STRCPY, STRNCPY, MEMCPY, PRINTF, FPRINTF, SPRINTF, SNPRINTF, CLOSE};
 
 
 /* trace file */
@@ -129,6 +130,7 @@ VOID parse_funRtns(IMG img, void *v)
 string invalid = "invalid_rtn";
 const string *Target2String(ADDRINT target)
 {
+	//printf("Here\n");
     string name = RTN_FindNameByAddress(target);
     if (name == "")
         return &invalid;
@@ -144,7 +146,7 @@ VOID RecordMemWrite(ADDRINT ip, ADDRINT addr)
 	{
 		string rtn_name = RTN_FindNameByAddress(ip);
 		printf("Tagged Mem Write (TMW)\n");
-		fprintf(trace, "TMW: %s | %p\n", rtn_name.c_str(), (void *)ip);
+		fprintf(trace, "\tTMW: %s | %p\n", rtn_name.c_str(), (void *)ip);
 	}
 }
 
@@ -155,7 +157,7 @@ VOID RecordMemRead(ADDRINT ip, ADDRINT addr)
 	{
 		string rtn_name = RTN_FindNameByAddress(ip);
 		printf("Tagged Mem Read (TMR)\n");
-		fprintf(trace, "TMR: %s | %p\n", rtn_name.c_str(), (void *)ip);
+		fprintf(trace, "\tTMR: %s | %p\n", rtn_name.c_str(), (void *)ip);
 	}	
 }
 
@@ -163,30 +165,48 @@ VOID do_call(ADDRINT addr)
 {
 	uintptr_t tag_addr = (uintptr_t)(addr & ~(uintptr_t) 0xfffffffffffUL);
 	tag_addr = tag_addr >> 44;
-	
-	//printf("%d\n", (int)tag_addr);
+	//printf("%p\n", (void*)((uintptr_t)source - (uintptr_t)offset_addr));
+	fprintf(trace, "Here?\n");
 	if (tag_addr == 5)
 	{
 		uintptr_t exec_addr = (uintptr_t)addr - (uintptr_t)offset_addr;
 		//printf("%p\n", (void*)(exec_addr));
-		fprintf(trace, "\n%p - [%s]\n", (void*)(exec_addr), (Target2String(addr)->c_str())); //(INS_Disassemble(ins)).c_str()
-    	fflush(trace);
+		fprintf(trace, " >  %p - [%s]\n", (void*)(exec_addr), (Target2String(addr)->c_str())); //(INS_Disassemble(ins)).c_str()
+    	//fflush(trace);
 	}
-	//printf("%p - %s\n", (uintptr_t*)(addr & ~(uintptr_t) 0xfffffffffffUL), Target2String(addr)->c_str());
-	//printf("%p - %s\n", (uintptr_t*)(addr), Target2String(addr)->c_str());
 }
 
 
 VOID Instruction(INS ins, VOID *v)
 {
+	
 	if (INS_IsCall(ins))
     {
         if (INS_IsDirectBranchOrCall(ins))
         {
-            const ADDRINT target = INS_DirectBranchOrCallTargetAddress(ins);
-            INS_InsertPredicatedCall(ins, IPOINT_BEFORE, AFUNPTR(do_call),
-                IARG_PTR, target, IARG_FUNCARG_CALLSITE_VALUE, 0, IARG_END);
+			//printf("%p\n", (void*)(INS_Address(ins)));
+			uintptr_t tag_addr = (uintptr_t)(INS_Address(ins) & ~(uintptr_t) 0xfffffffffffUL);
+			tag_addr = tag_addr >> 44;
+			//fprintf(trace, "%p\n", (void*)tag_addr);
+			if (tag_addr == 5)
+			{
+				//printf("%p\n", (void*)INS_Address(ins));
+				//printf("\n", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr));
+				fprintf(trace, "%p ", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr));
 
+				//fflush(trace);
+				//printf("%p\n", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr));
+				//printf("%p - %s\n", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr), INS_Disassemble(ins).c_str());
+			}
+			//fprintf(trace, "%p\n", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr));
+			//printf("%p - %s\n", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr),
+			//						INS_Disassemble(ins).c_str());
+            const ADDRINT target = INS_DirectBranchOrCallTargetAddress(ins);
+			fprintf(trace, "%s", (Target2String(target)->c_str()));
+			//Predicated
+            INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(do_call),
+                IARG_PTR, target, IARG_FUNCARG_CALLSITE_VALUE, 0, IARG_END);
+			
         }
     }
 
@@ -628,12 +648,12 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 	/* taint-source */
 	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end()){
         	/* set the tag markings */
-			printf("Tagging\n");
+			printf("\nTagging\n");
 	        tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
 	}
 	else {
         	/* clear the tag markings */
-			printf("Clearing\n");
+			printf("\nClearing\n");
 	        tagmap_clrn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret);
 	}
 }
