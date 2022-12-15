@@ -5,7 +5,7 @@ BASE_DIR=$(pwd)
 LIB_DIR=$BASE_DIR/build
 INPUT_FILE=$1.c
 INPUT_DIR=$BASE_DIR/inputs
-INPUT_SOURCE_FILE=$INPUT_DIR/$1.c
+INPUT_SOURCE_FILE=$INPUT_DIR/$1/$1.c
 RESULTS_DIR=$BASE_DIR/results
 RESULTS_INPUT_DIR=$RESULTS_DIR/$1
 
@@ -29,7 +29,7 @@ clang -emit-llvm -c -target aarch64-linux-gnu -march=armv8.5-a+memtag+rng -o $RE
 echo "Waterfall in progress..."
 sleep 0.5
 #echo "opt -load-pass-plugin $LIB_DIR/lib/"lib"$2.so -passes="$2-pass" -S $RESULTS_INPUT_DIR/$1.bc -o $RESULTS_INPUT_DIR/"$1"_modified.ll"
-opt -load-pass-plugin $LIB_DIR/lib/"lib"$2.so -passes="$2-pass" -S $RESULTS_INPUT_DIR/$1.bc -o $RESULTS_INPUT_DIR/"$1"_modified.ll
+opt -load $LIB_DIR/lib/"lib"$2.so -load-pass-plugin $LIB_DIR/lib/"lib"$2.so -passes="$2-pass" -S $RESULTS_INPUT_DIR/$1.bc  -taint $INPUT_DIR/$1/$1_list.out  -o $RESULTS_INPUT_DIR/"$1"_modified.ll
 clang  -target aarch64-linux-gnu -march=armv8.5-a+memtag+rng $RESULTS_INPUT_DIR/"$1"_modified.ll -o  $RESULTS_INPUT_DIR/"$1"_waterfall.out
 clang -g -target aarch64-linux-gnu -march=armv8.5-a+memtag+rng -fsanitize=memtag $RESULTS_INPUT_DIR/$1.ll -o $RESULTS_INPUT_DIR/"$1"_sanitized.out
 clang  -target aarch64-linux-gnu $RESULTS_INPUT_DIR/$1.ll -o $RESULTS_INPUT_DIR/$1_orig.out

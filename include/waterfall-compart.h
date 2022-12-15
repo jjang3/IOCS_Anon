@@ -22,4 +22,4 @@ using namespace SVF;
 using namespace SVFUtil;
 using namespace llvm;
 
-void waterfallCompartmentalization(Module &M, std::vector<FunctionInfo> analysisInput);
+void waterfallCompartmentalization(Module &M, std::vector<FunctionInfo> analysisInput, std::vector<std::string> taintedFunctions);

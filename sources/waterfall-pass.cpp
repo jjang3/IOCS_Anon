@@ -17,6 +17,7 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Format.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -25,8 +26,18 @@
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include <llvm/Analysis/AliasAnalysis.h>
 #include "llvm/Analysis/LoopInfo.h"
+#include <fstream>
 
 using namespace llvm;
+using namespace std;
+
+
+//===----------------------------------------------------------------------===//
+// Command line options
+//===----------------------------------------------------------------------===//
+cl::opt<string> inputTaintFile("taint", cl::desc("<input file>"), cl::OneOrMore);
+
+std::vector<string> taintedFuns;
 
 namespace {
 
@@ -34,8 +45,22 @@ namespace {
     {
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &MAM) 
         {
+            // Input taint file related
+            FILE    *taintFile;
+            std::ifstream infile(inputTaintFile);
+            for( std::string line; getline( infile, line ); )
+            {
+                //llvm::errs() << line << "\n";
+                taintedFuns.push_back(line);
+            }
+            for (auto item : taintedFuns) 
+            {
+                SVFUtil::errs() << item;
+            }
+
             auto waterfallAnalysisResult = MAM.getResult<waterfallICFGAnalysis>(M);
-            waterfallCompartmentalization(M, waterfallAnalysisResult);
+            
+            waterfallCompartmentalization(M, waterfallAnalysisResult, taintedFuns);
             return PreservedAnalyses::all();
         }
     };
