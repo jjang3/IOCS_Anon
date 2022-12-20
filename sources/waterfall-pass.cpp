@@ -39,6 +39,7 @@ cl::opt<string> inputTaintFile("taint", cl::desc("<input file>"), cl::OneOrMore)
 
 //std::vector<string> taintedFuns;
 std::vector<std::pair<string, std::vector<string>>> taintedVulnFuns;
+std::vector<std::pair<string, llvm::SetVector<const char*>>> taintedVulnFunsSet;
 namespace {
 
     struct waterfallPass : public PassInfoMixin<waterfallPass> 
@@ -50,7 +51,6 @@ namespace {
             std::string delimiter_2 = " ";
             std::ifstream infile(inputTaintFile);
             std::vector<string> vulnFuns;
-            //llvm::SetVector<StringRef> vulnFunsSet;
             string taintedFunName;
             int count = 0;
             for( std::string line; getline( infile, line ); )
@@ -71,6 +71,7 @@ namespace {
                         }
                     }
                     //llvm::errs() << line.substr(start, end - start) << "\n";
+
                     start = end + delimiter_2.length();
                     end = line.find(delimiter_2, start);
                     count++;
@@ -79,6 +80,7 @@ namespace {
                 count = 0;
                 vulnFuns.clear();
             }
+            //exit(1);
             #if 0 
             for (auto item : taintedVulnFuns)
             {

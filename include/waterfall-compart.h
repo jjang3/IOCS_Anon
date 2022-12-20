@@ -25,4 +25,16 @@ using namespace std;
 
 #define UNUSED(x) (void)(x);
 
-void waterfallCompartmentalization(Module &M, std::vector<FunctionInfo> analysisInput, std::vector<std::pair<string, std::vector<string>>> taintedVulnFuns);
+class Compartmentalization : public InstVisitor<Compartmentalization> {
+    public:
+        void visitAllocaInst(AllocaInst &AI);
+        //void visitBitCastInst(BitCastInst &BI);
+        //void visitCallInst(CallInst &CI);
+        //void visitGetElementPtrInst(GetElementPtrInst &GEPI);
+        //void visitStoreInst(StoreInst &SI);
+};
+
+void waterfallCompartmentalization(Module &M, std::vector<FunctionInfo> analysisInput, 
+                                    std::vector<std::pair<string, std::vector<string> >> taintedVulnFuns);
+bool instrumentInst(BasicBlock &BB, std::vector<std::pair<FunctionCallee, std::string>> FV, 
+                    DataLayout *DL, Instruction *finalBBInst, std::vector<string>  vulnFuns);
