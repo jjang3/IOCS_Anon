@@ -28,6 +28,7 @@ struct FunctionInfo {
     PTACallGraphNode* PTACGNode;
     uint32_t ID;
     SetVector<int> dstIDs;
+    Function *nodeFun;
 };
 
 

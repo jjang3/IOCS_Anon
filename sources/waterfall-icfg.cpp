@@ -12,7 +12,7 @@ using namespace llvm;
 
 AnalysisKey waterfallICFGAnalysis::Key;
 
-std::vector<FunctionInfo> extractCallGraph(PTACallGraph* inputCG)
+std::vector<FunctionInfo> extractCallGraph(Module &M, PTACallGraph* inputCG)
 {
     std::vector<FunctionInfo> extractedResults;
     SetVector<std::pair<int,int>> callerToCallee;
@@ -44,6 +44,14 @@ std::vector<FunctionInfo> extractCallGraph(PTACallGraph* inputCG)
             if (F->first == (const unsigned int)CTCitem.first) 
             {   
                 funInfo.dstIDs.insert(CTCitem.second);
+            }
+        }
+        for (auto &fun : M) 
+        {
+            if (F->second->getFunction()->getName() == fun.getName())
+            {
+                //llvm::errs() << "Found the function\n" << "\t"<<F->second->getFunction()->getName() << " | " << fun.getName() << "\n";
+                funInfo.nodeFun = &fun;
             }
         }
         extractedResults.push_back(funInfo);
@@ -143,7 +151,7 @@ waterfallICFGAnalysis::Result waterfallICFGAnalysis::run(Module &M, ModuleAnalys
     callgraph = buildNonIntrinsicCG(svfModule, ander->getICFG());
     callgraph->dump(graphName);
     // Extract the generated call graph
-    analysisResults = extractCallGraph(callgraph);
+    analysisResults = extractCallGraph(M, callgraph);
     return analysisResults;
 }
 

@@ -22,7 +22,7 @@ using namespace SVF;
 using namespace SVFUtil;
 using namespace llvm;
 
-std::vector<FunctionInfo> extractCallGraph(PTACallGraph* inputCG);
+std::vector<FunctionInfo> extractCallGraph(Module &M, PTACallGraph* inputCG);
 
 PTACallGraph *buildNonintrinsicCG(SVFModule *input, ICFG *icfg);
 

@@ -21,5 +21,8 @@
 using namespace SVF;
 using namespace SVFUtil;
 using namespace llvm;
+using namespace std;
 
-void waterfallCompartmentalization(Module &M, std::vector<FunctionInfo> analysisInput, std::vector<std::string> taintedFunctions);
+#define UNUSED(x) (void)(x);
+
+void waterfallCompartmentalization(Module &M, std::vector<FunctionInfo> analysisInput, std::vector<std::pair<string, std::vector<string>>> taintedVulnFuns);

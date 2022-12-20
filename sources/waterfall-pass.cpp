@@ -37,8 +37,8 @@ using namespace std;
 //===----------------------------------------------------------------------===//
 cl::opt<string> inputTaintFile("taint", cl::desc("<input file>"), cl::OneOrMore);
 
-std::vector<string> taintedFuns;
-
+//std::vector<string> taintedFuns;
+std::vector<std::pair<string, std::vector<string>>> taintedVulnFuns;
 namespace {
 
     struct waterfallPass : public PassInfoMixin<waterfallPass> 
@@ -46,21 +46,58 @@ namespace {
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &MAM) 
         {
             // Input taint file related
-            FILE    *taintFile;
+            std::string delimiter = ": ";
+            std::string delimiter_2 = " ";
             std::ifstream infile(inputTaintFile);
+            std::vector<string> vulnFuns;
+            //llvm::SetVector<StringRef> vulnFunsSet;
+            string taintedFunName;
+            int count = 0;
             for( std::string line; getline( infile, line ); )
             {
-                //llvm::errs() << line << "\n";
-                taintedFuns.push_back(line);
+                auto start = 0U;
+                auto end = line.find(delimiter);
+                while (end != std::string::npos)
+                {
+                    if (count == 0)
+                    {
+                        taintedFunName = line.substr(start, end - start);
+                    }
+                    else
+                    {
+                        if (line.substr(start, end - start) != "\0")
+                        {
+                            vulnFuns.push_back(line.substr(start, end - start));
+                        }
+                    }
+                    //llvm::errs() << line.substr(start, end - start) << "\n";
+                    start = end + delimiter_2.length();
+                    end = line.find(delimiter_2, start);
+                    count++;
+                }    
+                taintedVulnFuns.push_back(std::pair<string, std::vector<string>>(taintedFunName, vulnFuns));
+                count = 0;
+                vulnFuns.clear();
             }
+            #if 0 
+            for (auto item : taintedVulnFuns)
+            {
+                llvm::errs() << "\n" << item.first << ":\t";
+                for (auto item_2 : item.second)
+                {
+                    llvm::errs() << item_2 << " ";
+                }
+            }
+            
             for (auto item : taintedFuns) 
             {
                 SVFUtil::errs() << item;
             }
+            #endif
 
             auto waterfallAnalysisResult = MAM.getResult<waterfallICFGAnalysis>(M);
             
-            waterfallCompartmentalization(M, waterfallAnalysisResult, taintedFuns);
+            waterfallCompartmentalization(M, waterfallAnalysisResult, taintedVulnFuns);
             return PreservedAnalyses::all();
         }
     };
