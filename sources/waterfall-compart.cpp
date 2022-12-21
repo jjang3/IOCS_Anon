@@ -101,6 +101,14 @@ void Compartmentalization::visitAllocaInst(AllocaInst &AI) {
     #endif
     llvm::errs() << "\n--------Visiting Alloca Started--------\n";
     llvm::errs() << "Visit Alloca: " << AI << " | Type: " << *AI.getType()->getPointerElementType() << "\n";
+    if (AI.getType()->getPointerElementType()->isStructTy())
+    {
+        if (structs.contains(AI.getType()->getPointerElementType()->getStructName()))
+        {
+            //llvm::errs() << "Struct found, ignore\n";
+            return;
+        }
+    }
     for (auto *usr : AI.users()) {
         llvm::errs() << "\t» Usr: " << *usr << "\n";
         if (llvm::dyn_cast<BitCastInst>(usr)) {
@@ -110,20 +118,10 @@ void Compartmentalization::visitAllocaInst(AllocaInst &AI) {
     }
     if (allocaCompartment == true)
     {
-        if (AI.getType()->getPointerElementType()->isStructTy())
-        {
-            if (structs.contains(AI.getType()->getPointerElementType()->getStructName()))
-            {
-                //llvm::errs() << "Struct found, ignore\n";
-                return;
-            }
-        }
-        else
-        {
-            alloc_to_compartment.insert(llvm::dyn_cast<Instruction>(&AI));
-        }
+        llvm::errs() << "Inserting: " << AI << "\n";
+        alloc_to_compartment.insert(llvm::dyn_cast<Instruction>(&AI));
+        allocaCompartment = false;
     }
-    allocaCompartment = false;
     llvm::errs() << "--------Visiting Alloca Finished--------\n\n";
 }
 
@@ -174,7 +172,7 @@ void Compartmentalization::visitCallInst(CallInst &CI){
             if (arg == mostRecentI)
             {
                 targetArgNum = arg.getOperandNo();
-                // llvm::errs() << "Found argument\n";
+                llvm::errs() << "Found argument\n";
                 compartmentTargets.insert(std::pair<Instruction*,int>(llvm::dyn_cast<Instruction>(&CI), targetArgNum));
                 allocaCompartment = true;
             }
