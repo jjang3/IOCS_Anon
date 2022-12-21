@@ -67,7 +67,15 @@ namespace {
                     {
                         if (line.substr(start, end - start) != "\0")
                         {
-                            vulnFuns.push_back(line.substr(start, end - start));
+                            
+                            if (line.substr(start, end - start) == "memcpy")
+                            {
+                                vulnFuns.push_back("llvm.memcpy.p0i8.p0i8.i64");
+                            }
+                            else
+                            {
+                                vulnFuns.push_back(line.substr(start, end - start));
+                            }
                         }
                     }
                     //llvm::errs() << line.substr(start, end - start) << "\n";

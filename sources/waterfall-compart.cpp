@@ -20,19 +20,13 @@ using namespace llvm;
 using namespace std;
 
 
-std::map<GetElementPtrInst*, Value*> gep_access_bit;
-std::map<Instruction*,AllocaInst*> alloc_to_patch;
-std::map<Instruction*, StringRef> insts_patch_type;
-std::map<Instruction*, Function*> insts_inter_funs;
-SetVector<std::pair<CallInst*, int>> call_inst_to_op;
 SetVector<Instruction*> insts_to_remove;
-SetVector<Instruction*> custom_mallocs;
-SetVector<std::pair<StringRef, AllocaInst*>> custom_allocs;
+SetVector<Instruction*> alloc_to_compartment;
+SetVector<StringRef> structs;
+llvm::SetVector<std::pair<llvm::Instruction*, int>> compartmentTargets;
 
 
 /* ------------------------------- Helper functions related --------------------------------- */
-
-
 bool isDoublePtr(const Value* V) {
     const Type* T = V->getType();
     if (T->getPointerElementType()->getPointerElementType()->isPointerTy()) {
@@ -100,18 +94,93 @@ std::vector<std::pair<FunctionCallee, std::string>> initializeFuns(Module &M, Fu
 }
 
 /* ------------------------------- InstVisitor related --------------------------------- */
-
 void Compartmentalization::visitAllocaInst(AllocaInst &AI) {
+    #if 0
+    for (auto item : vulnFuns)
+    {        llvm::errs() << item << "\n";    }
+    #endif
     llvm::errs() << "\n--------Visiting Alloca Started--------\n";
-    llvm::errs() << "Visit Alloca: " << AI << "\n";
+    llvm::errs() << "Visit Alloca: " << AI << " | Type: " << *AI.getType()->getPointerElementType() << "\n";
     for (auto *usr : AI.users()) {
         llvm::errs() << "\t» Usr: " << *usr << "\n";
         if (llvm::dyn_cast<BitCastInst>(usr)) {
-            //allocaParent = true;
+            allocaParent = true;
+        }
+        visit(llvm::dyn_cast<Instruction>(usr));
+    }
+    if (allocaCompartment == true)
+    {
+        if (AI.getType()->getPointerElementType()->isStructTy())
+        {
+            if (structs.contains(AI.getType()->getPointerElementType()->getStructName()))
+            {
+                //llvm::errs() << "Struct found, ignore\n";
+                return;
+            }
+        }
+        else
+        {
+            alloc_to_compartment.insert(llvm::dyn_cast<Instruction>(&AI));
+        }
+    }
+    allocaCompartment = false;
+    llvm::errs() << "--------Visiting Alloca Finished--------\n\n";
+}
+
+
+void Compartmentalization::visitBitCastInst(BitCastInst &BI) {
+    if (allocaParent == false) {
+        return;
+    }
+    llvm::errs() << "\n--------Visiting Bitcast Started--------\n";
+    llvm::errs() << "Visit BitCast: " << BI << "\n";
+    for (auto *usr : BI.users()) {
+        llvm::errs() << "\t» Usr: " << *usr << "\n";
+        if (llvm::dyn_cast<CallInst>(usr) && allocaParent == true){
             visit(llvm::dyn_cast<Instruction>(usr));
         }
     }
-    llvm::errs() << "--------Visiting Alloca Finished--------\n\n";
+    llvm::errs() << "--------Visiting Bitcast Finished--------\n\n";
+}
+
+
+void Compartmentalization::visitLoadInst(LoadInst &LI) {
+    //llvm::errs() << "\n--------Visiting Load Started--------\n";
+    llvm::errs() << "Visit Load: " << LI << "\n";
+    for (auto *usr : LI.users()) {
+        llvm::errs() << "\t» Usr: " << *usr << "\n";
+        if (auto usrCall = llvm::dyn_cast<CallInst>(usr)){
+            mostRecentI = llvm::dyn_cast<Instruction>(&LI);
+            if ( std::find(vulnFuns.begin(), vulnFuns.end(), usrCall->getCalledFunction()->getName()) != vulnFuns.end() )
+            {
+                visit(llvm::dyn_cast<Instruction>(usr));
+            }
+        }
+    }
+    //llvm::errs() << "--------Visiting Load Finished--------\n\n";
+}
+
+
+void Compartmentalization::visitCallInst(CallInst &CI){
+    // Check if call instruction is indirect
+    int targetArgNum;
+    llvm::errs() << "\n--------Visiting Call Started--------\n";
+    llvm::errs() << "Visit Call: " << CI << " " << CI.getNumArgOperands() << "\n";
+    //llvm::errs() << "Most recent I: " << *mostRecentI << "\n";
+
+    if (CI.getNumArgOperands() > 0) {
+        for (auto &arg : CI.args())
+        {
+            if (arg == mostRecentI)
+            {
+                targetArgNum = arg.getOperandNo();
+                // llvm::errs() << "Found argument\n";
+                compartmentTargets.insert(std::pair<Instruction*,int>(llvm::dyn_cast<Instruction>(&CI), targetArgNum));
+                allocaCompartment = true;
+            }
+        }
+    }
+    llvm::errs() << "--------Visiting Call Finished--------\n\n";
 }
 
 
@@ -131,6 +200,12 @@ void waterfallCompartmentalization(Module &M,
     SetVector<BasicBlock*> visitedBBs;
     std::vector<std::pair<FunctionCallee, std::string>> funVectors;
 
+    for (auto item : M.getIdentifiedStructTypes())
+    {
+        llvm::errs() << *item << "\n";
+        structs.insert(item->getStructName());
+    }
+    //exit(1);
     for (FunctionInfo analysisFun : analysisInput) 
     {
         Function *currFun = analysisFun.nodeFun; 
@@ -143,7 +218,7 @@ void waterfallCompartmentalization(Module &M,
             //llvm::errs() << item << "\n";
             if (currFun->getName() == item.first)
             {
-                llvm::errs() << "=======" << currFun->getName() << "=======\n";
+                llvm::errs() << "======= " << currFun->getName() << " =======\n";
                 for (auto &BB : *currFun) 
                 {
                     if (!(visitedBBs.contains(&BB))){
@@ -167,6 +242,7 @@ bool instrumentInst (BasicBlock &BB,
                     DataLayout *DL, Instruction *finalBBInst, std::vector<string> vulnFuns) 
 {
     Compartmentalization compartmentVisitor;
+    compartmentVisitor.vulnFuns = vulnFuns;
     // ======= Function initializations ======= //
     FunctionCallee mteInit;
      for (auto item : FV) 
@@ -191,42 +267,27 @@ bool instrumentInst (BasicBlock &BB,
     for (auto &inst : BB) {
         llvm::IRBuilder<> mte_builder(&inst);
         Instruction *curr_I = &inst;
-        compartmentVisitor.visit(curr_I);
-        #if 1
-        // Beginning of alloca instruction check.
-        if (auto curr_alloca_I = llvm::dyn_cast<AllocaInst>(curr_I)) {
-            //llvm::errs() << *curr_alloca_I << "\n";
-            for (auto user : curr_alloca_I->users())
+        if (llvm::dyn_cast<AllocaInst>(curr_I))
+        {
+            compartmentVisitor.visit(curr_I);
+            if (alloc_to_compartment.contains(curr_I))
             {
-
+                llvm::errs() << "Compartmentalize: " << *curr_I << "\n";
             }
         }
-        #endif
 
-        #if 1
-         // Beginning of Call instruction check.
         if (auto curr_call_I = llvm::dyn_cast<CallInst>(curr_I)) {
-            //errs() << *curr_call_I << "\n";
-            auto curr_call_next = curr_call_I->getNextNode();
-            UNUSED(curr_call_next);
-            if (curr_call_I->getCalledFunction() != NULL) 
+            for (auto item : compartmentTargets)
             {
-                auto curr_call_fun_name = curr_call_I->getCalledFunction()->getName();
-                if (std::find(vulnFuns.begin(), vulnFuns.end(), curr_call_fun_name) != vulnFuns.end())
+                /*
+                if (item.first == llvm::dyn_cast<Instruction>(curr_call_I))
                 {
-                    // If function is found, need to trace through each alloca and protect it
-                    //llvm::errs() << "Function found: " << curr_call_fun_name << "\n";
-                    // llvm::errs() << *curr_call_I << "\n";
-                    //auto store_op = curr_call_I->getOperand();
-                    //auto alloc_to_use = recursiveFindAlloca(llvm::dyn_cast<Instruction>(store_op));
-                    //llvm::errs() << "Alloc found " << *alloc_to_use << "\n";
-                    
+                    llvm::errs() << "Call inst needs to be patched\n";
                 }
-                
+                */
             }
-
         }
-        #endif
+
     }
     return false;
 }

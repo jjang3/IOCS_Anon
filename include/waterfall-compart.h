@@ -25,13 +25,19 @@ using namespace std;
 
 #define UNUSED(x) (void)(x);
 
+
 class Compartmentalization : public InstVisitor<Compartmentalization> {
     public:
         void visitAllocaInst(AllocaInst &AI);
-        //void visitBitCastInst(BitCastInst &BI);
-        //void visitCallInst(CallInst &CI);
+        void visitBitCastInst(BitCastInst &BI);
+        void visitLoadInst(LoadInst &BI);
+        void visitCallInst(CallInst &CI);
         //void visitGetElementPtrInst(GetElementPtrInst &GEPI);
         //void visitStoreInst(StoreInst &SI);
+        bool allocaParent = false;
+        bool allocaCompartment = false;
+        Instruction *mostRecentI;
+        std::vector<string> vulnFuns;
 };
 
 void waterfallCompartmentalization(Module &M, std::vector<FunctionInfo> analysisInput, 
