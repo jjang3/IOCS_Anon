@@ -231,11 +231,14 @@ void getctx(ADDRINT addr, CONTEXT *fromctx, ADDRINT raddr, ADDRINT waddr)
 {
      //fprintf(LogFile, "%lx;%s;%lx,%lx,\n", addr, opcmap[addr].c_str(),
      //        raddr, waddr);
-    if (!checkLibAddr(addr))
+    if (!checkLibAddr(addr) && malloc_was_called == true)
     {
-        cerr << "getctx " << std::hex << addr << " rwaddr " << raddr << " " << waddr << " REG: " <<  PIN_GetContextReg(fromctx, REG_RAX) << endl;
-    }
-    
+		if (PIN_GetContextReg(fromctx, REG_RAX) > (uintptr_t)offset_addr)
+		{
+			cerr << "getctx " << std::hex << (addr - (uintptr_t)offset_addr) << " rwaddr " << raddr << " " << waddr << " REG: " <<  PIN_GetContextReg(fromctx, REG_RAX) << endl;
+		}		
+    	malloc_was_called = false;
+	}
 }
 
 void Trace(TRACE tr, VOID *v) {

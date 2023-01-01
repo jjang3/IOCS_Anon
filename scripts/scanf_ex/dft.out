@@ -10,26 +10,26 @@
 0x11fe > 0x10e0 - [.plt.sec]
 
 0x121a > 0x10f0 - [.plt.sec]
-	TMR: _IO_file_underflow | 0x557885f80320
-	TMR: _IO_default_uflow | 0x557885f80320
-	TMR: _IO_sputbackc | 0x557885f80320
-	TMR: psiginfo | 0x557885f80320
-	TMW: psiginfo | 0x557885f802e0
-	TMR: psiginfo | 0x557885f80321
-	TMW: psiginfo | 0x557885f802e1
-	TMR: psiginfo | 0x557885f80322
-	TMW: psiginfo | 0x557885f802e2
-	TMR: psiginfo | 0x557885f80323
-	TMW: psiginfo | 0x557885f802e3
-	TMR: psiginfo | 0x557885f80324
-	TMR: _IO_sputbackc | 0x557885f80324
+	TMR: _IO_file_underflow | 0x55874f98c320
+	TMR: _IO_default_uflow | 0x55874f98c320
+	TMR: _IO_sputbackc | 0x55874f98c320
+	TMR: psiginfo | 0x55874f98c320
+	TMW: psiginfo | 0x55874f98c2e0
+	TMR: psiginfo | 0x55874f98c321
+	TMW: psiginfo | 0x55874f98c2e1
+	TMR: psiginfo | 0x55874f98c322
+	TMW: psiginfo | 0x55874f98c2e2
+	TMR: psiginfo | 0x55874f98c323
+	TMW: psiginfo | 0x55874f98c2e3
+	TMR: psiginfo | 0x55874f98c324
+	TMR: _IO_sputbackc | 0x55874f98c324
 
 0x1230 > 0x10b0 - [.plt.sec]
-	TMR: strcpy | 0x557885f802e0
-	TMR: strcpy | 0x557885f802e0
-	TMW: strcpy | 0x557885f802a0
-	TMR: strcpy | 0x557885f802e1
-	TMW: strcpy | 0x557885f802a1
+	TMR: strcpy | 0x55874f98c2e0
+	TMR: strcpy | 0x55874f98c2e0
+	TMW: strcpy | 0x55874f98c2a0
+	TMR: strcpy | 0x55874f98c2e1
+	TMW: strcpy | 0x55874f98c2a1
 
 0x1291 > 0x10e0 - [.plt.sec]
 
