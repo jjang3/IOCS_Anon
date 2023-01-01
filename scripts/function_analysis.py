@@ -3,6 +3,7 @@ import pprint
 from binaryninja import *
 from dataclasses import dataclass
 
+# Data class
 @dataclass
 class FunItems:
     name: str
