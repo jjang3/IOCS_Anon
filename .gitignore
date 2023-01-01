@@ -6,6 +6,7 @@ userspace/bin/*
 pin-3.20
 *.out
 scripts/
+scripts/*
 !scripts/*.sh
 !scripts/*.py
 !tests/
