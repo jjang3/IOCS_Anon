@@ -8,7 +8,6 @@ pin-3.20
 !scripts/*.sh
 !scripts/*.py
 scripts/
-!tests/sources/*.c
-!tests/sources/*.txt
+!tests/
+tests/*
 !tests/sources/
-tests/
