@@ -1,64 +1,55 @@
 
-0x122c > 0x1000 - [_init]
+0x131c > 0x1000 - [_init]
 
-0x11dd > 0x1080 - [.plt.sec]
+0x1277 > 0x10e0 - [.plt.sec]
+	REG: 0x55cba7a4e257
 
-0x11ed > 0x1189 - [foo]
+0x1287 > 0x1238 - [foo]
+	REG: 0x55cba823b2a0
 
-0x11ac > 0x1090 - [.plt.sec]
-	TMR: _IO_file_underflow | 0x7f3a1b456bc3
-	TMR: _IO_default_uflow | 0x7f3a1b457f97
-	TMR: _IO_sputbackc | 0x7f3a1b458917
-	TMR: psiginfo | 0x7f3a1b42b18c
-	TMW: psiginfo | 0x7f3a1b42b251
-	TMR: psiginfo | 0x7f3a1b42b229
-	TMW: psiginfo | 0x7f3a1b42b251
-	TMR: psiginfo | 0x7f3a1b42b229
-	TMW: psiginfo | 0x7f3a1b42b251
-	TMR: psiginfo | 0x7f3a1b42b229
-	TMW: psiginfo | 0x7f3a1b42b251
-	TMR: psiginfo | 0x7f3a1b42b229
-	TMW: psiginfo | 0x7f3a1b42b251
-	TMR: psiginfo | 0x7f3a1b42b229
-	TMW: psiginfo | 0x7f3a1b42b251
-	TMR: psiginfo | 0x7f3a1b42b229
-	TMW: psiginfo | 0x7f3a1b42b251
-	TMR: psiginfo | 0x7f3a1b42b229
-	TMW: psiginfo | 0x7f3a1b42b251
-	TMR: psiginfo | 0x7f3a1b42b229
-	TMW: psiginfo | 0x7f3a1b42b251
-	TMR: psiginfo | 0x7f3a1b42b229
-	TMW: psiginfo | 0x7f3a1b42b251
-	TMR: psiginfo | 0x7f3a1b42b229
-	TMW: psiginfo | 0x7f3a1b42b251
-	TMR: psiginfo | 0x7f3a1b42b229
-	TMW: psiginfo | 0x7f3a1b42b251
-	TMR: psiginfo | 0x7f3a1b42b229
-	TMW: psiginfo | 0x7f3a1b42b251
-	TMR: psiginfo | 0x7f3a1b42b229
-	TMR: _IO_sputbackc | 0x7f3a1b458917
+0x124f > 0x11e9 - [bar]
 
-0x11c4 > 0x1070 - [.plt.sec]
-	TMW: printf | 0x7f3a1b427cad
-	TMR: strlen | 0x7f3a1b54e6e5
-	TMR: _IO_file_xsputn | 0x7f3a1b45570c
-	TMR: _IO_file_xsputn | 0x7f3a1b45570c
-	TMR: _IO_file_xsputn | 0x7f3a1b45570c
-	TMR: _IO_file_xsputn | 0x7f3a1b45570c
-	TMR: _IO_file_xsputn | 0x7f3a1b45570c
-	TMR: _IO_file_xsputn | 0x7f3a1b45570c
-	TMR: _IO_file_xsputn | 0x7f3a1b45570c
-	TMR: _IO_file_xsputn | 0x7f3a1b45570c
-	TMR: _IO_file_xsputn | 0x7f3a1b45570c
-	TMR: _IO_file_xsputn | 0x7f3a1b45570c
-	TMR: _IO_file_xsputn | 0x7f3a1b45570c
-	TMR: _IO_file_xsputn | 0x7f3a1b45570c
-	TMR: _IO_file_xsputn | 0x7f3a1b45570c
-	TMR: memcpy | 0x7f3a1b551767
-	TMR: memcpy | 0x7f3a1b55176c
-	TMW: memcpy | 0x7f3a1b55176f
-	TMW: memcpy | 0x7f3a1b551774
+0x11fe > 0x10e0 - [.plt.sec]
 
-0x1162 > 0x1060 - [.plt.got]
+0x121a > 0x10f0 - [.plt.sec]
+	REG: 0x55cba823b2e0
+	TMR: _IO_file_underflow | 0x7f63a4858bc3
+	TMR: _IO_default_uflow | 0x7f63a4859f97
+	TMR: _IO_sputbackc | 0x7f63a485a917
+	TMR: psiginfo | 0x7f63a482d18c
+	TMW: psiginfo | 0x7f63a482d251
+	TMR: psiginfo | 0x7f63a482d229
+	TMW: psiginfo | 0x7f63a482d251
+	TMR: psiginfo | 0x7f63a482d229
+	TMW: psiginfo | 0x7f63a482d251
+	TMR: psiginfo | 0x7f63a482d229
+	TMW: psiginfo | 0x7f63a482d251
+	TMR: psiginfo | 0x7f63a482d229
+	TMR: _IO_sputbackc | 0x7f63a485a917
 
-0x1167 > 0x10d0 - [deregister_tm_clones]
+0x1230 > 0x10b0 - [.plt.sec]
+	REG: 0x55cba823b2a0
+	TMR: strcpy | 0x7f63a4951c31
+	TMR: strcpy | 0x7f63a4951f30
+	TMW: strcpy | 0x7f63a4951f32
+	TMR: strcpy | 0x7f63a4951f34
+	TMW: strcpy | 0x7f63a4951f38
+
+0x1291 > 0x10e0 - [.plt.sec]
+	REG: 0x55cba823b2a0
+
+0x12b1 > 0x10d0 - [.plt.sec]
+	REG: 0x55cba823b730
+
+0x12bd > 0x10a0 - [.plt.sec]
+	REG: 0x55cba823b2a0
+
+0x12c9 > 0x10a0 - [.plt.sec]
+	REG: 0x55cba823b730
+
+0x12e2 > 0x10c0 - [.plt.sec]
+
+0x11c2 > 0x1090 - [.plt.got]
+
+0x11c7 > 0x1130 - [deregister_tm_clones]
+	REG: 0x55cba7a51010

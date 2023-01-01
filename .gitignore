@@ -5,3 +5,10 @@ lib
 userspace/bin/*
 pin-3.20
 *.out
+!scripts/*.sh
+!scripts/*.py
+scripts/
+!tests/sources/*.c
+!tests/sources/*.txt
+!tests/sources/
+tests/

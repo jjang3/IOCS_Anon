@@ -26,6 +26,9 @@ using namespace std;
 #define DLIB_SUFF_ALT	".so."
 #define	TAG 	0x01U
 
+#define LIB_BASE 0x700000000000
+#define ALLOCATED 1
+#define FREED 2
 
 /* ===================================================================== */
 /* Names of malloc and free */
@@ -49,13 +52,17 @@ using namespace std;
 #define SPRINTF "sprintf"
 #define SNPRINTF "snprintf"
 #define CLOSE "close"
+#define CALLINS "call"
 #endif
 
 const CHAR* targetFuns[] = {MALLOC, SCANF, ISOCSCANF, FREE, READ, GETS, FGETS, STRCPY, STRNCPY, MEMCPY, PRINTF, FPRINTF, SPRINTF, SNPRINTF, CLOSE};
 
+using std::cerr;
+using std::endl;
 
 /* trace file */
 FILE *trace;
+std::ofstream TraceFile;
 
 /* thread context */
 extern thread_ctx_t *threads_ctx;
@@ -75,6 +82,10 @@ static KNOB<string> logpath(KNOB_MODE_WRITEONCE, "pintool", "l",
 
 /* map between target rtn names and address */
 std::map<ADDRINT, string> rtn_to_addr;
+std::map<ADDRINT, int> mem_addr_table;
+std::map<ADDRINT, int> mem_alloc_table;
+ADDRINT mem_addr = 0;
+
 
 /*
  * flag variables
@@ -95,38 +106,72 @@ static KNOB<size_t> net(KNOB_MODE_WRITEONCE, "pintool", "n", "1", "");
 /* 
 	Custom functions added
  */
+
 void *offset_addr;
-#if 1
+
+bool checkLibAddr(UINT64 addr) {
+    if (addr > LIB_BASE) {
+        return true;
+    }
+    return false;
+}
+
+void checkMallocMemWrite(ADDRINT addr, CONTEXT *ctx, ADDRINT raddr, ADDRINT waddr)
+{
+     //fprintf(LogFile, "%lx;%s;%lx,%lx,\n", addr, opcmap[addr].c_str(),
+     //        raddr, waddr);
+	void* rax_addr = (void*)PIN_GetContextReg(ctx, REG_RAX);
+    if ((!checkLibAddr((UINT64)addr)) && rax_addr > offset_addr)
+    {
+		if ((uintptr_t)rax_addr < LIB_BASE)
+		{
+			fprintf(trace, "\tREG: %p\n", rax_addr);
+		}
+		
+    }
+    
+}
+
 VOID parse_funRtns(IMG img, void *v)
 {
 	if (IMG_IsMainExecutable(img))
 	{
+		// Calculating offset address
 		offset_addr = (void*)IMG_LoadOffset(img);
 		printf("Offset: %p\n", (void*)IMG_LoadOffset(img));
-	}
-	#if 0
-	if(!IMG_Valid(img)) return;
-	int targetFunNums = sizeof(targetFuns)/sizeof(string);
-	RTN targetRtns[targetFunNums];
 
-	for (int i=0; i<targetFunNums; i++)
+	}
+
+	#if 1
+	RTN mallocRtn = RTN_FindByName(img, MALLOC);
+	if (RTN_Valid(mallocRtn))
 	{
-		targetRtns[i] = RTN_FindByName(img, targetFuns[i]);
-		if (RTN_Valid(targetRtns[i]))
+		RTN_Open(mallocRtn);
+
+		// Instrument malloc() to print the input argument value and the return value.
+		#if 0
+
+		cerr << "Entering malloc" << endl;
+		RTN_InsertCall(mallocRtn, IPOINT_BEFORE, (AFUNPTR)RecordMalloc,
+					IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
+					IARG_END);
+		RTN_InsertCall(mallocRtn, IPOINT_AFTER, (AFUNPTR)RecordMallocResult,
+					IARG_INST_PTR,
+					IARG_FUNCRET_EXITPOINT_VALUE, 
+					//IARG_MEMORYWRITE_PTR,
+					IARG_END);
+		#endif
+		//fprintf(trace, "Enttering malloc\n");
+		
+		for (INS ins = RTN_InsHead(mallocRtn); INS_Valid(ins); ins = INS_Next(ins))
 		{
-			rtn_to_addr[RTN_Address(targetRtns[i])] = RTN_Name(targetRtns[i]).c_str();
-			//fprintf(trace, "Target function: %s %p\n", RTN_Name(targetRtns[i]).c_str(), (void*)RTN_Address(targetRtns[i]));
 		}
+		RTN_Close(mallocRtn);
+		cerr << "Exiting malloc" << endl;
 	}
-
-	/* Custom Checking */
-	for (auto item : rtn_to_addr) {
-		//printf("Item: %s - %p\n", item.first.c_str(), (void*)item.second);
-	}
-	#endif// Walk through the symbols in the symbol table.
+	#endif
 }
-#endif
-
+	
 string invalid = "invalid_rtn";
 const string *Target2String(ADDRINT target)
 {
@@ -145,25 +190,30 @@ VOID RecordMemWrite(ADDRINT ip, ADDRINT addr)
 	if (tagmap_getl(size_t(addr)))
 	{
 		string rtn_name = RTN_FindNameByAddress(ip);
-		printf("Tagged Mem Write (TMW)\n");
+		//printf("Tagged Mem Write (TMW)\n");
+
+		cerr << "Write: " << std::hex << addr << endl;
 		fprintf(trace, "\tTMW: %s | %p\n", rtn_name.c_str(), (void *)ip);
 	}
 }
 
 VOID RecordMemRead(ADDRINT ip, ADDRINT addr)
 {
+
 	// print when addr is tagged.
 	if (tagmap_getl(size_t(addr)))
 	{
 		string rtn_name = RTN_FindNameByAddress(ip);
-		printf("Tagged Mem Read (TMR)\n");
+		//printf("Tagged Mem Read (TMR)\n");
+
+		cerr << "Read: " << std::hex << addr << endl;
 		fprintf(trace, "\tTMR: %s | %p\n", rtn_name.c_str(), (void *)ip);
 	}	
 }
-
+ 
 VOID Instruction(INS ins, VOID *v)
 {
-	
+	// Calling plt.sec functions
 	if (INS_IsCall(ins))
     {
         if (INS_IsDirectBranchOrCall(ins))
@@ -172,15 +222,22 @@ VOID Instruction(INS ins, VOID *v)
 			tag_addr = tag_addr >> 44;
 			if (tag_addr == 5)
 			{
-				fprintf(trace, "%p > ", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr));
 				const ADDRINT target = INS_DirectBranchOrCallTargetAddress(ins);
 
 				uintptr_t exec_addr = (uintptr_t)target - (uintptr_t)offset_addr;
-				fprintf(trace, "%p - [%s]\n", (void*)exec_addr, (Target2String(target)->c_str()));
+
+				//fprintf(trace, "%p > ", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr));
+				fprintf(trace, "\n%p > %p - [%s]\n", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr), (void*)exec_addr, Target2String(target)->c_str());
+				//fprintf(trace, "%p - [%s]\n", (void*)exec_addr, (Target2String(target)->c_str()));
 			}
         }
     }
 
+	if (INS_IsMemoryWrite(ins)) {
+
+		//cerr << INS_Disassemble(ins)  <<  endl;
+		INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)checkMallocMemWrite, IARG_INST_PTR, IARG_CONST_CONTEXT, IARG_ADDRINT, 0, IARG_MEMORYWRITE_PTR , IARG_END);
+	}	 
 	UINT32 memOperands = INS_MemoryOperandCount(ins);
 	for (UINT32 memOp = 0; memOp < memOperands; memOp++) {
 		// Instructions have memory write
@@ -396,6 +453,7 @@ assert_mem16(ADDRINT paddr, ADDRINT taddr)
  *
  * @ins:	the instruction to instrument
  */
+
 static void
 dta_instrument_jmp_call(INS ins)
 {
@@ -922,15 +980,18 @@ main(int argc, char **argv)
 		/* Pin initialization failed */
 		goto err;
 
+	
+	trace = fopen("dft.out", "w");
+	if (trace != NULL)
+	{
+		printf("Success\n");
+	}
 	IMG_AddInstrumentFunction(parse_funRtns, 0);
 
 	/* initialize the core tagging engine */
 	if (unlikely(libdft_init() != 0))
 		/* failed */
 		goto err;
-	
-	trace = fopen("dft.out", "w");
-
 	/* 
 	 * handle control transfer instructions
 	 *
@@ -1007,6 +1068,8 @@ main(int argc, char **argv)
 		fdset.insert(STDIN_FILENO);
 
 
+    // Register Instruction to be called to instrument instructions
+	// temp
 	INS_AddInstrumentFunction(Instruction, 0);
 	PIN_AddFiniFunction(Fini, 0);
 

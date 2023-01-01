@@ -2,7 +2,7 @@
 
 BASE_DIR=$(pwd)
 LIBDFT_DIR=$(pwd)/libdft64
-SOURCE_DIR=$(pwd)/sources
+SOURCE_DIR=$(pwd)/lib_sources
 RESULTS_DIR=$BASE_DIR/lib
 LIB_DIR=$LIBDFT_DIR/tools/obj-intel64/
 
