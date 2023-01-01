@@ -63,6 +63,7 @@ using std::endl;
 /* trace file */
 FILE *trace;
 std::ofstream TraceFile;
+bool malloc_was_called = false;
 
 /* thread context */
 extern thread_ctx_t *threads_ctx;
@@ -120,16 +121,21 @@ void checkMallocMemWrite(ADDRINT addr, CONTEXT *ctx, ADDRINT raddr, ADDRINT wadd
 {
      //fprintf(LogFile, "%lx;%s;%lx,%lx,\n", addr, opcmap[addr].c_str(),
      //        raddr, waddr);
-	void* rax_addr = (void*)PIN_GetContextReg(ctx, REG_RAX);
-    if ((!checkLibAddr((UINT64)addr)) && rax_addr > offset_addr)
+	//void* rax_addr = (void*)PIN_GetContextReg(ctx, REG_RAX);
+    if ((!checkLibAddr((UINT64)addr)))
     {
-		if ((uintptr_t)rax_addr < LIB_BASE)
-		{
-			fprintf(trace, "\tREG: %p\n", rax_addr);
-		}
+		//if ((uintptr_t)rax_addr < LIB_BASE)
+		//{
+			fprintf(trace, "\tREG: %p\n", (void*)PIN_GetContextReg(ctx, REG_RAX));
+		//}
 		
-    }
-    
+    }    
+}
+
+
+VOID LogBeforeMalloc(ADDRINT size) {
+	cerr << "[*] malloc(" << dec << size << ")" << endl;
+	malloc_was_called = true;
 }
 
 VOID parse_funRtns(IMG img, void *v)
@@ -142,7 +148,7 @@ VOID parse_funRtns(IMG img, void *v)
 
 	}
 
-	#if 1
+	#if 0
 	RTN mallocRtn = RTN_FindByName(img, MALLOC);
 	if (RTN_Valid(mallocRtn))
 	{
@@ -151,25 +157,36 @@ VOID parse_funRtns(IMG img, void *v)
 		// Instrument malloc() to print the input argument value and the return value.
 		#if 0
 
-		cerr << "Entering malloc" << endl;
-		RTN_InsertCall(mallocRtn, IPOINT_BEFORE, (AFUNPTR)RecordMalloc,
-					IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
-					IARG_END);
-		RTN_InsertCall(mallocRtn, IPOINT_AFTER, (AFUNPTR)RecordMallocResult,
+		//cerr << "Entering malloc" << endl;
+		//RTN_InsertCall(mallocRtn, IPOINT_BEFORE, (AFUNPTR)RecordMalloc,
+		//			IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
+		//			IARG_END);
+		RTN_InsertCall(mallocRtn, IPOINT_AFTER, (AFUNPTR)MallocAfter,
 					IARG_INST_PTR,
-					IARG_FUNCRET_EXITPOINT_VALUE, 
-					//IARG_MEMORYWRITE_PTR,
+					IARG_FUNCRET_EXITPOINT_VALUE,
 					IARG_END);
 		#endif
 		//fprintf(trace, "Enttering malloc\n");
 		
-		for (INS ins = RTN_InsHead(mallocRtn); INS_Valid(ins); ins = INS_Next(ins))
-		{
-		}
 		RTN_Close(mallocRtn);
 		cerr << "Exiting malloc" << endl;
 	}
 	#endif
+	for (SYM sym = IMG_RegsymHead(img); SYM_Valid(sym); sym = SYM_Next(sym)) {
+		string undFuncName = PIN_UndecorateSymbolName(SYM_Name(sym), UNDECORATION_NAME_ONLY);
+		//LogFile << "[*] CustomInstrumentation: " << undFuncName << endl;
+		if (undFuncName == "malloc") {
+			cerr << "[*] CustomInstrumentation: `malloc` is found." << endl;
+			RTN allocRtn = RTN_FindByAddress(IMG_LowAddress(img) + SYM_Value(sym)); // function "malloc" address
+			if (RTN_Valid(allocRtn)) {
+
+				RTN_Open(allocRtn);
+				RTN_InsertCall(allocRtn, IPOINT_BEFORE, (AFUNPTR)LogBeforeMalloc,
+					IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_THREAD_ID, IARG_END);
+				RTN_Close(allocRtn);
+			}
+		}
+	}
 }
 	
 string invalid = "invalid_rtn";
@@ -192,8 +209,8 @@ VOID RecordMemWrite(ADDRINT ip, ADDRINT addr)
 		string rtn_name = RTN_FindNameByAddress(ip);
 		//printf("Tagged Mem Write (TMW)\n");
 
-		cerr << "Write: " << std::hex << addr << endl;
-		fprintf(trace, "\tTMW: %s | %p\n", rtn_name.c_str(), (void *)ip);
+		//cerr << "Write: " << std::hex << addr << endl;
+		fprintf(trace, "\tTMW: %s | %p\n", rtn_name.c_str(), (void *)addr);
 	}
 }
 
@@ -206,11 +223,73 @@ VOID RecordMemRead(ADDRINT ip, ADDRINT addr)
 		string rtn_name = RTN_FindNameByAddress(ip);
 		//printf("Tagged Mem Read (TMR)\n");
 
-		cerr << "Read: " << std::hex << addr << endl;
-		fprintf(trace, "\tTMR: %s | %p\n", rtn_name.c_str(), (void *)ip);
+		//cerr << "Read: " << std::hex << addr << endl;
+		fprintf(trace, "\tTMR: %s | %p\n", rtn_name.c_str(), (void *)addr);
 	}	
 }
- 
+void getctx(ADDRINT addr, CONTEXT *fromctx, ADDRINT raddr, ADDRINT waddr)
+{
+     //fprintf(LogFile, "%lx;%s;%lx,%lx,\n", addr, opcmap[addr].c_str(),
+     //        raddr, waddr);
+    if (!checkLibAddr(addr))
+    {
+        cerr << "getctx " << std::hex << addr << " rwaddr " << raddr << " " << waddr << " REG: " <<  PIN_GetContextReg(fromctx, REG_RAX) << endl;
+    }
+    
+}
+
+void Trace(TRACE tr, VOID *v) {
+    // Instruction Iterator
+    for (BBL bbl = TRACE_BblHead(tr); BBL_Valid(bbl); bbl = BBL_Next(bbl)) 
+    {
+        
+        for ( INS ins = BBL_InsHead(bbl); INS_Valid(ins); ins = INS_Next(ins)) 
+        {
+            /*
+            if (isLibraryFunction(INS_Address(ins))) {
+                continue;
+            }
+            */
+		   if (INS_IsCall(ins))
+			{
+				if (INS_IsDirectBranchOrCall(ins))
+				{
+					uintptr_t tag_addr = (uintptr_t)(INS_Address(ins) & ~(uintptr_t) 0xfffffffffffUL);
+					tag_addr = tag_addr >> 44;
+					if (tag_addr == 5)
+					{
+						const ADDRINT target = INS_DirectBranchOrCallTargetAddress(ins);
+
+						uintptr_t exec_addr = (uintptr_t)target - (uintptr_t)offset_addr;
+
+						//fprintf(trace, "%p > ", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr));
+						fprintf(trace, "\n%p > %p - [%s]\n", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr), (void*)exec_addr, Target2String(target)->c_str());
+						//fprintf(trace, "%p - [%s]\n", (void*)exec_addr, (Target2String(target)->c_str()));
+					}
+				}
+			}
+			UINT32 memOperands = INS_MemoryOperandCount(ins);
+			for (UINT32 memOp = 0; memOp < memOperands; memOp++) {
+				// Instructions have memory write
+				if (INS_MemoryOperandIsWritten(ins, memOp)) {
+					INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+							(AFUNPTR)RecordMemWrite, IARG_INST_PTR,
+							IARG_MEMORYOP_EA, memOp, IARG_END);
+				}	
+				// Instructions have memory read
+				if (INS_MemoryOperandIsRead(ins, memOp)) {
+					INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+							(AFUNPTR)RecordMemRead, IARG_INST_PTR,
+							IARG_MEMORYOP_EA, memOp, IARG_END);
+				}
+				
+			}
+			if (INS_IsMemoryWrite(ins)) {
+				INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)getctx, IARG_INST_PTR, IARG_CONST_CONTEXT, IARG_ADDRINT, 0, IARG_MEMORYWRITE_EA, IARG_END);
+			} 
+		}
+	}
+}
 VOID Instruction(INS ins, VOID *v)
 {
 	// Calling plt.sec functions
@@ -232,12 +311,13 @@ VOID Instruction(INS ins, VOID *v)
 			}
         }
     }
-
+	#if 1
 	if (INS_IsMemoryWrite(ins)) {
 
 		//cerr << INS_Disassemble(ins)  <<  endl;
 		INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)checkMallocMemWrite, IARG_INST_PTR, IARG_CONST_CONTEXT, IARG_ADDRINT, 0, IARG_MEMORYWRITE_PTR , IARG_END);
 	}	 
+	#endif
 	UINT32 memOperands = INS_MemoryOperandCount(ins);
 	for (UINT32 memOp = 0; memOp < memOperands; memOp++) {
 		// Instructions have memory write
@@ -1070,7 +1150,9 @@ main(int argc, char **argv)
 
     // Register Instruction to be called to instrument instructions
 	// temp
-	INS_AddInstrumentFunction(Instruction, 0);
+	//INS_AddInstrumentFunction(Instruction, 0);
+	//
+    TRACE_AddInstrumentFunction(Trace, 0);
 	PIN_AddFiniFunction(Fini, 0);
 
 	/* start Pin */
