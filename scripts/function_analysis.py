@@ -29,6 +29,7 @@ target_functions = set()
 tainted_insts_to_fun = dict()
 vuln_collections = dict()
 rtn_collections = dict() # routine
+origin_addrs = set()
 
 vuln_funs_in_tainted_funs = dict()
 vuln_functions = set()
@@ -54,6 +55,12 @@ with open(in_file, "r") as infile:
                 #print(line)
                 fun_name = line.split(':')[1]
                 addr = line.split('|')[1]
+                origin = ""
+                if '>' in line:
+                    origin = line.split('>')[1]
+                if (origin != ""):
+                    origin_addr = re.search(r'(0x[0-9].*)', str(origin))
+                    print(int(origin_addr.group(0), 16))
                 #if (addr[3] == "7"):   # Initially, ignore libc function which will have an address of 0x7
                 #    continue           # Can't ignore anymore because a libc routine function may
                                         # call a outside functions to acess the tagged memory
@@ -113,7 +120,6 @@ for item in tainted_funs:
         if fun.name == item:
             print(fun.vulnFuns)
             for funs in fun.vulnFuns:
-                
                 out_file_open.write(funs)
                 if funCount != len(fun.vulnFuns):
                     out_file_open.write(" ")

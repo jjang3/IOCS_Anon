@@ -22,7 +22,7 @@ int main()
     //printf("Buf Pointers: %p\n", buf);
     foo(&buf);
     char *bar_buf = malloc(sizeof(char)*50);
-    //bar(&bar_buf);
+    bar(&bar_buf);
     //printf("Buf / Bar_buf Pointers: %p | %p\n", buf, bar_buf);
     printf("Pointers: %p | %p\n", buf, bar_buf);
     free(buf);

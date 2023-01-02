@@ -63,7 +63,9 @@ using std::endl;
 /* trace file */
 FILE *trace;
 std::ofstream TraceFile;
-bool malloc_was_called = false;
+bool called_malloc = false;
+
+map<ADDRINT, ADDRINT> mallocOrigin; // true means address been deallocated, false mean not deallocated.
 
 /* thread context */
 extern thread_ctx_t *threads_ctx;
@@ -135,7 +137,13 @@ void checkMallocMemWrite(ADDRINT addr, CONTEXT *ctx, ADDRINT raddr, ADDRINT wadd
 
 VOID LogBeforeMalloc(ADDRINT size) {
 	cerr << "[*] malloc(" << dec << size << ")" << endl;
-	malloc_was_called = true;
+	called_malloc = true;
+}
+
+VOID LogFree(ADDRINT addr) {	
+	
+	cerr << "[*] Freeing memory address 0x" << hex << addr << "." << endl;
+	
 }
 
 VOID parse_funRtns(IMG img, void *v)
@@ -186,6 +194,15 @@ VOID parse_funRtns(IMG img, void *v)
 				RTN_Close(allocRtn);
 			}
 		}
+		else if (undFuncName == "free") {
+			RTN freeRtn = RTN_FindByAddress(IMG_LowAddress(img) + SYM_Value(sym)); // function "free" address
+			if (RTN_Valid(freeRtn)) {
+				RTN_Open(freeRtn);
+				RTN_InsertCall(freeRtn, IPOINT_BEFORE, (AFUNPTR)LogFree,
+					IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_END); // address to be freed
+				RTN_Close(freeRtn);
+			}
+		}
 	}
 }
 	
@@ -210,7 +227,16 @@ VOID RecordMemWrite(ADDRINT ip, ADDRINT addr)
 		//printf("Tagged Mem Write (TMW)\n");
 
 		//cerr << "Write: " << std::hex << addr << endl;
-		fprintf(trace, "\tTMW: %s | %p\n", rtn_name.c_str(), (void *)addr);
+		fprintf(trace, "\tTMW: %s | %p", rtn_name.c_str(), (void *)ip);
+		map<ADDRINT, ADDRINT>::iterator it = mallocOrigin.find(addr);
+		if (it != mallocOrigin.end()) {
+			//cerr << "Found the access: " << hex << it->first << endl;
+			fprintf(trace, " > ORG: %p\n", (void*)it->second);
+		}
+		else
+		{
+			fprintf(trace, "\n");
+		}
 	}
 }
 
@@ -224,20 +250,33 @@ VOID RecordMemRead(ADDRINT ip, ADDRINT addr)
 		//printf("Tagged Mem Read (TMR)\n");
 
 		//cerr << "Read: " << std::hex << addr << endl;
-		fprintf(trace, "\tTMR: %s | %p\n", rtn_name.c_str(), (void *)addr);
+		fprintf(trace, "\tTMR: %s | %p", rtn_name.c_str(), (void *)ip);
+		map<ADDRINT, ADDRINT>::iterator it = mallocOrigin.find(addr);
+		if (it != mallocOrigin.end()) {
+			//cerr << "Found the access: " << hex << it->first << endl;
+			fprintf(trace, " > ORG: %p\n", (void*)it->second);
+		}
+		else
+		{
+			fprintf(trace, "\n");
+		}
 	}	
 }
-void getctx(ADDRINT addr, CONTEXT *fromctx, ADDRINT raddr, ADDRINT waddr)
+void getInfo(ADDRINT addr, CONTEXT *fromctx, ADDRINT raddr, ADDRINT waddr)
 {
      //fprintf(LogFile, "%lx;%s;%lx,%lx,\n", addr, opcmap[addr].c_str(),
      //        raddr, waddr);
-    if (!checkLibAddr(addr) && malloc_was_called == true)
+    if (!checkLibAddr(addr) && called_malloc == true)
     {
 		if (PIN_GetContextReg(fromctx, REG_RAX) > (uintptr_t)offset_addr)
 		{
-			cerr << "getctx " << std::hex << (addr - (uintptr_t)offset_addr) << " rwaddr " << raddr << " " << waddr << " REG: " <<  PIN_GetContextReg(fromctx, REG_RAX) << endl;
+			uintptr_t static_addr = addr - (uintptr_t)offset_addr;
+			uintptr_t rax_addr = PIN_GetContextReg(fromctx, REG_RAX);
+			cerr << "" << std::hex << static_addr << " RAX: " << (void*)rax_addr  << endl;
+			mallocOrigin.insert(pair<ADDRINT,ADDRINT>(rax_addr, static_addr));
+			//fprintf(trace,"\tInfo: %p\n", (void*)rax_addr);
 		}		
-    	malloc_was_called = false;
+    	called_malloc = false;
 	}
 }
 
@@ -288,7 +327,7 @@ void Trace(TRACE tr, VOID *v) {
 				
 			}
 			if (INS_IsMemoryWrite(ins)) {
-				INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)getctx, IARG_INST_PTR, IARG_CONST_CONTEXT, IARG_ADDRINT, 0, IARG_MEMORYWRITE_EA, IARG_END);
+				INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)getInfo, IARG_INST_PTR, IARG_CONST_CONTEXT, IARG_ADDRINT, 0, IARG_MEMORYWRITE_EA, IARG_END);
 			} 
 		}
 	}
