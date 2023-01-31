@@ -1,40 +1,51 @@
-ROOT_DIR="$PWD"
-LIBDFT_DIR="$PWD"/libdft64
-SOURCE_DIR="$PWD"/lib_sources
-PIN_DIR="$PWD"/pin-3.20
-
-.PHONY: clean build update
+ROOT_DIR=$(shell pwd)
+LIBDFT_DIR=${ROOT_DIR}/libdft64
+SOURCE_DIR=${ROOT_DIR}/lib_sources
+PIN_BUILD=${ROOT_DIR}/pin-3.20_build
+LIBDFT=libdft64
 
 PIN=pin-3.20-98437-gf02b61307-gcc-linux
-PIN_VER=pin-3.20
+PIN_DIR=${ROOT_DIR}/${PIN}
+
 SRC="https://software.intel.com/sites/landingpage/pintool/downloads/pin-3.20-98437-gf02b61307-gcc-linux.tar.gz"
+
+export PIN_ROOT := ${PIN_BUILD}
+
+.PHONY: clean ${PIN_VER}_build ${LIBDFT}_build
 
 all: build 
 
-build: update ${PIN}_build ${LIBDFT}_build
+build: update ${PIN_VER}_build ${LIBDFT}_build
 
 ${PIN}.tar.gz:
-		wget ${SRC}
+ifneq ($(PIN).tar.gz,"")
+	wget ${SRC}
+endif
 
 ${PIN}: ${PIN}.tar.gz
-		tar xvf ${PIN}.tar.gz
+	if [ ! -d ${PIN_BUILD} ]; then \
+		tar xvf ${PIN}.tar.gz; \
+		mv ${PIN_DIR} ${PIN_BUILD};  \
+	fi
 
-${PIN}_build: ${PIN}
-		mv ${PIN} ${PIN_VER}_build
-		rm ${SRC}
+${PIN_VER}_build: ${PIN}
+	
+${LIBDFT}:		
+		cp ${SOURCE_DIR}/* ${LIBDFT_DIR}/tools && \
+		cd ${LIBDFT_DIR}/tools && \
+		make \
 
-${LIBDFT}_build: 
-		export PIN_ROOT="$PWD"/pin-3.20 && \
-		cd libdft64 && \
-		make -j4 && \
-		cp $SOURCE_DIR/* ${LIBDFT}_build/tools/ && \
-		cd ${LIBDFT}_build/tools/ && \
-		make -j4
-
+${LIBDFT}_build: ${LIBDFT}
+		echo ${PIN_ROOT} && \
+		echo ${SOURCE_DIR} && \
+		cd ${LIBDFT_DIR} && make \
+		
 update:
 		git submodule init
 		git submodule update
-
+		
 clean:
-		rm -rf ${LIBDFT}_build
-		rm -rf ${PIN}_build
+		rm -rf ${LIBDFT_DIR}
+		rm -rf ${PIN}
+		rm -rf ${PIN_BUILD}
+		rm ${PIN}.tar.gz*
