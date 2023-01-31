@@ -30,15 +30,13 @@ ${PIN}: ${PIN}.tar.gz
 
 ${PIN_VER}_build: ${PIN}
 	
-${LIBDFT}:		
-		cp ${SOURCE_DIR}/* ${LIBDFT_DIR}/tools && \
+${LIBDFT}_build: 
+		echo ${PIN_ROOT} && \
+		cd ${LIBDFT_DIR} && make && \
+		echo ${SOURCE_DIR} && \
+		cp -r ${SOURCE_DIR}/* ${LIBDFT_DIR}/tools/ && \
 		cd ${LIBDFT_DIR}/tools && \
 		make \
-
-${LIBDFT}_build: ${LIBDFT}
-		echo ${PIN_ROOT} && \
-		echo ${SOURCE_DIR} && \
-		cd ${LIBDFT_DIR} && make \
 		
 update:
 		git submodule init
