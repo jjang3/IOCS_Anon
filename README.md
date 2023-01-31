@@ -10,13 +10,12 @@ Repository for the Waterfall project
 ├── scripts
 ├── libdft64 (submodule)
 ├── compile.sh
-└── taint.sh
+└── Makefile
 ```
 - `sources` = contains taint analysis source file
 - `tests` = contains test input files 
 - `scripts` = contains script files for test applications
 - `libdft64` = libdft64 submodule
-- `taint.sh` = a script for initialization
 - `compile.sh` = a script for compiling a library
 
 ## How to use (To-do)

@@ -10,52 +10,52 @@
 0x11fe > 0x10e0 - [.plt.sec]
 
 0x121a > 0x10f0 - [.plt.sec]
-	TMR: _IO_file_underflow | 0x7fcf409c6bc3
-	TMR: _IO_default_uflow | 0x7fcf409c7f97
-	TMR: _IO_sputbackc | 0x7fcf409c8917
-	TMR: psiginfo | 0x7fcf4099b18c
-	TMW: psiginfo | 0x7fcf4099b251 > ORG: 0x1203
-	TMR: psiginfo | 0x7fcf4099b229
-	TMW: psiginfo | 0x7fcf4099b251
-	TMR: psiginfo | 0x7fcf4099b229
-	TMW: psiginfo | 0x7fcf4099b251
-	TMR: psiginfo | 0x7fcf4099b229
-	TMW: psiginfo | 0x7fcf4099b251
-	TMR: psiginfo | 0x7fcf4099b229
-	TMR: _IO_sputbackc | 0x7fcf409c8917
+	TMR: _IO_file_underflow | 0x7f80d8ff4bc3
+	TMR: _IO_default_uflow | 0x7f80d8ff5f97
+	TMR: _IO_sputbackc | 0x7f80d8ff6917
+	TMR: psiginfo | 0x7f80d8fc918c
+	TMW: psiginfo | 0x7f80d8fc9251 > ORG: 0x1203
+	TMR: psiginfo | 0x7f80d8fc9229
+	TMW: psiginfo | 0x7f80d8fc9251
+	TMR: psiginfo | 0x7f80d8fc9229
+	TMW: psiginfo | 0x7f80d8fc9251
+	TMR: psiginfo | 0x7f80d8fc9229
+	TMW: psiginfo | 0x7f80d8fc9251
+	TMR: psiginfo | 0x7f80d8fc9229
+	TMR: _IO_sputbackc | 0x7f80d8ff6917
 
 0x1230 > 0x10b0 - [.plt.sec]
-	TMR: strcpy | 0x7fcf40abfc31 > ORG: 0x1203
-	TMR: strcpy | 0x7fcf40abff30 > ORG: 0x1203
-	TMW: strcpy | 0x7fcf40abff32 > ORG: 0x127c
-	TMR: strcpy | 0x7fcf40abff34
-	TMW: strcpy | 0x7fcf40abff38
+	TMR: strcpy | 0x7f80d90edc31 > ORG: 0x1203
+	TMR: strcpy | 0x7f80d90edf30 > ORG: 0x1203
+	TMW: strcpy | 0x7f80d90edf32 > ORG: 0x127c
+	TMR: strcpy | 0x7f80d90edf34
+	TMW: strcpy | 0x7f80d90edf38
 
 0x1291 > 0x10e0 - [.plt.sec]
 
 0x12a1 > 0x11e9 - [bar]
-	TMR: psiginfo | 0x7fcf40999f4e
-	TMR: _IO_file_underflow | 0x7fcf409c6bc3
-	TMR: _IO_default_uflow | 0x7fcf409c7f97
-	TMR: _IO_sputbackc | 0x7fcf409c8917
-	TMR: psiginfo | 0x7fcf4099b18c
-	TMW: psiginfo | 0x7fcf4099b251 > ORG: 0x1203
-	TMR: psiginfo | 0x7fcf4099b229
-	TMW: psiginfo | 0x7fcf4099b251
-	TMR: psiginfo | 0x7fcf4099b229
-	TMW: psiginfo | 0x7fcf4099b251
-	TMR: psiginfo | 0x7fcf4099b229
-	TMW: psiginfo | 0x7fcf4099b251
-	TMR: psiginfo | 0x7fcf4099b229
-	TMR: _IO_sputbackc | 0x7fcf409c8917
-	TMR: strcpy | 0x7fcf40abff30 > ORG: 0x1203
-	TMW: strcpy | 0x7fcf40abff32 > ORG: 0x1296
-	TMR: strcpy | 0x7fcf40abff34
-	TMW: strcpy | 0x7fcf40abff38
+	TMR: psiginfo | 0x7f80d8fc7f4e
+	TMR: _IO_file_underflow | 0x7f80d8ff4bc3
+	TMR: _IO_default_uflow | 0x7f80d8ff5f97
+	TMR: _IO_sputbackc | 0x7f80d8ff6917
+	TMR: psiginfo | 0x7f80d8fc918c
+	TMW: psiginfo | 0x7f80d8fc9251 > ORG: 0x1203
+	TMR: psiginfo | 0x7f80d8fc9229
+	TMW: psiginfo | 0x7f80d8fc9251
+	TMR: psiginfo | 0x7f80d8fc9229
+	TMW: psiginfo | 0x7f80d8fc9251
+	TMR: psiginfo | 0x7f80d8fc9229
+	TMW: psiginfo | 0x7f80d8fc9251
+	TMR: psiginfo | 0x7f80d8fc9229
+	TMR: _IO_sputbackc | 0x7f80d8ff6917
+	TMR: strcpy | 0x7f80d90edf30 > ORG: 0x1203
+	TMW: strcpy | 0x7f80d90edf32 > ORG: 0x1296
+	TMR: strcpy | 0x7f80d90edf34
+	TMW: strcpy | 0x7f80d90edf38
 
 0x12bd > 0x10d0 - [.plt.sec]
-	TMW: printf | 0x7fcf40997ca8
-	TMW: printf | 0x7fcf40997cad
+	TMW: printf | 0x7f80d8fc5ca8
+	TMW: printf | 0x7f80d8fc5cad
 
 0x12c9 > 0x10a0 - [.plt.sec]
 

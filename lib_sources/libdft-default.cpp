@@ -3,12 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <unistd.h>
-
 #include <set>
-#include <fstream>
-#include <iostream>
-
+#include <unistd.h>
 using namespace std;
 #include "branch_pred.h"
 #include "libdft_api.h"
@@ -21,23 +17,12 @@ using namespace std;
 #define WORD_LEN	4	/* size in bytes of a word value */
 
 /* default path for the log file (audit) */
-#define LOGFILE_DFL	"/tmp/libdft-dta.log"
+#define LOGFILE_DFL	"libdft-dta.log"
 
 /* default suffixes for dynamic shared libraries */
 #define DLIB_SUFF	".so"
 #define DLIB_SUFF_ALT	".so."
 #define	TAG 	0x01U
-
-#define DBG_FLAG 0
-#define LIB_BASE 0x700000000000
-
-
-using std::cerr;
-using std::endl;
-
-/* trace file */
-FILE *trace;
-std::ofstream TraceFile;
 
 /* thread context */
 extern thread_ctx_t *threads_ctx;
@@ -70,172 +55,6 @@ static KNOB<size_t> fs(KNOB_MODE_WRITEONCE, "pintool", "f", "1", "");
 
 /* track net (enabled by default) */
 static KNOB<size_t> net(KNOB_MODE_WRITEONCE, "pintool", "n", "1", "");
-
-/* 
- *	Custom functions added
- */
-void *offset_addr;
-const char *curr_file;
-const char *input_file = "file.txt";
-bool CheckLibAddr(UINT64 addr) {
-    if (addr > LIB_BASE) {
-        return true;
-    }
-    return false;
-}
-
-string invalid = "INVALID ROUTINE";
-const string *TargetToString(ADDRINT target)
-{
-	//printf("Here\n");
-    string name = RTN_FindNameByAddress(target);
-    if (name == "")
-        return &invalid;
-    else
-        return new string(name);
-}
-
-VOID RecordMemWrite(ADDRINT ip, ADDRINT addr)
-{
-	// print when addr is tagged.
-	if (tagmap_getl(size_t(addr)))
-	{
-		string rtn_name = RTN_FindNameByAddress(ip);
-		#if DBG_FLAG
-		printf("Tagged Mem Write (TMW)\n");
-		#endif
-		//cerr << "Write: " << std::hex << addr << endl;
-		fprintf(trace, "\tTMW: %s | %p", rtn_name.c_str(), (void *)ip);
-	}
-}
-
-VOID RecordMemRead(ADDRINT ip, ADDRINT addr)
-{
-
-	// print when addr is tagged.
-	if (tagmap_getl(size_t(addr)))
-	{
-		string rtn_name = RTN_FindNameByAddress(ip);
-		#if DBG_FLAG
-		printf("Tagged Mem Read (TMR)\n");
-		#endif
-		//cerr << "Read: " << std::hex << addr << endl;
-		fprintf(trace, "\tTMR: %s | %p", rtn_name.c_str(), (void *)ip);
-	}	
-}
-
-
-VOID FindOffset(IMG img, void *v)
-{
-	if (IMG_IsMainExecutable(img))
-	{
-		// Calculating offset address
-		offset_addr = (void*)IMG_LoadOffset(img);
-		curr_file = basename(IMG_Name(img).c_str());
-		printf("Offset: %p | File name: %s\n", (void*)IMG_LoadOffset(img), basename(IMG_Name(img).c_str()));
-	}
-}
-
-void Trace(TRACE tr, VOID *v) {
-    // Instruction Iterator
-    for (BBL bbl = TRACE_BblHead(tr); BBL_Valid(bbl); bbl = BBL_Next(bbl)) 
-    {
-        
-        for ( INS ins = BBL_InsHead(bbl); INS_Valid(ins); ins = INS_Next(ins)) 
-        {
-            /*
-            if (isLibraryFunction(INS_Address(ins))) {
-                continue;
-            }
-            */
-		   #if 0
-		   if (INS_IsCall(ins))
-			{
-				if (INS_IsDirectBranchOrCall(ins))
-				{
-					uintptr_t tag_addr = (uintptr_t)(INS_Address(ins) & ~(uintptr_t) 0xfffffffffffUL);
-					tag_addr = tag_addr >> 44;
-					if (tag_addr == 5)
-					{
-						const ADDRINT target = INS_DirectBranchOrCallTargetAddress(ins);
-
-						uintptr_t exec_addr = (uintptr_t)target - (uintptr_t)offset_addr;
-
-						//fprintf(trace, "%p > ", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr));
-						fprintf(trace, "\n%p > %p - [%s]\n", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr), (void*)exec_addr, TargetToString(target)->c_str());
-						//fprintf(trace, "%p - [%s]\n", (void*)exec_addr, (Target2String(target)->c_str()));
-					}
-				}
-			}
-			#endif
-			UINT32 memOperands = INS_MemoryOperandCount(ins);
-			for (UINT32 memOp = 0; memOp < memOperands; memOp++) {
-				// Instructions have memory write
-				#if 0
-				if (INS_MemoryOperandIsWritten(ins, memOp)) {
-					INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
-							(AFUNPTR)RecordMemWrite, IARG_INST_PTR,
-							IARG_MEMORYOP_EA, memOp, IARG_END);
-				}	
-				// Instructions have memory read
-				if (INS_MemoryOperandIsRead(ins, memOp)) {
-					INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
-							(AFUNPTR)RecordMemRead, IARG_INST_PTR,
-							IARG_MEMORYOP_EA, memOp, IARG_END);
-				}
-				#endif
-			}
-		}
-	}
-}
-
-
-#if 0
-VOID Instruction(INS ins, VOID *v)
-{
-	// Calling plt.sec functions
-	if (INS_IsCall(ins))
-    {
-        if (INS_IsDirectBranchOrCall(ins))
-        {
-			uintptr_t tag_addr = (uintptr_t)(INS_Address(ins) & ~(uintptr_t) 0xfffffffffffUL);
-			tag_addr = tag_addr >> 44;
-			if (tag_addr == 5)
-			{
-				const ADDRINT target = INS_DirectBranchOrCallTargetAddress(ins);
-
-				uintptr_t exec_addr = (uintptr_t)target - (uintptr_t)offset_addr;
-
-				fprintf(trace, "\n%p > %p - [%s]\n", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr), (void*)exec_addr, TargetToString(target)->c_str());
-			}
-        }
-    }
-	UINT32 memOperands = INS_MemoryOperandCount(ins);
-	for (UINT32 memOp = 0; memOp < memOperands; memOp++) {
-		// Instructions have memory write
-		if (INS_MemoryOperandIsWritten(ins, memOp)) {
-			INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
-					(AFUNPTR)RecordMemWrite, IARG_INST_PTR,
-					IARG_MEMORYOP_EA, memOp, IARG_END);
-		}	
-		// Instructions have memory read
-		if (INS_MemoryOperandIsRead(ins, memOp)) {
-			INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
-					(AFUNPTR)RecordMemRead, IARG_INST_PTR,
-					IARG_MEMORYOP_EA, memOp, IARG_END);
-		}
-		
-	}
-}
-#endif
-
-
-VOID Fini(INT32 code, VOID *v)
-{
-//	fprintf(trace, "#eof\n");
-	fclose(trace);
-	
-}
 
 /* 
  * DTA/DFT alert
@@ -888,21 +707,6 @@ post_open_hook(THREADID tid, syscall_ctx_t *ctx)
 		fdset.insert((int)ctx->ret);
 }
 
-#if 1
-static void 
-post_openat_hook(THREADID tid, syscall_ctx_t *ctx) {
-  const int fd = ctx->ret;
-  const char *file_name = (char *)ctx->arg[SYSCALL_ARG1];
-  #if DBG_FLAG
-  printf("%s, %s\n", basename(file_name), input_file);
-  #endif
-  if (strstr(basename(file_name), input_file) != NULL) {
-	fdset.insert(fd);
-    //LOGD("[openat] fd: %d : %s \n", fd, file_name);
-  }
-}
-#endif
-
 /* 
  * DTA
  *
@@ -925,16 +729,7 @@ main(int argc, char **argv)
 	if (unlikely(libdft_init() != 0))
 		/* failed */
 		goto err;
-
-	printf("Opening trace file\n");
-	#if 1
-	trace = fopen("dft.out", "w");
-	if (trace != NULL)
-	{
-		printf("Success\n");
-	}
-	IMG_AddInstrumentFunction(FindOffset, 0);
-	#endif
+	
 	/* 
 	 * handle control transfer instructions
 	 *
@@ -997,16 +792,11 @@ main(int argc, char **argv)
 				post_open_hook);
 		(void)syscall_set_post(&syscall_desc[__NR_creat],
 				post_open_hook);
-		(void)syscall_set_post(&syscall_desc[__NR_openat],
-				post_openat_hook);
 	}
 	
 	/* add stdin to the interesting descriptors set */
 	if (stdin_.Value() != 0)
 		fdset.insert(STDIN_FILENO);
-
-    //TRACE_AddInstrumentFunction(Trace, 0);
-	//PIN_AddFiniFunction(Fini, 0);
 
 	/* start Pin */
 	PIN_StartProgram();
