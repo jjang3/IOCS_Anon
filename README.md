@@ -17,10 +17,12 @@ Repository for the Waterfall project
 - `waterfall.sh` = a script that will `waterfall` a source code.
 
 ## How to use (To-do)
-1-1) *Recommended*: `cd taint_analysis && make all`  - This is highly recommended. 
-1-2) `git submodule init && git submodule update`
-1) `export LLVM_DIR="/location/"` with your LLVM directory location.
-2) From the `Waterfall` root directory, `mkdir build && cd build`
-3) `cmake .. && make -j4`, this will first build the `SVF` library, then `waterfall`.
-4) Insert an input file to `./inputs`
-5) `bash waterfall.sh <source code name> waterfall (e.g., `bash waterfall.sh vuln_srv waterfall`)
+1) *Recommended*: `cd taint_analysis && make all`  - This is highly recommended. 
+
+2) *Alternative*: `git submodule init && git submodule update`
+
+3) `export LLVM_DIR="/location/"` with your LLVM directory location.
+4) From the `Waterfall` root directory, `mkdir build && cd build`
+5) `cmake .. && make -j4`, this will first build the `SVF` library, then `waterfall`.
+6) Insert an input file to `./inputs`
+7) `bash waterfall.sh <source code name> waterfall (e.g., `bash waterfall.sh vuln_srv waterfall`)

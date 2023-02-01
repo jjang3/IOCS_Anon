@@ -42,9 +42,7 @@ set(PASSES
     )
   
 set(waterfall_SOURCES
-  waterfall-pass.cpp
-  waterfall-icfg.cpp
-  waterfall-compart.cpp
+  waterfall-main.cpp
   )
 
 file (GLOB waterfall_HEADERS "../include/*.h")
