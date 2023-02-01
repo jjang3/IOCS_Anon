@@ -1,0 +1,3 @@
+Pin: pin-3.20-98437-f02b61307
+Copyright 2002-2020 Intel Corporation.
+E:  Unable to load /home/jay/Waterfall/libdft64/tools/obj-intel64/libdft-dta.so: dlopen failed: cannot locate symbol "thread_ctx_ptr" referenced by "/home/jay/Waterfall/libdft64/tools/obj-intel64/libdft-dta.so"...

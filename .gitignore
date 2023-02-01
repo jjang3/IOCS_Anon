@@ -1,4 +1,15 @@
 build
+*.tar.gz
 results
 inputs
+lib
 userspace/bin/*
+pin-3.20_build
+*.out
+scripts/
+scripts/*
+!scripts/*.sh
+!scripts/*.py
+!tests/
+tests/*
+!tests/sources/
