@@ -89,4 +89,4 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
 
 # Include subdirectories. add_subdirectory(sources)
 add_subdirectory(SVF)
-#add_subdirectory(sources)
+add_subdirectory(sources)
