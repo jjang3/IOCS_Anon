@@ -5,3 +5,4 @@
 [submodule "taint_analysis/libdft64"]
 	path = taint_analysis/libdft64
 	url = https://github.com/AngoraFuzzer/libdft64.git
+	dirty = ignore
