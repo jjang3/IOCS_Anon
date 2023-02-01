@@ -4,7 +4,7 @@ project(waterfall)
 #===============================================================================
 # SANITY CHECK
 #===============================================================================
-set(LT_LLVM_INSTALL_DIR "/home/jay/llvm/llvm/build" CACHE PATH "LLVM installation directory")
+set(LT_LLVM_INSTALL_DIR $ENV{LLVM_DIR} CACHE PATH "LLVM installation directory")
 
 # 1.1 Check the "include| directory
 set(LT_LLVM_INCLUDE_DIR "${LT_LLVM_INSTALL_DIR}/include/llvm")
