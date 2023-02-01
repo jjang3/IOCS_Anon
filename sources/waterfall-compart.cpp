@@ -19,6 +19,7 @@
 using namespace llvm;
 using namespace std;
 
+#define DBG_OPTION 0 // 0 = disable | 1 = enable
 
 SetVector<Instruction*> insts_to_remove;
 SetVector<Instruction*> alloc_to_compartment;
@@ -95,12 +96,13 @@ std::vector<std::pair<FunctionCallee, std::string>> initializeFuns(Module &M, Fu
 
 /* ------------------------------- InstVisitor related --------------------------------- */
 void Compartmentalization::visitAllocaInst(AllocaInst &AI) {
-    #if 0
+    #if DBG_OPTION
     for (auto item : vulnFuns)
     {        llvm::errs() << item << "\n";    }
-    #endif
+    
     llvm::errs() << "\n--------Visiting Alloca Started--------\n";
     llvm::errs() << "Visit Alloca: " << AI << " | Type: " << *AI.getType()->getPointerElementType() << "\n";
+    #endif
     if (AI.getType()->getPointerElementType()->isStructTy())
     {
         if (structs.contains(AI.getType()->getPointerElementType()->getStructName()))
@@ -110,7 +112,9 @@ void Compartmentalization::visitAllocaInst(AllocaInst &AI) {
         }
     }
     for (auto *usr : AI.users()) {
+        #if DBG_OPTION
         llvm::errs() << "\t» Usr: " << *usr << "\n";
+        #endif
         if (llvm::dyn_cast<BitCastInst>(usr)) {
             allocaParent = true;
         }
@@ -118,11 +122,14 @@ void Compartmentalization::visitAllocaInst(AllocaInst &AI) {
     }
     if (allocaCompartment == true)
     {
-        llvm::errs() << "Inserting: " << AI << "\n";
+        //llvm::errs() << "Inserting: " << AI << "\n";
+        
         alloc_to_compartment.insert(llvm::dyn_cast<Instruction>(&AI));
         allocaCompartment = false;
     }
+    #if DBG_OPTION
     llvm::errs() << "--------Visiting Alloca Finished--------\n\n";
+    #endif
 }
 
 
@@ -130,23 +137,33 @@ void Compartmentalization::visitBitCastInst(BitCastInst &BI) {
     if (allocaParent == false) {
         return;
     }
+    #if DBG_OPTION
     llvm::errs() << "\n--------Visiting Bitcast Started--------\n";
     llvm::errs() << "Visit BitCast: " << BI << "\n";
+    #endif
     for (auto *usr : BI.users()) {
+        #if DBG_OPTION
         llvm::errs() << "\t» Usr: " << *usr << "\n";
+        #endif
         if (llvm::dyn_cast<CallInst>(usr) && allocaParent == true){
             visit(llvm::dyn_cast<Instruction>(usr));
         }
     }
+    #if DBG_OPTION
     llvm::errs() << "--------Visiting Bitcast Finished--------\n\n";
+    #endif
 }
 
 
 void Compartmentalization::visitLoadInst(LoadInst &LI) {
     //llvm::errs() << "\n--------Visiting Load Started--------\n";
+    #if DBG_OPTION
     llvm::errs() << "Visit Load: " << LI << "\n";
+    #endif
     for (auto *usr : LI.users()) {
+        #if DBG_OPTION  
         llvm::errs() << "\t» Usr: " << *usr << "\n";
+        #endif
         if (auto usrCall = llvm::dyn_cast<CallInst>(usr)){
             mostRecentI = llvm::dyn_cast<Instruction>(&LI);
             if ( std::find(vulnFuns.begin(), vulnFuns.end(), usrCall->getCalledFunction()->getName()) != vulnFuns.end() )
@@ -162,23 +179,26 @@ void Compartmentalization::visitLoadInst(LoadInst &LI) {
 void Compartmentalization::visitCallInst(CallInst &CI){
     // Check if call instruction is indirect
     int targetArgNum;
+    #if DBG_OPTION
     llvm::errs() << "\n--------Visiting Call Started--------\n";
     llvm::errs() << "Visit Call: " << CI << " " << CI.getNumArgOperands() << "\n";
     //llvm::errs() << "Most recent I: " << *mostRecentI << "\n";
-
+    #endif
     if (CI.getNumArgOperands() > 0) {
         for (auto &arg : CI.args())
         {
             if (arg == mostRecentI)
             {
+                //llvm::errs() << "Found argument\n";
                 targetArgNum = arg.getOperandNo();
-                llvm::errs() << "Found argument\n";
                 compartmentTargets.insert(std::pair<Instruction*,int>(llvm::dyn_cast<Instruction>(&CI), targetArgNum));
                 allocaCompartment = true;
             }
         }
     }
+    #if DBG_OPTION
     llvm::errs() << "--------Visiting Call Finished--------\n\n";
+    #endif
 }
 
 
@@ -200,7 +220,7 @@ void waterfallCompartmentalization(Module &M,
 
     for (auto item : M.getIdentifiedStructTypes())
     {
-        llvm::errs() << *item << "\n";
+        //llvm::errs() << *item << "\n";
         structs.insert(item->getStructName());
     }
     //exit(1);
@@ -224,6 +244,7 @@ void waterfallCompartmentalization(Module &M,
                         visitedBBs.insert(&BB);
                     }
                 }
+                llvm::errs() << "\n\n";
             }
         }
     }
@@ -259,18 +280,62 @@ bool instrumentInst (BasicBlock &BB,
     }
     #endif
     LLVMContext& context = BB.getContext();
-    Type *i8Type = Type::getInt8Ty(context);
-    Type *i64Type = Type::getInt64Ty(context);
+    Type *i8type = Type::getInt8Ty(context);
+    Type *i64type = Type::getInt64Ty(context);
 
     for (auto &inst : BB) {
         llvm::IRBuilder<> mte_builder(&inst);
         Instruction *curr_I = &inst;
-        if (llvm::dyn_cast<AllocaInst>(curr_I))
+        if (auto curr_alloca_I = llvm::dyn_cast<AllocaInst>(curr_I))
         {
             compartmentVisitor.visit(curr_I);
-            if (alloc_to_compartment.contains(curr_I))
+            if (alloc_to_compartment.contains(curr_I)) // Initializing from alloca instruction
             {
-                llvm::errs() << "Compartmentalize: " << *curr_I << "\n";
+                Type *c_array_ptr_elem_type = curr_alloca_I->getType()->getPointerElementType();
+                llvm::errs() << "Compartmentalize: " << *curr_I << " Type: " << *c_array_ptr_elem_type << "\n";
+                // Static array compartmentalization
+                if (llvm::dyn_cast<ArrayType>(c_array_ptr_elem_type)) 
+                {
+                    llvm::errs() << "   > Compartmentment type: static array\n";
+                    int c_array_length = curr_alloca_I->getAllocatedType()->getArrayNumElements();
+                    Type *c_array_elem_type = curr_alloca_I->getType()->getPointerElementType()->getArrayElementType();
+                    auto c_elem_size = ConstantInt::get(i8type, DL->getTypeAllocSize(c_array_elem_type));
+                    int c_array_length_granule_remainder = c_array_length % 16;
+                    if (c_array_length_granule_remainder != 0) {
+                        int extension_size = 16 - c_array_length_granule_remainder;
+                        c_array_length += extension_size;
+                        llvm::errs() << "Array length: " << c_array_length << "\n"; 
+                    }
+
+                    auto c_array_size = ConstantInt::get(i64type, c_array_length);
+                    auto c_alloc_size = ConstantExpr::getMul(c_elem_size, c_array_size);
+                    auto custom_alloca_I = mte_builder.CreateAlloca(curr_alloca_I->getType()->getPointerElementType()->getArrayElementType()->getPointerTo() );
+                    auto custom_malloc_I = llvm::CallInst::CreateMalloc(
+                        mte_builder.GetInsertBlock(), 
+                        i64type,
+                        c_array_elem_type,
+                        c_alloc_size,
+                        nullptr,
+                        nullptr,
+                        ""
+                    );
+                }
+                if (llvm::dyn_cast<PointerType>(c_array_ptr_elem_type))
+                {
+                    llvm::errs() << "   > Compartmentment type: dynamic array\n";
+                    for (auto user : curr_alloca_I->users())
+                    {
+                        if (auto store_user_I = llvm::dyn_cast<StoreInst>(user))
+                        {
+                            mte_builder.SetInsertPoint(store_user_I->getNextNode());
+                            auto custom_load_I = mte_builder.CreateLoad(curr_alloca_I->getType()->getPointerElementType(), curr_alloca_I);
+                            mte_builder.SetInsertPoint(custom_load_I->getNextNode());
+                            auto mte_init_I = mte_builder.CreateCall(mteInit, custom_load_I);
+                            mte_builder.SetInsertPoint(mte_init_I->getNextNode());
+                            auto mte_store_I = mte_builder.CreateStore(mte_init_I, curr_alloca_I);
+                        }
+                    }
+                }
             }
         }
 

@@ -47,7 +47,7 @@ int mte_enabled () {
 
 
 char *mte_init(char *address) {
-    #if 0
+    #if 1
     printf(" _______________________\n");
     printf("|                       |\n");
     printf("|       MTE Init        |\n");
@@ -57,7 +57,7 @@ char *mte_init(char *address) {
     #endif
     
     int granule_size = get_granule(address);
-    //Initial addr: %p\tsize: %lu\n", address, sizeof(address));
+    printf("Initial addr: %p\tsize: %lu\n", address, sizeof(address));
 
     unsigned long page_sz = sysconf(_SC_PAGESIZE);
 
@@ -83,8 +83,8 @@ char *mte_init(char *address) {
       //granule_size = 1;
       tag_granule(address, granule_size);
     }
-    address = enc_init(address);
-    //printf("Shroud initialized: %p\n", address);
+    //address = enc_init(address);
+    printf("Shroud initialized: %p\n", address);
     return address;
 }
 
