@@ -4,8 +4,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <set>
+#include <fstream>
+#include <iostream>
 #include <unistd.h>
-
+#include <unordered_map>
+using namespace std;
 #include "branch_pred.h"
 #include "libdft_api.h"
 #include "libdft_core.h"
@@ -13,17 +16,57 @@
 #include "tagmap.h"
 #include "ins_helper.h"
 
-using namespace std;
-
 #define WORD_LEN	4	/* size in bytes of a word value */
 
 /* default path for the log file (audit) */
-#define LOGFILE_DFL	"libdft-dta.log"
+#define LOGFILE_DFL	"/tmp/libdft-dta.log"
 
 /* default suffixes for dynamic shared libraries */
 #define DLIB_SUFF	".so"
 #define DLIB_SUFF_ALT	".so."
 #define	TAG 	0x01U
+
+#define LIB_BASE 0x700000000000
+#define ALLOCATED 1
+#define FREED 2
+
+/* ===================================================================== */
+/* Names of malloc and free */
+/* ===================================================================== */
+#if defined(TARGET_MAC)
+#define MALLOC "_malloc"
+#define FREE "_free"
+#else
+#define MALLOC "malloc"
+#define SCANF "scanf"
+#define ISOCSCANF "__isoc99_scanf"
+#define FREE "free"
+#define READ "read"
+#define GETS "gets"
+#define FGETS "fgets"
+#define STRCPY "strcpy"
+#define STRNCPY "strncpy"
+#define MEMCPY "memcpy"
+#define PRINTF "printf"
+#define FPRINTF "fprintf"
+#define SPRINTF "sprintf"
+#define SNPRINTF "snprintf"
+#define CLOSE "close"
+#define CALLINS "call"
+#endif
+
+const CHAR* targetFuns[] = {MALLOC, SCANF, ISOCSCANF, FREE, READ, GETS, FGETS, STRCPY, STRNCPY, MEMCPY, PRINTF, FPRINTF, SPRINTF, SNPRINTF, CLOSE};
+
+using std::cerr;
+using std::endl;
+
+/* trace file */
+FILE *trace;
+std::ofstream TraceFile;
+bool called_malloc = false;
+const char *input_file = "file.txt";
+
+map<ADDRINT, ADDRINT> mallocOrigin; // true means address been deallocated, false mean not deallocated.
 
 /* thread context */
 extern thread_ctx_t *threads_ctx;
@@ -41,6 +84,13 @@ static set<int> fdset;
 static KNOB<string> logpath(KNOB_MODE_WRITEONCE, "pintool", "l",
 		LOGFILE_DFL, "");
 
+/* map between target rtn names and address */
+std::map<ADDRINT, string> rtn_to_addr;
+std::map<ADDRINT, int> mem_addr_table;
+std::map<ADDRINT, int> mem_alloc_table;
+ADDRINT mem_addr = 0;
+
+
 /*
  * flag variables
  *
@@ -56,6 +106,300 @@ static KNOB<size_t> fs(KNOB_MODE_WRITEONCE, "pintool", "f", "1", "");
 
 /* track net (enabled by default) */
 static KNOB<size_t> net(KNOB_MODE_WRITEONCE, "pintool", "n", "1", "");
+
+/* 
+	Custom functions added
+ */
+
+void *offset_addr;
+
+bool checkLibAddr(UINT64 addr) {
+    if (addr > LIB_BASE) {
+        return true;
+    }
+    return false;
+}
+
+void checkMallocMemWrite(ADDRINT addr, CONTEXT *ctx, ADDRINT raddr, ADDRINT waddr)
+{
+     //fprintf(LogFile, "%lx;%s;%lx,%lx,\n", addr, opcmap[addr].c_str(),
+     //        raddr, waddr);
+	//void* rax_addr = (void*)PIN_GetContextReg(ctx, REG_RAX);
+    if ((!checkLibAddr((UINT64)addr)))
+    {
+		//if ((uintptr_t)rax_addr < LIB_BASE)
+		//{
+			fprintf(trace, "\tREG: %p\n", (void*)PIN_GetContextReg(ctx, REG_RAX));
+		//}
+		
+    }    
+}
+
+
+VOID LogBeforeMalloc(ADDRINT size) {
+	//cerr << "[*] malloc(" << dec << size << ")" << endl;
+	called_malloc = true;
+}
+
+VOID LogFree(ADDRINT addr) {	
+	
+	cerr << "[*] Freeing memory address 0x" << hex << addr << "." << endl;
+	
+}
+
+VOID parse_funRtns(IMG img, void *v)
+{
+	if (IMG_IsMainExecutable(img))
+	{
+		// Calculating offset address
+		offset_addr = (void*)IMG_LoadOffset(img);
+		printf("Offset: %p\n", (void*)IMG_LoadOffset(img));
+
+	}
+
+	#if 0
+	RTN mallocRtn = RTN_FindByName(img, MALLOC);
+	if (RTN_Valid(mallocRtn))
+	{
+		RTN_Open(mallocRtn);
+
+		// Instrument malloc() to print the input argument value and the return value.
+		#if 0
+
+		//cerr << "Entering malloc" << endl;
+		//RTN_InsertCall(mallocRtn, IPOINT_BEFORE, (AFUNPTR)RecordMalloc,
+		//			IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
+		//			IARG_END);
+		RTN_InsertCall(mallocRtn, IPOINT_AFTER, (AFUNPTR)MallocAfter,
+					IARG_INST_PTR,
+					IARG_FUNCRET_EXITPOINT_VALUE,
+					IARG_END);
+		#endif
+		//fprintf(trace, "Enttering malloc\n");
+		
+		RTN_Close(mallocRtn);
+		cerr << "Exiting malloc" << endl;
+	}
+	#endif
+	for (SYM sym = IMG_RegsymHead(img); SYM_Valid(sym); sym = SYM_Next(sym)) {
+		string undFuncName = PIN_UndecorateSymbolName(SYM_Name(sym), UNDECORATION_NAME_ONLY);
+		//LogFile << "[*] CustomInstrumentation: " << undFuncName << endl;
+		if (undFuncName == "malloc") {
+			cerr << "[*] CustomInstrumentation: `malloc` is found." << endl;
+			RTN allocRtn = RTN_FindByAddress(IMG_LowAddress(img) + SYM_Value(sym)); // function "malloc" address
+			if (RTN_Valid(allocRtn)) {
+
+				RTN_Open(allocRtn);
+				RTN_InsertCall(allocRtn, IPOINT_BEFORE, (AFUNPTR)LogBeforeMalloc,
+					IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_THREAD_ID, IARG_END);
+				RTN_Close(allocRtn);
+			}
+		}
+		else if (undFuncName == "free") {
+			RTN freeRtn = RTN_FindByAddress(IMG_LowAddress(img) + SYM_Value(sym)); // function "free" address
+			if (RTN_Valid(freeRtn)) {
+				RTN_Open(freeRtn);
+				RTN_InsertCall(freeRtn, IPOINT_BEFORE, (AFUNPTR)LogFree,
+					IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_END); // address to be freed
+				RTN_Close(freeRtn);
+			}
+		}
+	}
+}
+	
+string invalid = "invalid_rtn";
+const string *Target2String(ADDRINT target)
+{
+	//printf("Here\n");
+    string name = RTN_FindNameByAddress(target);
+    if (name == "")
+        return &invalid;
+    else
+        return new string(name);
+}
+
+
+VOID RecordMemWrite(ADDRINT ip, ADDRINT addr)
+{
+	// print when addr is tagged.
+	if (tagmap_getl(size_t(addr)))
+	{
+		string rtn_name = RTN_FindNameByAddress(ip);
+		//printf("Tagged Mem Write (TMW)\n");
+
+		//cerr << "Write: " << std::hex << addr << endl;
+		fprintf(trace, "\tTMW: %s | %p", rtn_name.c_str(), (void *)ip);
+		map<ADDRINT, ADDRINT>::iterator it = mallocOrigin.find(addr);
+		if (it != mallocOrigin.end()) {
+			//cerr << "Found the access: " << hex << it->first << endl;
+			fprintf(trace, " > ORG: %p\n", (void*)it->second);
+		}
+		else
+		{
+			fprintf(trace, "\n");
+		}
+	}
+}
+
+VOID RecordMemRead(ADDRINT ip, ADDRINT addr)
+{
+
+	// print when addr is tagged.
+	if (tagmap_getl(size_t(addr)))
+	{
+		string rtn_name = RTN_FindNameByAddress(ip);
+		//printf("Tagged Mem Read (TMR)\n");
+
+		//cerr << "Read: " << std::hex << addr << endl;
+		fprintf(trace, "\tTMR: %s | %p", rtn_name.c_str(), (void *)ip);
+		map<ADDRINT, ADDRINT>::iterator it = mallocOrigin.find(addr);
+		if (it != mallocOrigin.end()) {
+			//cerr << "Found the access: " << hex << it->first << endl;
+			fprintf(trace, " > ORG: %p\n", (void*)it->second);
+		}
+		else
+		{
+			fprintf(trace, "\n");
+		}
+	}	
+}
+void getInfo(ADDRINT addr, CONTEXT *fromctx, ADDRINT raddr, ADDRINT waddr)
+{
+     //fprintf(LogFile, "%lx;%s;%lx,%lx,\n", addr, opcmap[addr].c_str(),
+     //        raddr, waddr);
+    if (!checkLibAddr(addr) && called_malloc == true)
+    {
+		if (PIN_GetContextReg(fromctx, REG_RAX) > (uintptr_t)offset_addr)
+		{
+			uintptr_t static_addr = addr - (uintptr_t)offset_addr;
+			uintptr_t rax_addr = PIN_GetContextReg(fromctx, REG_RAX);
+			cerr << "" << std::hex << static_addr << " RAX: " << (void*)rax_addr  << endl;
+			mallocOrigin.insert(pair<ADDRINT,ADDRINT>(rax_addr, static_addr));
+			//fprintf(trace,"\tInfo: %p\n", (void*)rax_addr);
+		}		
+    	called_malloc = false;
+	}
+}
+
+void Trace(TRACE tr, VOID *v) {
+    // Instruction Iterator
+    for (BBL bbl = TRACE_BblHead(tr); BBL_Valid(bbl); bbl = BBL_Next(bbl)) 
+    {
+        
+        for ( INS ins = BBL_InsHead(bbl); INS_Valid(ins); ins = INS_Next(ins)) 
+        {
+            /*
+            if (isLibraryFunction(INS_Address(ins))) {
+                continue;
+            }
+            */
+		   if (INS_IsCall(ins))
+			{
+				if (INS_IsDirectBranchOrCall(ins))
+				{
+					uintptr_t tag_addr = (uintptr_t)(INS_Address(ins) & ~(uintptr_t) 0xfffffffffffUL);
+					tag_addr = tag_addr >> 44;
+					if (tag_addr == 5)
+					{
+						const ADDRINT target = INS_DirectBranchOrCallTargetAddress(ins);
+
+						uintptr_t exec_addr = (uintptr_t)target - (uintptr_t)offset_addr;
+
+						//fprintf(trace, "%p > ", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr));
+						fprintf(trace, "\n%p > %p - [%s]\n", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr), (void*)exec_addr, Target2String(target)->c_str());
+						//fprintf(trace, "%p - [%s]\n", (void*)exec_addr, (Target2String(target)->c_str()));
+					}
+				}
+			}
+			UINT32 memOperands = INS_MemoryOperandCount(ins);
+			for (UINT32 memOp = 0; memOp < memOperands; memOp++) {
+				// Instructions have memory write
+				if (INS_MemoryOperandIsWritten(ins, memOp)) {
+					INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+							(AFUNPTR)RecordMemWrite, IARG_INST_PTR,
+							IARG_MEMORYOP_EA, memOp, IARG_END);
+				}	
+				// Instructions have memory read
+				if (INS_MemoryOperandIsRead(ins, memOp)) {
+					INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+							(AFUNPTR)RecordMemRead, IARG_INST_PTR,
+							IARG_MEMORYOP_EA, memOp, IARG_END);
+				}
+				
+			}
+			if (INS_IsMemoryWrite(ins)) {
+				INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)getInfo, IARG_INST_PTR, IARG_CONST_CONTEXT, IARG_ADDRINT, 0, IARG_MEMORYWRITE_EA, IARG_END);
+			} 
+		}
+	}
+}
+
+VOID Instruction(INS ins, VOID *v)
+{
+	// Calling plt.sec functions
+	if (INS_IsCall(ins))
+    {
+        if (INS_IsDirectBranchOrCall(ins))
+        {
+			uintptr_t tag_addr = (uintptr_t)(INS_Address(ins) & ~(uintptr_t) 0xfffffffffffUL);
+			tag_addr = tag_addr >> 44;
+			if (tag_addr == 5)
+			{
+				const ADDRINT target = INS_DirectBranchOrCallTargetAddress(ins);
+
+				uintptr_t exec_addr = (uintptr_t)target - (uintptr_t)offset_addr;
+
+				//fprintf(trace, "%p > ", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr));
+				fprintf(trace, "\n%p > %p - [%s]\n", (void*)((uintptr_t)INS_Address(ins) - (uintptr_t)offset_addr), (void*)exec_addr, Target2String(target)->c_str());
+				//fprintf(trace, "%p - [%s]\n", (void*)exec_addr, (Target2String(target)->c_str()));
+			}
+        }
+    }
+	#if 1
+	if (INS_IsMemoryWrite(ins)) {
+
+		//cerr << INS_Disassemble(ins)  <<  endl;
+		INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)checkMallocMemWrite, IARG_INST_PTR, IARG_CONST_CONTEXT, IARG_ADDRINT, 0, IARG_MEMORYWRITE_PTR , IARG_END);
+	}	 
+	#endif
+	UINT32 memOperands = INS_MemoryOperandCount(ins);
+	for (UINT32 memOp = 0; memOp < memOperands; memOp++) {
+		// Instructions have memory write
+		if (INS_MemoryOperandIsWritten(ins, memOp)) {
+			INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+					(AFUNPTR)RecordMemWrite, IARG_INST_PTR,
+					IARG_MEMORYOP_EA, memOp, IARG_END);
+		}	
+		// Instructions have memory read
+		if (INS_MemoryOperandIsRead(ins, memOp)) {
+			INS_InsertPredicatedCall(ins, IPOINT_BEFORE,
+					(AFUNPTR)RecordMemRead, IARG_INST_PTR,
+					IARG_MEMORYOP_EA, memOp, IARG_END);
+		}
+		
+	}
+}
+
+VOID Fini(INT32 code, VOID *v)
+{
+//	fprintf(trace, "#eof\n");
+	fclose(trace);
+	
+}
+
+static void 
+post_openat_hook(THREADID tid, syscall_ctx_t *ctx) {
+  const int fd = ctx->ret;
+  const char *file_name = (char *)ctx->arg[SYSCALL_ARG1];
+  #if DBG_FLAG
+  printf("%s, %s\n", basename(file_name), input_file);
+  #endif
+  if (strstr(basename(file_name), input_file) != NULL) {
+	fdset.insert(fd);
+    //LOGD("[openat] fd: %d : %s \n", fd, file_name);
+  }
+}
+
 
 /* 
  * DTA/DFT alert
@@ -227,11 +571,36 @@ assert_mem16(ADDRINT paddr, ADDRINT taddr)
  *
  * @ins:	the instruction to instrument
  */
+
 static void
 dta_instrument_jmp_call(INS ins)
 {
 	/* temporaries */
 	REG reg;
+
+	/* custom addition */
+	#if 1
+	if (INS_IsDirectCall(ins))
+	{
+		//int arg_num = 0;
+		#if 0
+		//printf("%p\n", (void*)INS_DirectBranchOrCallTargetAddress(ins) );
+		if ((void*)INS_DirectBranchOrCallTargetAddress(ins) == target) {
+			printf("Found\n");
+		}
+		#endif
+		#if 0
+    	std::string func = RTN_FindNameByAddress(INS_DirectBranchOrCallTargetAddress(ins));
+		if (funcnames[INS_DirectBranchOrCallTargetAddress(ins)] != "") {
+			printf("%s\n", funcnames[INS_DirectBranchOrCallTargetAddress(ins)].c_str());
+		}
+		if (strcmp(func.c_str(), "read") == 0)
+		{
+			printf("%s | %p\n", func.c_str(), (void *)INS_DirectBranchOrCallTargetAddress(ins));
+		}
+		#endif
+	}
+	#endif
 
 	/* 
 	 * we only care about indirect calls;
@@ -419,17 +788,22 @@ dta_instrument_ret(INS ins)
 static void
 post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 {
-        /* read() was not successful; optimized branch */
-        if (unlikely((long)ctx->ret <= 0))
-                return;
+	
+	/* read() was not successful; optimized branch */
+	if (unlikely((long)ctx->ret <= 0))
+			return;
 	
 	/* taint-source */
-	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end())
+	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end()){
         	/* set the tag markings */
+			printf("\nTagging\n");
 	        tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
-	else
+	}
+	else {
         	/* clear the tag markings */
+			printf("\nClearing\n");
 	        tagmap_clrn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret);
+	}
 }
 
 /*
@@ -472,7 +846,6 @@ post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
 		else
                 	/* clear the tag markings */
                 	tagmap_clrn((size_t)iov->iov_base, iov_tot);
-
                 /* housekeeping */
                 tot -= iov_tot;
         }
@@ -528,7 +901,7 @@ static void post_recvfrom_hook(THREADID tid, syscall_ctx_t *ctx)
 	{
 		/* set the tag markings */
 		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
-		//printf("tag the buffer\n");
+		printf("tag the buffer\n");
 	}
 	else
 		/* clear the tag markings */
@@ -704,8 +1077,9 @@ post_open_hook(THREADID tid, syscall_ctx_t *ctx)
 	
 	/* ignore dynamic shared libraries */
 	if (strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF) == NULL &&
-		strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF_ALT) == NULL)
+		strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF_ALT) == NULL) {
 		fdset.insert((int)ctx->ret);
+	}
 }
 
 /* 
@@ -720,17 +1094,23 @@ main(int argc, char **argv)
 {
 	/* initialize symbol processing */
 	PIN_InitSymbols();
-	
 	/* initialize Pin; optimized branch */
 	if (unlikely(PIN_Init(argc, argv)))
 		/* Pin initialization failed */
 		goto err;
 
+	
+	trace = fopen("dft.out", "w");
+	if (trace != NULL)
+	{
+		printf("Success\n");
+	}
+	IMG_AddInstrumentFunction(parse_funRtns, 0);
+
 	/* initialize the core tagging engine */
 	if (unlikely(libdft_init() != 0))
 		/* failed */
 		goto err;
-	
 	/* 
 	 * handle control transfer instructions
 	 *
@@ -742,7 +1122,11 @@ main(int argc, char **argv)
 	 * success or failure
 	 */
 
-	/* instrument call */
+	/* instrument call pre */
+	//(void)ins_set_pre(&ins_desc[XED_ICLASS_CALL_NEAR],
+	//		dta_instrument_call);
+
+	/* instrument call post */
 	(void)ins_set_post(&ins_desc[XED_ICLASS_CALL_NEAR],
 			dta_instrument_jmp_call);
 	
@@ -773,12 +1157,13 @@ main(int argc, char **argv)
 	(void)syscall_set_post(&syscall_desc[__NR_readv], post_readv_hook);
 
 	/* socket(2), accept(2), recvfrom(2), recvmsg(2) */
+	
 	(void)syscall_set_post(&syscall_desc[__NR_socket], post_socket_hook);
 	(void)syscall_set_post(&syscall_desc[__NR_accept] , post_accept_hook);
 	(void)syscall_set_post(&syscall_desc[__NR_accept4] , post_accept_hook);
 	(void)syscall_set_post(&syscall_desc[__NR_recvfrom] , post_recvfrom_hook);
 	(void)syscall_set_post(&syscall_desc[__NR_recvmsg] , post_recvmsg_hook);
-	
+
 
 	/* dup(2), dup2(2) */
 	(void)syscall_set_post(&syscall_desc[__NR_dup], post_dup_hook);
@@ -793,11 +1178,21 @@ main(int argc, char **argv)
 				post_open_hook);
 		(void)syscall_set_post(&syscall_desc[__NR_creat],
 				post_open_hook);
+		(void)syscall_set_post(&syscall_desc[__NR_openat],
+				post_openat_hook);
 	}
 	
 	/* add stdin to the interesting descriptors set */
 	if (stdin_.Value() != 0)
 		fdset.insert(STDIN_FILENO);
+
+
+    // Register Instruction to be called to instrument instructions
+	// temp
+	//INS_AddInstrumentFunction(Instruction, 0);
+	//
+    TRACE_AddInstrumentFunction(Trace, 0);
+	PIN_AddFiniFunction(Fini, 0);
 
 	/* start Pin */
 	PIN_StartProgram();

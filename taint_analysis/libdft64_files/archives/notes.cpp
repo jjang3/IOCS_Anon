@@ -1,61 +1,3 @@
-#include <errno.h>
-#include <sys/socket.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <set>
-#include <unistd.h>
-
-#include "branch_pred.h"
-#include "libdft_api.h"
-#include "libdft_core.h"
-#include "syscall_desc.h"
-#include "tagmap.h"
-#include "ins_helper.h"
-
-using namespace std;
-
-#define WORD_LEN	4	/* size in bytes of a word value */
-
-/* default path for the log file (audit) */
-#define LOGFILE_DFL	"libdft-dta.log"
-
-/* default suffixes for dynamic shared libraries */
-#define DLIB_SUFF	".so"
-#define DLIB_SUFF_ALT	".so."
-#define	TAG 	0x01U
-
-/* thread context */
-extern thread_ctx_t *threads_ctx;
-
-/* ins descriptors */
-extern ins_desc_t ins_desc[XED_ICLASS_LAST];
-
-/* syscall descriptors */
-extern syscall_desc_t syscall_desc[SYSCALL_MAX];
-
-/* set of interesting descriptors (sockets) */
-static set<int> fdset;
-
-/* log file path (auditing) */
-static KNOB<string> logpath(KNOB_MODE_WRITEONCE, "pintool", "l",
-		LOGFILE_DFL, "");
-
-/*
- * flag variables
- *
- * 0	: feature disabled
- * >= 1	: feature enabled
- */ 
-
-/* track stdin (enabled by default) */
-static KNOB<size_t> stdin_(KNOB_MODE_WRITEONCE, "pintool", "s", "1", "");
-
-/* track fs (enabled by default) */
-static KNOB<size_t> fs(KNOB_MODE_WRITEONCE, "pintool", "f", "1", "");
-
-/* track net (enabled by default) */
-static KNOB<size_t> net(KNOB_MODE_WRITEONCE, "pintool", "n", "1", "");
 
 /* 
  * DTA/DFT alert
@@ -708,29 +650,8 @@ post_open_hook(THREADID tid, syscall_ctx_t *ctx)
 		fdset.insert((int)ctx->ret);
 }
 
-/* 
- * DTA
- *
- * used for demonstrating how to implement
- * a practical dynamic taint analysis (DTA)
- * tool using libdft
- */
-int
-main(int argc, char **argv)
-{
-	/* initialize symbol processing */
-	PIN_InitSymbols();
-	
-	/* initialize Pin; optimized branch */
-	if (unlikely(PIN_Init(argc, argv)))
-		/* Pin initialization failed */
-		goto err;
 
-	/* initialize the core tagging engine */
-	if (unlikely(libdft_init() != 0))
-		/* failed */
-		goto err;
-	
+
 	/* 
 	 * handle control transfer instructions
 	 *
@@ -794,22 +715,136 @@ main(int argc, char **argv)
 		(void)syscall_set_post(&syscall_desc[__NR_creat],
 				post_open_hook);
 	}
+
+
+VOID taintSource(THREADID tid, CONTEXT *fromctx, SYSCALL_STANDARD std, void *v)
+{
+	ADDRINT syscallNum = PIN_GetSyscallNumber(fromctx, std);
+	ADDRINT eipAddr = (uintptr_t)PIN_GetContextReg(fromctx, REG_RAX);
+	#if DBG_FLAG
+	cerr << "[*] syscall(" << syscallNum << ") " << hex << offset_addr << " " << (void*)eipAddr << endl;
+	#endif
 	
-	/* add stdin to the interesting descriptors set */
-	if (stdin_.Value() != 0)
-		fdset.insert(STDIN_FILENO);
+}
 
-	/* start Pin */
-	PIN_StartProgram();
+VOID taintMapping(THREADID tid, CONTEXT *ctx, SYSCALL_STANDARD std, void *v)
+{
+	ADDRINT syscallNum = PIN_GetSyscallNumber(ctx, std);
+	if (syscallNum == SYS_read)
+	{	
+		//cerr << "[*] read syscall" << endl;
+		/* taint-source */
+		if (fdset.find(PIN_GetSyscallArgument(ctx, std, 0)) != fdset.end()) {
+				/* set the tag markings */
+				#if DBG_FLAG
+				cerr << " > Set the tag marking " <<  endl;
+				#endif
+				tagmap_setn(PIN_GetSyscallArgument(ctx, std, 1), PIN_GetSyscallReturn(ctx, std), TAG); }
+		else {
+				/* clear the tag markings */
+				#if DBG_FLAG
+				cerr << " > Clear the tag marking " <<  endl;
+				#endif
+				tagmap_clrn(PIN_GetSyscallArgument(ctx, std, 1),PIN_GetSyscallReturn(ctx, std)); }
+	}
+}
 
-	/* typically not reached; make the compiler happy */
-	return EXIT_SUCCESS;
+/* ===================================================================== */
+/*          Analysis Routines                                            */
+/* ===================================================================== */
 
-err:	/* error handling */
+/* ===================================================================== */
+// Print every instruction that is executed.
 
-	/* detach from the process */
-	libdft_die();
+/* ===================================================================== */
+// Print the arguments to the system call.
 
-	/* return */
-	return EXIT_FAILURE;
+void sysargs(ADDRINT num,
+             ADDRINT p0,
+             ADDRINT p1,
+             ADDRINT p2,
+             ADDRINT p3,
+             ADDRINT p4,
+             ADDRINT p5
+)
+{
+    fprintf(stderr,"syscall: %ld  sysargs: 0x%lx 0x%lx 0x%lx 0x%lx 0x%lx 0x%lx\n",
+        (long)num,
+        (unsigned long)p0,
+        (unsigned long)p1,
+        (unsigned long)p2,
+        (unsigned long)p3,
+        (unsigned long)p4,
+        (unsigned long)p5);
+}
+
+void printIp(ADDRINT v, char * dis, ADDRINT ret)
+{
+	PIN_LockClient();
+    //fprintf(stderr, "Ip: 0x%lx %s\n", (unsigned long)v, dis);
+	cerr << hex << (RTN_FindByAddress(v)) << " " << dis << " " << RTN_FindNameByAddress(ret) << endl;
+	PIN_UnlockClient();
+}
+
+/* ===================================================================== */
+// Print the return value of the system call.
+
+void sysret(ADDRINT v)
+{
+    fprintf(stderr, "sysret: 0x%lx\n", (unsigned long)v);
+}
+
+
+/* ===================================================================== */
+/*          Instrumentation Routines                                     */
+/* ===================================================================== */
+
+/* ===================================================================== */
+// Instrument each system call to print arguments and return value.
+// Instrument each instruction to print itself.
+
+void Ins(INS ins, void * v)
+{
+    string * st = new string(INS_Disassemble(ins));
+    
+    // For O/S's (Mac) that don't support PIN_AddSyscallEntryFunction(),
+    // instrument the system call instruction.
+
+    if (INS_IsSyscall(ins) && INS_HasFallThrough(ins))
+    {
+        INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(sysargs),
+                       IARG_SYSCALL_NUMBER, 
+                       IARG_SYSARG_VALUE, 0,
+                       IARG_SYSARG_VALUE, 1,
+                       IARG_SYSARG_VALUE, 2,
+                       IARG_SYSARG_VALUE, 3,
+                       IARG_SYSARG_VALUE, 4,
+                       IARG_SYSARG_VALUE, 5,
+                       IARG_END);
+        INS_InsertCall(ins, IPOINT_AFTER, AFUNPTR(sysret),
+                       IARG_SYSRET_VALUE, IARG_END);
+    }
+    
+	if (INS_IsSyscall(ins))
+	{
+		INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(printIp), IARG_INST_PTR,
+                   IARG_PTR, st->c_str(), IARG_RETURN_IP, IARG_END);
+	}
+    //
+}
+
+
+void taintTrace(TRACE tr, VOID *v)
+{
+// Instruction Iterator
+for (BBL bbl = TRACE_BblHead(tr); BBL_Valid(bbl); bbl = BBL_Next(bbl)) 
+{	
+	for ( INS ins = BBL_InsHead(bbl); INS_Valid(ins); ins = INS_Next(ins)) 
+	{
+		if (INS_IsSyscall(ins))
+		{
+			INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)docount, IARG_RETURN_IP, IARG_THREAD_ID, IARG_END);
+		}
+	}
+}
 }
