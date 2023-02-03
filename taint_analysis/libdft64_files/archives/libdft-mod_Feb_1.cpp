@@ -840,14 +840,14 @@ post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
 			(size_t)iov->iov_len : tot;
 	
 		/* taint interesting data and zero everything else */	
-		if (it != fdset.end())
-                	/* set the tag markings */
-                	tagmap_setn((size_t)iov->iov_base, iov_tot, TAG);
-		else
-                	/* clear the tag markings */
-                	tagmap_clrn((size_t)iov->iov_base, iov_tot);
+		if (it != fdset.end()){
+				/* set the tag markings */
+				tagmap_setn((size_t)iov->iov_base, iov_tot, TAG);}
+		else{
+				/* clear the tag markings */
+				tagmap_clrn((size_t)iov->iov_base, iov_tot);
                 /* housekeeping */
-                tot -= iov_tot;
+                tot -= iov_tot;}
         }
 }
 
