@@ -1564,3 +1564,37 @@ post_open_hook(THREADID tid, syscall_ctx_t *ctx)
 		strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF_ALT) == NULL)
 		fdset.insert((int)ctx->ret);
 }
+
+
+/*
+ * syscall entry handler function
+ * @tid:	thread id
+ * @ctx:	CPU context
+ * @std:	syscall standard (e.g., Linux IA-32, IA-64, etc)
+ * @v:		callback value
+ */
+VOID SyscallEntryHandler(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std, void *v)
+{
+
+	size_t syscallNum = PIN_GetSyscallNumber(ctx, std);
+	cerr << "System call handler " << syscallNum << " " <<__NR_read << endl;
+	/* If the syscall is read take the branch */
+  	if ((int)syscallNum == (int)__NR_read)
+  	{
+		 /* read() was not successful; optimized branch */
+        if (unlikely((long)PIN_GetSyscallReturn(ctx, std) <= 0))
+			return;
+
+		/* taint-source */
+		if (fdset.find(PIN_GetSyscallArgument(ctx, std, 0)) != fdset.end()) {
+			cerr << "read(2) taint set" << endl;
+			/* set the tag markings */
+			tagmap_setn(PIN_GetSyscallArgument(ctx, std, 1), PIN_GetSyscallReturn(ctx, std), TAG);
+		}
+		else {
+			cerr << "read(2) taint clear" << endl;
+			/* clear the tag markings */
+			tagmap_clrn(PIN_GetSyscallArgument(ctx, std, 1), PIN_GetSyscallReturn(ctx, std));
+		}
+  	}
+}

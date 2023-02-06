@@ -21,7 +21,8 @@ int main()
     foo(&buf);
     char *bar_buf = malloc(sizeof(char)*50);
     bar(&bar_buf);
-    //printf("Buf / Bar_buf Pointers: %p | %p\n", buf, bar_buf);
+    *bar_buf;
+    //printf("Buf / Bar_buf Content: %s | %s\n", buf, bar_buf);
     //printf("Pointers: %p | %p\n", buf, bar_buf);
     free(buf);
     free(bar_buf);
