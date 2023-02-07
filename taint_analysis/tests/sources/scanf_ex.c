@@ -1,6 +1,7 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include<stdio.h>
+#include<string.h>
+#include<unistd.h>
+#include<fcntl.h>
 
 void bar (char **input) {
     //printf("Input ptr: %p\n", *input);
@@ -21,7 +22,13 @@ int main()
     foo(&buf);
     char *bar_buf = malloc(sizeof(char)*50);
     bar(&bar_buf);
-    *bar_buf;
+    
+    int fd[2];
+    printf("Writing to a file\n");
+    // assume foobar.txt is already created
+    fd[0] = open("/home/jay/Waterfall_Full/taint_analysis/tests/file.txt", O_RDWR);
+    write(fd[0], bar_buf, strlen(bar_buf));     
+
     //printf("Buf / Bar_buf Content: %s | %s\n", buf, bar_buf);
     //printf("Pointers: %p | %p\n", buf, bar_buf);
     free(buf);

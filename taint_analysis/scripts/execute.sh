@@ -4,7 +4,7 @@ RESULTS_DIR=$(pwd)/$1
 LIB_DIR=$PARENT_DIR/lib
 TEST_DIR=$PARENT_DIR/tests
 SOURCE_DIR=$TEST_DIR/sources
-CC=gcc
+CC=clang
 
 usr_int(){
 
@@ -16,12 +16,10 @@ mv dft.out $RESULTS_DIR
 
 }
 
-echo $RESULTS_DIR
+echo $RESULTS_DIR 
 $CC $SOURCE_DIR/$1.c -o $TEST_DIR/$1
 objdump -d $TEST_DIR/$1 &> $RESULTS_DIR/$1.objdump
 pin -follow-execv -t $LIB_DIR/libdft-mod.so -- $TEST_DIR/$1
-
-trap usr_int SIGINT
 
 if [ ! -d "$RESULTS_DIR" ]; then
     mkdir $RESULTS_DIR
