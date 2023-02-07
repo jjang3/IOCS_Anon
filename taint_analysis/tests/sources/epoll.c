@@ -117,6 +117,11 @@ void accept_and_add_new()
 void process_more_tainted_data(char *str)
 {
 	printf("\033[0;31m%s: \033[0;32m%s\033[0m\n", __func__, str);
+
+    int fd[2];
+    fd[0] = open("/home/jay/Waterfall_Full/taint_analysis/tests/file.txt", O_RDWR);
+    write(fd[0], str, strlen(str));     
+	close(fd[0]);
 }
 
 void dynamically_unreachable(char *str)
@@ -144,6 +149,7 @@ void process_new_data(int fd)
 		/* Write buffer to stdout */
 		buf[count-1] = '\0';
 		printf("%s\n", buf);
+		//write(STDOUT_FILENO, buf, sizeof(buf)-1);
 
 		/* Process more tainted data. */
 		if (!strcmp(buf, "secret"))

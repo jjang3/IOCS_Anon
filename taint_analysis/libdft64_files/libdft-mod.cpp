@@ -455,7 +455,7 @@ post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 static void PIN_FAST_ANALYSIS_CALL
 alert_branch(ADDRINT ins, BOOL isbt, ADDRINT bt)
 {
-	cerr << "alert() " << isbt << endl;
+	//cerr << "alert() " << isbt << endl;
 }
 
 /* 
@@ -482,7 +482,7 @@ VOID RecordMemWrite(ADDRINT paddr, ADDRINT taddr)
 	// print when addr is tagged.
 	if (tagmap_getn(paddr, 8) | tagmap_getn(taddr, 8))
 	{
-		string rtn_name = RTN_FindNameByAddress(paddr);
+		string rtn_name = RTN_FindNameByAddress(taddr);
 		#if DBG_FLAG
 		printf("Tagged Mem Write (TMW)\n");
 		#endif
@@ -496,7 +496,7 @@ VOID RecordMemRead(ADDRINT paddr, ADDRINT taddr)
 	// print when addr is tagged.
 	if (tagmap_getn(paddr, 8) | tagmap_getn(taddr, 8))
 	{
-		string rtn_name = RTN_FindNameByAddress(paddr);
+		string rtn_name = RTN_FindNameByAddress(taddr);
 		uintptr_t static_addr = (uintptr_t)taddr - offset_addr;
 		cerr <<  rtn_name.c_str() << "\tRead: " << std::hex << paddr << " :R " << (void*)static_addr << dec << endl;
 		#if DBG_FLAG
@@ -650,13 +650,14 @@ dta_instrument_ret(INS ins)
 		IARG_END);
 }
 
+
 /*
- * instrument the sendto() instruction
+ * instrument the send()/sendto() instruction
  *
  * if the buffer of sendto() syscall is detected with a taint, alert.
  */
 static void 
-pre_sendto_hook(THREADID tid, syscall_ctx_t *ctx)
+pre_send_hook(THREADID tid, syscall_ctx_t *ctx)
 {
 	/* 
 	 * combine the register tag along with the tag
@@ -692,7 +693,7 @@ pre_write_hook(THREADID tid, syscall_ctx_t *ctx)
 	 * markings of the target address
 	 */
 	tag_t tag = 0x00U;
-	cerr << hex << (int)ctx->arg[SYSCALL_ARG0] << endl;
+	//cerr << hex << (int)ctx->arg[SYSCALL_ARG0] << endl;
 	if (fdset.find((int)ctx->arg[SYSCALL_ARG0]) != fdset.end())
 	{
 		cerr << "pre_write_hook" << endl;
@@ -738,14 +739,16 @@ dta_instrument_pre_call(INS ins)
 }
 */
 #endif
-#if 0
+#if 1
 VOID Instruction(INS ins, VOID* v)
 {
 	#if 1
 	if (INS_IsDirectCall(ins))
 	{
-		RTN callFun = RTN_FindByAddress(INS_DirectControlFlowTargetAddress(ins));
-		checkRtn(callFun);
+		const ADDRINT target = INS_DirectBranchOrCallTargetAddress(ins);
+		RTN callFun = RTN_FindByAddress(target);
+		cerr << "Call: " << RTN_Name(callFun) << endl;
+		//checkRtn(callFun);
 	}
 	#endif
 }
@@ -820,7 +823,7 @@ main(int argc, char **argv)
 		fdset.insert(STDIN_FILENO);
 
 	IMG_AddInstrumentFunction(getMetadata, 0);
-	//INS_AddInstrumentFunction(Instruction, 0);
+	INS_AddInstrumentFunction(Instruction, 0);
 
 
 
@@ -877,10 +880,13 @@ main(int argc, char **argv)
 	#endif
 
 	/* instrument sendto(2) */
-	(void)syscall_set_pre(&syscall_desc[__NR_sendto], pre_sendto_hook);
+	(void)syscall_set_pre(&syscall_desc[__NR_sendto], pre_send_hook);
 
 	/* instrument write(2) */
 	(void)syscall_set_pre(&syscall_desc[__NR_write], pre_write_hook);
+
+	/* instrument pwrite64(2)*/
+	(void)syscall_set_pre(&syscall_desc[__NR_pwrite64], pre_write_hook);
 
 	/* start Pin */
 	PIN_StartProgram();
