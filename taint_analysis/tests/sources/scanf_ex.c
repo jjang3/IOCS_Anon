@@ -1,7 +1,8 @@
-#include<stdio.h>
-#include<string.h>
-#include<unistd.h>
-#include<fcntl.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdlib.h>
 
 void bar (char **input) {
     //printf("Input ptr: %p\n", *input);
@@ -9,7 +10,7 @@ void bar (char **input) {
     //printf("Input: ");
     scanf("%s", input_scanf);
     strcpy(*input, input_scanf);
-    //printf("scanf: %s\n", *input);
+    printf("scanf: %s\n", *input);
 }
 
 void foo(char **input) {

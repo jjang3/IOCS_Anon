@@ -1598,3 +1598,43 @@ VOID SyscallEntryHandler(THREADID thread_id, CONTEXT *ctx, SYSCALL_STANDARD std,
 		}
   	}
 }
+
+
+/*
+static void
+dta_instrument_pre_call(INS ins)
+{
+	UINT32 MemOperands = INS_MemoryOperandCount(ins);
+	for (UINT32 MemOp = 0; MemOp < MemOperands; MemOp++) {
+		// Instructions have memory write
+		if (INS_MemoryOperandIsWritten(ins, MemOp)) {
+			//cerr << instString << endl;
+			INS_InsertPredicatedCall(ins, 
+							IPOINT_BEFORE,
+							(AFUNPTR)RecordMemWrite, 
+							IARG_INST_PTR,
+							IARG_MEMORYOP_EA, 
+							MemOp, 
+							IARG_END);
+		}	
+		// Instructions have memory read
+		if (INS_MemoryOperandIsRead(ins, MemOp)) {
+			//cerr << instString << endl;
+			INS_InsertPredicatedCall(ins, 
+							IPOINT_BEFORE,
+							(AFUNPTR)RecordMemRead, 
+							IARG_INST_PTR,
+							IARG_MEMORYOP_EA, 
+							MemOp, 
+							IARG_END);
+		}
+	}
+}
+*/
+string *instString = new string(INS_Disassemble(ins));
+if (INS_IsDirectCall(ins))
+{
+//auto OffsetAddress = (ADDRINT)INS_DirectBranchOrCallTargetAddress(ins) - (ADDRINT)IMG_LoadOffset;
+//auto FindName = findRTNName(OffsetAddress);
+INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)callUnwinding, IARG_BRANCH_TARGET_ADDR, IARG_PTR, instString->c_str(), IARG_END);
+}

@@ -24,9 +24,6 @@ using std::endl;
 
 #define WORD_LEN	4	/* size in bytes of a word value */
 
-/* default path for the log file (audit) */
-#define LOGFILE_DFL	"libdft-dta.log"
-
 /* input file prefix */
 #define FILE_NAME	"file.txt"
 
@@ -50,10 +47,6 @@ extern syscall_desc_t syscall_desc[SYSCALL_MAX];
 
 /* set of interesting descriptors (sockets) */
 static set<int> fdset;
-
-/* log file path (auditing) */
-static KNOB<string> logpath(KNOB_MODE_WRITEONCE, "pintool", "l",
-		LOGFILE_DFL, "");
 
 /* trace file */
 FILE *trace;
@@ -83,7 +76,7 @@ static KNOB<size_t> net(KNOB_MODE_WRITEONCE, "pintool", "n", "1", "");
 VOID RecordMemWrite(ADDRINT paddr, ADDRINT taddr);
 VOID RecordMemRead(ADDRINT paddr, ADDRINT taddr);
 
-#if 1
+#if 0
 void checkRtn(RTN inputFun)
 {
 	if (RTN_Valid(inputFun))
@@ -213,10 +206,12 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 	if (unlikely((long)ctx->ret <= 0))
 			return;
 
+
 	/* taint-source */
 	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end()){
 		/* set the tag markings */ // << unwindStack.top() << " " << std::hex << ctx->arg[SYSCALL_ARG1]
-		cerr << "read(2) taint set " << "fd: " << ctx->arg[SYSCALL_ARG0] << " " << std::hex << ctx->ret << endl;
+		//hex << ctx->arg[SYSCALL_ARG1] << "fd: " << ctx->arg[SYSCALL_ARG0] << " " << std::hex 
+		cerr << "read(2) taint set "  << endl;
 		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
 	}
 	else{
@@ -262,7 +257,7 @@ post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
 		/* taint interesting data and zero everything else */	
 		if (it != fdset.end()) { 
 			/* set the tag markings */
-			cerr << "readv(2) taint set " << unwindStack.top() << endl;
+			cerr << "readv(2) taint set " << endl;
 			tagmap_setn((size_t)iov->iov_base, iov_tot, TAG);
 		}
 		else {
@@ -696,7 +691,9 @@ pre_write_hook(THREADID tid, syscall_ctx_t *ctx)
 	//cerr << hex << (int)ctx->arg[SYSCALL_ARG0] << endl;
 	if (fdset.find((int)ctx->arg[SYSCALL_ARG0]) != fdset.end())
 	{
+		#if DBG_FLAG
 		cerr << "pre_write_hook" << endl;
+		#endif
 	    for(uint8_t * buf_it = (uint8_t *)ctx->arg[SYSCALL_ARG1] ; buf_it <= (((uint8_t *)ctx->arg[SYSCALL_ARG1]) + ctx->arg[SYSCALL_ARG2]) ; buf_it++)
 	    {
 	        tag |= tagmap_getn((size_t)buf_it, 8);
@@ -707,37 +704,25 @@ pre_write_hook(THREADID tid, syscall_ctx_t *ctx)
 }
 
 
-/*
-static void
-dta_instrument_pre_call(INS ins)
+//check if the format string of the called function is tainted.
+void checkTaintedString(ADDRINT arg)
 {
-	UINT32 MemOperands = INS_MemoryOperandCount(ins);
-	for (UINT32 MemOp = 0; MemOp < MemOperands; MemOp++) {
-		// Instructions have memory write
-		if (INS_MemoryOperandIsWritten(ins, MemOp)) {
-			//cerr << instString << endl;
-			INS_InsertPredicatedCall(ins, 
-							IPOINT_BEFORE,
-							(AFUNPTR)RecordMemWrite, 
-							IARG_INST_PTR,
-							IARG_MEMORYOP_EA, 
-							MemOp, 
-							IARG_END);
-		}	
-		// Instructions have memory read
-		if (INS_MemoryOperandIsRead(ins, MemOp)) {
-			//cerr << instString << endl;
-			INS_InsertPredicatedCall(ins, 
-							IPOINT_BEFORE,
-							(AFUNPTR)RecordMemRead, 
-							IARG_INST_PTR,
-							IARG_MEMORYOP_EA, 
-							MemOp, 
-							IARG_END);
-		}
+	char *inputString = (char*)arg;
+	cerr << "Input: " << inputString << endl;
+	// Need to figure out a way to get the content of "%s"
+	/* 
+	 * combine the register tag along with the tag
+	 * markings of the target address
+	 */
+	tag_t tag = 0x00U;
+	for(char* str_it = inputString; *str_it != '\0'; str_it++) {
+		tag = tagmap_getn((uintptr_t)str_it, 8);
+		//cerr << "Checking tainted string: " << str_it << " tag: " << tag << endl;
+		if(tag != 0) 
+			alert((uintptr_t)str_it, strlen(inputString), tag);
 	}
 }
-*/
+
 #endif
 #if 1
 VOID Instruction(INS ins, VOID* v)
@@ -745,9 +730,30 @@ VOID Instruction(INS ins, VOID* v)
 	#if 1
 	if (INS_IsDirectCall(ins))
 	{
+		// Question, do we need more taint sinks or no? What should be considered as a
+		// taint sink?
+		int argNum = -1;
 		const ADDRINT target = INS_DirectBranchOrCallTargetAddress(ins);
 		RTN callFun = RTN_FindByAddress(target);
-		cerr << "Call: " << RTN_Name(callFun) << endl;
+		string callFunName = RTN_Name(callFun);
+		if (callFunName.find("printf") == 0) 
+		{
+			cerr << "Call: " << RTN_Name(callFun) << endl;
+			argNum = 0;
+		}
+		else if (callFunName.find("__isoc99_scanf") == 0) { // bug..? Only one scanf caught
+			cerr << "Call: " << RTN_Name(callFun) << endl;
+			argNum = 0;
+		}
+
+		if (argNum != -1) {
+			INS_InsertCall(ins,
+			IPOINT_BEFORE,
+			(AFUNPTR)checkTaintedString,
+			IARG_FUNCARG_CALLSITE_VALUE, 
+			argNum,
+			IARG_END);
+		}
 		//checkRtn(callFun);
 	}
 	#endif
@@ -822,12 +828,17 @@ main(int argc, char **argv)
 	if (stdin_.Value() != 0)
 		fdset.insert(STDIN_FILENO);
 
+	trace = fopen("dft.out", "w");
+	if (trace != NULL)
+	{
+		printf("Success\n");
+	}
 	IMG_AddInstrumentFunction(getMetadata, 0);
 	INS_AddInstrumentFunction(Instruction, 0);
-
-
-
-	// ---------- Taint sources ---------- // For now, we are only considering network input / user-input
+	// ---------- Taint sources ---------- // 
+	/* 
+	 * For now, we are considering network input / user-input / open files
+	 */ 
 	#if 1
 	/* read(2) */
 	(void)syscall_set_post(&syscall_desc[__NR_read], post_read_hook);

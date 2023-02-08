@@ -148,7 +148,7 @@ void process_new_data(int fd)
 
 		/* Write buffer to stdout */
 		buf[count-1] = '\0';
-		printf("%s\n", buf);
+		printf("Buffer: %s\n", buf);
 		//write(STDOUT_FILENO, buf, sizeof(buf)-1);
 
 		/* Process more tainted data. */
