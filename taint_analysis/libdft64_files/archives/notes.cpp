@@ -1638,3 +1638,102 @@ if (INS_IsDirectCall(ins))
 //auto FindName = findRTNName(OffsetAddress);
 INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)callUnwinding, IARG_BRANCH_TARGET_ADDR, IARG_PTR, instString->c_str(), IARG_END);
 }
+
+
+//check if the format string of the called function is tainted.
+void checkTaintedString(ADDRINT arg)
+{
+	char *inputString = (char*)arg;
+	cerr << "checkTaintedString Input: " << inputString << endl;
+	// Need to figure out a way to get the content of "%s"
+	/* 
+	 * combine the register tag along with the tag
+	 * markings of the target address
+	 */
+	tag_t tag = 0x00U;
+	for(char* str_it = inputString; *str_it != '\0'; str_it++) {
+		tag = tagmap_getn((uintptr_t)str_it, 8);
+		//cerr << "Checking tainted string: " << str_it << " tag: " << tag << endl;
+		if(tag != 0) 
+			alert((uintptr_t)str_it, strlen(inputString), tag);
+	}
+}
+
+#if 0
+void checkRtn(RTN inputFun)
+{
+	if (RTN_Valid(inputFun))
+	{
+		RTN_Open(inputFun);
+		// For each instruction of the routine
+		for (INS ins = RTN_InsHead(inputFun); INS_Valid(ins); ins = INS_Next(ins))
+		{
+			UINT32 MemOperands = INS_MemoryOperandCount(ins);
+			for (UINT32 MemOp = 0; MemOp < MemOperands; MemOp++) {
+				// Instructions have memory write
+				if (INS_MemoryOperandIsWritten(ins, MemOp)) {
+					//cerr << instString << endl;
+					INS_InsertPredicatedCall(ins, 
+									IPOINT_BEFORE,
+									(AFUNPTR)RecordMemWrite, 
+									IARG_INST_PTR,
+									IARG_MEMORYOP_EA, 
+									MemOp, 
+									IARG_END);
+				}	
+				// Instructions have memory read
+				if (INS_MemoryOperandIsRead(ins, MemOp)) {
+					//cerr << instString << endl;
+					INS_InsertPredicatedCall(ins, 
+									IPOINT_BEFORE,
+									(AFUNPTR)RecordMemRead, 
+									IARG_INST_PTR,
+									IARG_MEMORYOP_EA, 
+									MemOp, 
+									IARG_END);
+				}
+			}
+		}
+		RTN_Close(inputFun);
+	}
+}
+#endif
+
+
+#if 1
+VOID Instruction(INS ins, VOID* v)
+{
+	#if 1
+	if (INS_IsDirectCall(ins))
+	{
+		// Question, do we need more taint sinks or no? What should be considered as a
+		// taint sink?
+		int argNum = -1;
+		const ADDRINT target = INS_DirectBranchOrCallTargetAddress(ins);
+		RTN callFun = RTN_FindByAddress(target);
+		string callFunName = RTN_Name(callFun);
+		if (callFunName.find("printf") == 0) 
+		{
+			cerr << "Call: " << RTN_Name(callFun) << endl;
+			argNum = 0;
+		}
+		#if 0
+		else if (callFunName.find("__isoc99_scanf") == 0) { 	// bug..? Only one scanf caught
+			cerr << "Call: " << RTN_Name(callFun) << endl; 		// Honestly, scanf check is not needed, because read() is enough.
+			argNum = 1;
+		}
+		#endif
+
+		if (argNum != -1) {
+			INS_InsertCall(ins,
+			IPOINT_BEFORE,
+			(AFUNPTR)checkTaintedString,
+			IARG_FUNCARG_ENTRYPOINT_VALUE, 
+			argNum,
+			IARG_END);
+		}
+		//checkRtn(callFun); CALLSITE_VALUE
+	}
+	#endif
+}
+#endif

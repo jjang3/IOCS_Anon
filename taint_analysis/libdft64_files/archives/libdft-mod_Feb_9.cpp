@@ -68,17 +68,60 @@ static stack<const char*> unwindStack;
 static KNOB<size_t> stdin_(KNOB_MODE_WRITEONCE, "pintool", "s", "1", "");
 
 /* track fs (enabled by default) */
-static KNOB<size_t> fs(KNOB_MODE_WRITEONCE, "pintool", "f", "0", "");
+static KNOB<size_t> fs(KNOB_MODE_WRITEONCE, "pintool", "f", "1", "");
 
 /* track net (enabled by default) */
 static KNOB<size_t> net(KNOB_MODE_WRITEONCE, "pintool", "n", "1", "");
 
-#if 1
+VOID RecordMemWrite(ADDRINT paddr, ADDRINT taddr);
+VOID RecordMemRead(ADDRINT paddr, ADDRINT taddr);
+
+#if 0
+void checkRtn(RTN inputFun)
+{
+	if (RTN_Valid(inputFun))
+	{
+		RTN_Open(inputFun);
+		// For each instruction of the routine
+		for (INS ins = RTN_InsHead(inputFun); INS_Valid(ins); ins = INS_Next(ins))
+		{
+			UINT32 MemOperands = INS_MemoryOperandCount(ins);
+			for (UINT32 MemOp = 0; MemOp < MemOperands; MemOp++) {
+				// Instructions have memory write
+				if (INS_MemoryOperandIsWritten(ins, MemOp)) {
+					//cerr << instString << endl;
+					INS_InsertPredicatedCall(ins, 
+									IPOINT_BEFORE,
+									(AFUNPTR)RecordMemWrite, 
+									IARG_INST_PTR,
+									IARG_MEMORYOP_EA, 
+									MemOp, 
+									IARG_END);
+				}	
+				// Instructions have memory read
+				if (INS_MemoryOperandIsRead(ins, MemOp)) {
+					//cerr << instString << endl;
+					INS_InsertPredicatedCall(ins, 
+									IPOINT_BEFORE,
+									(AFUNPTR)RecordMemRead, 
+									IARG_INST_PTR,
+									IARG_MEMORYOP_EA, 
+									MemOp, 
+									IARG_END);
+				}
+			}
+		}
+		RTN_Close(inputFun);
+	}
+}
+#endif
 
 void callUnwinding(ADDRINT v, char *dis)
 {
 	PIN_LockClient();
+
 	RTN callRtn = RTN_FindByAddress(v);
+	
 	if (RTN_Valid(callRtn))
 	{
 		if (RTN_Name(callRtn) == ".plt.got" || RTN_Name(callRtn) == ".plt.sec" || RTN_Name(callRtn) == "_init")
@@ -91,6 +134,7 @@ void callUnwinding(ADDRINT v, char *dis)
 	PIN_UnlockClient();
 }
 
+#if 1
 VOID getMetadata(IMG img, void *v)
 {
 	printf("Loading %s, Image id = %d \n", IMG_Name(img).c_str(), IMG_Id(img));
@@ -116,15 +160,13 @@ VOID getMetadata(IMG img, void *v)
 		#if 1
 		for (SYM sym = IMG_RegsymHead(img); SYM_Valid(sym); sym = SYM_Next(sym))
 		{
-			string undFuncName = PIN_UndecorateSymbolName(SYM_Name(sym), UNDECORATION_NAME_ONLY);
-			RTN rtn = RTN_FindByAddress(imgLoadOffset + SYM_Value(sym));
-			#if 1
-			//const char* UndecoratedFuncName = PIN_UndecorateSymbolName(SYM_Name(sym), UNDECORATION_NAME_ONLY).c_str();
-			cerr << "[*] " << hex << "0x" << RTN_Address(rtn) << "\t" << undFuncName << endl;
-			#endif
-			#if 1
+			RTN rtn = RTN_FindByAddress(IMG_LowAddress(img) + SYM_Value(sym));
 			if (RTN_Valid(rtn))
-			{	
+			{
+				#if DBG_FLAG
+				const char* UndecoratedFuncName = PIN_UndecorateSymbolName(SYM_Name(sym), UNDECORATION_NAME_ONLY).c_str();
+				cerr << "[*] " << hex << "0x" << RTN_Address(rtn)-imgLoadOffset << "\t" << UndecoratedFuncName << endl;
+				#endif
 				RTN_Open(rtn);
 				// For each instruction of the routine
 				for (INS ins = RTN_InsHead(rtn); INS_Valid(ins); ins = INS_Next(ins))
@@ -136,10 +178,17 @@ VOID getMetadata(IMG img, void *v)
 						//auto FindName = findRTNName(OffsetAddress);
 						INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)callUnwinding, IARG_BRANCH_TARGET_ADDR, IARG_PTR, instString->c_str(), IARG_END);
 					}
+					#if 0
+					else if (INS_IsDirectBranch(ins))
+					{
+						auto callRtnName = findRTNName(ins);
+						if (callRtnName == ".plt.got")
+							cerr << hex << INS_Address(ins) << " " << callRtnName.c_str() << endl;
+					}
+					#endif
 				}
 				RTN_Close(rtn);
 			}
-			#endif
 		}
 		#endif
 	}
@@ -157,16 +206,17 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 	if (unlikely((long)ctx->ret <= 0))
 			return;
 
+
 	/* taint-source */
 	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end()){
 		/* set the tag markings */ // << unwindStack.top() << " " << std::hex << ctx->arg[SYSCALL_ARG1]
 		//hex << ctx->arg[SYSCALL_ARG1] << "fd: " << ctx->arg[SYSCALL_ARG0] << " " << std::hex 
-		cerr << "\t► read(2) taint set "  << endl;
+		cerr << "read(2) taint set "  << endl;
 		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
 	}
 	else{
 		/* clear the tag markings */
-		cerr << "\t► read(2) taint clear " << endl;
+		cerr << "read(2) taint clear " << endl;
 		tagmap_clrn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret);
 	}
 }
@@ -207,12 +257,12 @@ post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
 		/* taint interesting data and zero everything else */	
 		if (it != fdset.end()) { 
 			/* set the tag markings */
-			cerr << "\t► readv(2) taint set " << endl;
+			cerr << "readv(2) taint set " << endl;
 			tagmap_setn((size_t)iov->iov_base, iov_tot, TAG);
 		}
 		else {
 			/* clear the tag markings */
-			cerr << "\t► readv(2) taint clear " << endl;
+			cerr << "readv(2) taint clear " << endl;
 			tagmap_clrn((size_t)iov->iov_base, iov_tot);
 		}
 		/* housekeeping */
@@ -274,7 +324,7 @@ post_recvfrom_hook(THREADID tid, syscall_ctx_t *ctx)
 	if (fdset.find((int)ctx->arg[SYSCALL_ARG0]) != fdset.end())
 	{
 		/* set the tag markings */
-		cerr << "\t► recvfrom(2) taint set " << unwindStack.top() << endl;
+		cerr << "recvfrom(2) taint set " << unwindStack.top() << endl;
 		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
 		//printf("tag the buffer\n");
 	}
@@ -341,7 +391,7 @@ post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 		/* taint-source */
 		if (it != fdset.end()){
 			/* set the tag markings */
-			cerr << "\t► recvmsg(2) taint set " << unwindStack.top() << endl;
+			cerr << "recvmsg(2) taint set " << unwindStack.top() << endl;
 			tagmap_setn((size_t)msg->msg_control,
 				msg->msg_controllen, TAG);
 		}
@@ -373,7 +423,7 @@ post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 		/* taint-source */	
 		if (it != fdset.end()) {
 			/* set the tag markings */
-			cerr << "\t► recvmsg(2) taint set " << unwindStack.top() << endl;
+			cerr << "recvmsg(2) taint set " << unwindStack.top() << endl;
 			tagmap_setn((size_t)iov->iov_base,
 						iov_tot, TAG);
 		}
@@ -410,15 +460,46 @@ alert_branch(ADDRINT ins, BOOL isbt, ADDRINT bt)
  * @buffsize: buffer size
  * @tag: tag of the buffer
  */
-#if 0
 static void 
 alert(ADDRINT buff, size_t buffsize , tag_t tag)
 {
 	printf("Info Leakage Detected!\n");
 
 }
-#endif
 
+
+
+/*
+ * Checking whether a calling function touches tagged memory -> new taint-sink
+ */
+VOID RecordMemWrite(ADDRINT paddr, ADDRINT taddr)
+{
+	// print when addr is tagged.
+	if (tagmap_getn(paddr, 8) | tagmap_getn(taddr, 8))
+	{
+		string rtn_name = RTN_FindNameByAddress(taddr);
+		#if DBG_FLAG
+		printf("Tagged Mem Write (TMW)\n");
+		#endif
+		cerr << rtn_name.c_str() <<  "\tWrite: " << std::hex << paddr << ":W " << taddr << dec  << endl;
+		//fprintf(trace, "\tTMW: %s | %p", rtn_name.c_str(), (void *)ip);
+	}
+}
+
+VOID RecordMemRead(ADDRINT paddr, ADDRINT taddr)
+{
+	// print when addr is tagged.
+	if (tagmap_getn(paddr, 8) | tagmap_getn(taddr, 8))
+	{
+		string rtn_name = RTN_FindNameByAddress(taddr);
+		uintptr_t static_addr = (uintptr_t)taddr - offset_addr;
+		cerr <<  rtn_name.c_str() << "\tRead: " << std::hex << paddr << " :R " << (void*)static_addr << dec << endl;
+		#if DBG_FLAG
+		printf("Tagged Mem Read (TMR)\n");
+		#endif
+		//fprintf(trace, "\tTMR: %s | %p", rtn_name.c_str(), (void *)ip);
+	}	
+}
 /*
  * 64-bit register assertion (taint-sink, DFT-sink)
  *
@@ -528,104 +609,6 @@ dta_instrument_jmp_call(INS ins)
 
 
 /*
- * instrument the memory write instruction
- *
- * install the appropriate DTA/DFT logic (sinks)
- *
- * @ins: paddr = physical address | eaddr = effective address
- */
-
-static void
-dta_tainted_mem_write(ADDRINT paddr, ADDRINT eaddr)
-{
-	// print when addr is tagged.
-	if (tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8))
-	{
-		#if DBG_FLAG
-		printf("Tagged Mem Write (TMW)\n");
-		#endif
-		cerr << "\t▷ dta_mem_write()" << std::hex << " " << endl;
-		//fprintf(trace, "\tTMW: %s | %p", rtn_name.c_str(), (void *)ip);
-	}
-}
-#if 0
-static void
-dta_tainted_mem_read(ADDRINT paddr, ADDRINT eaddr)
-{
-	// print when addr is tagged.
-	if (tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8))
-	{
-		#if DBG_FLAG
-		printf("Tagged Mem Write (TMW)\n");
-		#endif
-		cerr << "\t▷ dta_mem_read()" << std::hex << " " << endl;
-		//fprintf(trace, "\tTMW: %s | %p", rtn_name.c_str(), (void *)ip);
-	}
-}
-#endif
-#if 1
-VOID Instruction(INS ins, VOID* v)
-{
-	UINT32 memOperands = INS_MemoryOperandCount(ins);
- 
-    // Iterate over each memory operand of the instruction.
-    for (UINT32 memOp = 0; memOp < memOperands; memOp++)
-    {
-        // Note that in some architectures a single memory operand can be
-        // both read and written (for instance incl (%eax) on IA-32)
-        // In that case we instrument it once for read and once for write.
-        if (INS_MemoryOperandIsWritten(ins, memOp))
-        {
-            INS_InsertPredicatedCall(ins, IPOINT_BEFORE, (AFUNPTR)dta_tainted_mem_write, IARG_INST_PTR, IARG_MEMORYOP_EA, memOp,
-                                     IARG_END);
-        }
-		#if 0
-		// Disabling this for now as there is no need to check on whether tagged memory is written.
-		if (INS_MemoryOperandIsRead(ins, memOp))
-        {
-            INS_InsertPredicatedCall(ins, IPOINT_BEFORE, (AFUNPTR)dta_tainted_mem_read, IARG_INST_PTR, IARG_MEMORYOP_EA, memOp,
-                                     IARG_END);
-        }
-		#endif 
-    }
-}
-#endif
-
-#if 0
-
-void checkRtn(RTN inputFun)
-{
-	if (RTN_Valid(inputFun))
-	{
-		RTN_Open(inputFun);
-		// For each instruction of the routine
-		for (INS ins = RTN_InsHead(inputFun); INS_Valid(ins); ins = INS_Next(ins))
-		{
-			UINT32 MemOperands = INS_MemoryOperandCount(ins);
-			for (UINT32 MemOp = 0; MemOp < MemOperands; MemOp++) 
-			{
-				// Instructions have memory write
-				if (INS_MemoryOperandIsWritten(ins, MemOp)) 
-				{
-				//cerr << instString << endl;
-				INS_InsertPredicatedCall(ins, 
-								IPOINT_BEFORE,
-								(AFUNPTR)RecordMemWrite, 
-								IARG_INST_PTR,
-								IARG_MEMORYOP_EA, 
-								MemOp, 
-								IARG_END);
-				}	
-			}
-		}
-	}
-	RTN_Close(inputFun);
-}
-
-
-#endif
-
-/*
  * instrument the ret instruction
  *
  * install the appropriate DTA/DFT logic (sinks)
@@ -663,6 +646,120 @@ dta_instrument_ret(INS ins)
 }
 
 
+/*
+ * instrument the send()/sendto() instruction
+ *
+ * if the buffer of sendto() syscall is detected with a taint, alert.
+ */
+static void 
+pre_send_hook(THREADID tid, syscall_ctx_t *ctx)
+{
+	/* 
+	 * combine the register tag along with the tag
+	 * markings of the target address
+	 */
+	tag_t tag = 0x00U;
+	/* read() was not successful; optimized branch */
+	if (unlikely((long)ctx->ret <= 0))
+			return;
+
+	/* search for tag */
+	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end()){
+		/* set the tag markings */
+		for(uint8_t * buf_it = (uint8_t *)ctx->arg[SYSCALL_ARG1] ; buf_it <= (((uint8_t *)ctx->arg[SYSCALL_ARG1]) + ctx->arg[SYSCALL_ARG2]) ; buf_it++)
+	    {
+	        tag |= tagmap_getn((size_t)buf_it, 8);
+	    }
+		if(tag > 0)
+		   alert(ctx->arg[SYSCALL_ARG1] , ctx->arg[SYSCALL_ARG2] , tag);
+	}
+}
+
+/*
+ * instrument the write(2) and pwrite64(2) instructions
+ *
+ * if the buffer of these syscalls posess sensitive information, alert
+ */
+static void 
+pre_write_hook(THREADID tid, syscall_ctx_t *ctx)
+{
+	/* 
+	 * combine the register tag along with the tag
+	 * markings of the target address
+	 */
+	tag_t tag = 0x00U;
+	//cerr << hex << (int)ctx->arg[SYSCALL_ARG0] << endl;
+	if (fdset.find((int)ctx->arg[SYSCALL_ARG0]) != fdset.end())
+	{
+		#if DBG_FLAG
+		cerr << "pre_write_hook" << endl;
+		#endif
+	    for(uint8_t * buf_it = (uint8_t *)ctx->arg[SYSCALL_ARG1] ; buf_it <= (((uint8_t *)ctx->arg[SYSCALL_ARG1]) + ctx->arg[SYSCALL_ARG2]) ; buf_it++)
+	    {
+	        tag |= tagmap_getn((size_t)buf_it, 8);
+	    }
+		if(tag > 0)
+		    alert(ctx->arg[SYSCALL_ARG1] , ctx->arg[SYSCALL_ARG2] , tag);
+	}
+}
+
+
+//check if the format string of the called function is tainted.
+void checkTaintedString(ADDRINT arg)
+{
+	char *inputString = (char*)arg;
+	cerr << "checkTaintedString Input: " << inputString << endl;
+	// Need to figure out a way to get the content of "%s"
+	/* 
+	 * combine the register tag along with the tag
+	 * markings of the target address
+	 */
+	tag_t tag = 0x00U;
+	for(char* str_it = inputString; *str_it != '\0'; str_it++) {
+		tag = tagmap_getn((uintptr_t)str_it, 8);
+		//cerr << "Checking tainted string: " << str_it << " tag: " << tag << endl;
+		if(tag != 0) 
+			alert((uintptr_t)str_it, strlen(inputString), tag);
+	}
+}
+
+#endif
+#if 1
+VOID Instruction(INS ins, VOID* v)
+{
+	#if 1
+	if (INS_IsDirectCall(ins))
+	{
+		// Question, do we need more taint sinks or no? What should be considered as a
+		// taint sink?
+		int argNum = -1;
+		const ADDRINT target = INS_DirectBranchOrCallTargetAddress(ins);
+		RTN callFun = RTN_FindByAddress(target);
+		string callFunName = RTN_Name(callFun);
+		if (callFunName.find("printf") == 0) 
+		{
+			cerr << "Call: " << RTN_Name(callFun) << endl;
+			argNum = 0;
+		}
+		#if 0
+		else if (callFunName.find("__isoc99_scanf") == 0) { 	// bug..? Only one scanf caught
+			cerr << "Call: " << RTN_Name(callFun) << endl; 		// Honestly, scanf check is not needed, because read() is enough.
+			argNum = 1;
+		}
+		#endif
+
+		if (argNum != -1) {
+			INS_InsertCall(ins,
+			IPOINT_BEFORE,
+			(AFUNPTR)checkTaintedString,
+			IARG_FUNCARG_ENTRYPOINT_VALUE, 
+			argNum,
+			IARG_END);
+		}
+		//checkRtn(callFun); CALLSITE_VALUE
+	}
+	#endif
+}
 #endif
 
 /*
@@ -694,6 +791,7 @@ post_open_hook(THREADID tid, syscall_ctx_t *ctx)
  * when openat() open the sensitive document
  * add the fd of the document to the fdset
  */
+ //与post_open_hook基本一致，区别在于判断的是ctx->arg[SYSCALL_ARG1]
 static void post_openat_hook(THREADID tid, syscall_ctx_t *ctx) 
 {
   /* sanity check */
@@ -766,6 +864,7 @@ main(int argc, char **argv)
 				post_open_hook);
 		(void)syscall_set_post(&syscall_desc[__NR_creat],
 				post_open_hook);
+		
 		/* instrument openat(2) */
 		(void)syscall_set_post(&syscall_desc[__NR_openat] , 
 				post_openat_hook);
@@ -792,6 +891,15 @@ main(int argc, char **argv)
 	(void)ins_set_post(&ins_desc[XED_ICLASS_RET_NEAR],
 			dta_instrument_ret);
 	#endif
+
+	/* instrument sendto(2) */
+	(void)syscall_set_pre(&syscall_desc[__NR_sendto], pre_send_hook);
+
+	/* instrument write(2) */
+	(void)syscall_set_pre(&syscall_desc[__NR_write], pre_write_hook);
+
+	/* instrument pwrite64(2)*/
+	(void)syscall_set_pre(&syscall_desc[__NR_pwrite64], pre_write_hook);
 
 	/* start Pin */
 	PIN_StartProgram();

@@ -1,3 +1,4 @@
+ROOT_DIR=$
 CURR_DIR=$(pwd)
 PARENT_DIR="$(dirname "$CURR_DIR")"
 RESULTS_DIR=$(pwd)/$1
@@ -26,3 +27,4 @@ if [ ! -d "$RESULTS_DIR" ]; then
 fi
 
 mv dft.out $RESULTS_DIR
+
