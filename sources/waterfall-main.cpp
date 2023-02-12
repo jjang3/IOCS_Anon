@@ -1,19 +1,17 @@
 #include "../include/waterfall-main.h"
+#include "../include/waterfall-ICFG.h"
 
-#define DBG_FLAG 1
+#define DBG_FLAG 0
 
-using namespace SVF;
-using namespace SVFUtil;
 using namespace llvm;
 using namespace std;
-
-llvm::raw_ostream &dbg = llvm::errs();
 
 //===----------------------------------------------------------------------===//
 // Command line options
 //===----------------------------------------------------------------------===//
 cl::opt<string> inputTaintFile("taint", cl::desc("<input file>"), cl::OneOrMore);
 
+llvm::raw_ostream &main_dbg = llvm::errs();
 
 namespace {
     
@@ -28,7 +26,7 @@ SetVector<Function*> buildWorklist(Module &M)
     for (auto &F : M)
     {
         #if DBG_FLAG
-        dbg << F.getName() << "\n";
+        main_dbg << F.getName() << "\n";
         #endif
         if (!(TLI.getLibFunc(F, intrinsicFuns))) {
             Result.insert(&F);
@@ -41,17 +39,22 @@ PreservedAnalyses WaterfallPass::run(Module &M,
                                   ModuleAnalysisManager &MM) {
     WaterfallPass waterfall;
     waterfall.funsWorklist = buildWorklist(M);
+    auto waterfallAnalysisResult = MM.getResult<WaterfallICFGAnalysis>(M);
     return PreservedAnalyses::all();
 }
 
 } // end of anonymous namespace
 
 
+void registerAnalyses(ModuleAnalysisManager &MAM) {
+    MAM.registerPass([&] { return WaterfallICFGAnalysis(); });   
+}
+
 // This part is the new way of registering your pass
 extern "C" ::llvm::PassPluginLibraryInfo LLVM_ATTRIBUTE_WEAK
 llvmGetPassPluginInfo() {
   return {
-    LLVM_PLUGIN_API_VERSION, "WaterfallPass", "v0.1", [](PassBuilder &PB) 
+    LLVM_PLUGIN_API_VERSION, "WaterfallPass", "v0.2", [](PassBuilder &PB) 
     {
       LoopAnalysisManager LAM;
       FunctionAnalysisManager FAM;
@@ -66,11 +69,13 @@ llvmGetPassPluginInfo() {
         ArrayRef<PassBuilder::PipelineElement>) {
           if(Name == "waterfall"){
             MPM.addPass(WaterfallPass());
+            MPM.addPass(WaterfallICFGAnalysisPass());
             return true;
           }
           return false;
         }
       );
+      PB.registerAnalysisRegistrationCallback(registerAnalyses); 
     }
   };
 }

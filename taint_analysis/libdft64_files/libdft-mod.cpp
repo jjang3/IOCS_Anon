@@ -534,7 +534,6 @@ dta_instrument_jmp_call(INS ins)
  *
  * @ins: paddr = physical address | eaddr = effective address
  */
-
 static void
 dta_tainted_mem_write(ADDRINT paddr, ADDRINT eaddr)
 {
