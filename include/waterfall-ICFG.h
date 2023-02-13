@@ -5,6 +5,7 @@
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Pass.h"
@@ -18,9 +19,16 @@
 #include "Graphs/ICFG.h"
 #include "Graphs/SVFG.h"
 
+#include <iostream>
+#include <regex>
+
 using namespace SVF;
 using namespace SVFUtil;
 using namespace llvm;
+
+std::vector<FunctionInfo> extractCallGraph(Module &M, PTACallGraph* inputCG);
+
+PTACallGraph *buildDTAInputGraph(SVFModule *input, ICFG *icfg);
 
 class WaterfallICFGAnalysis
     : public llvm::AnalysisInfoMixin<WaterfallICFGAnalysis> {

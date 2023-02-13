@@ -35,3 +35,6 @@ opt -load $LIB_DIR/lib/"lib"$2.so -load-pass-plugin $LIB_DIR/lib/"lib"$2.so -pas
 clang  -target aarch64-linux-gnu -march=armv8.5-a+memtag+rng $RESULTS_INPUT_DIR/"$1"_modified.ll $RESULTS_INPUT_DIR/shroud.o  -o $RESULTS_INPUT_DIR/"$1"_waterfall.out
 clang -g -target aarch64-linux-gnu -march=armv8.5-a+memtag+rng -fsanitize=memtag $RESULTS_INPUT_DIR/$1.ll -o $RESULTS_INPUT_DIR/"$1"_sanitized.out
 clang  -target aarch64-linux-gnu $RESULTS_INPUT_DIR/$1.ll -o $RESULTS_INPUT_DIR/$1_orig.out
+
+dot -Tpdf -O $RESULTS_INPUT_DIR/callgraph.dot
+#sfdp -x -Tpng -O $RESULTS_INPUT_DIR/callgraph.dot

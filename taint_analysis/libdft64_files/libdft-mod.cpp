@@ -9,6 +9,7 @@
 #include <fstream>
 #include <set>
 #include <stack>
+#include <string>
 
 #include "branch_pred.h"
 #include "libdft_api.h"
@@ -75,17 +76,19 @@ static KNOB<size_t> net(KNOB_MODE_WRITEONCE, "pintool", "n", "1", "");
 
 #if 1
 
-void callUnwinding(ADDRINT v, char *dis)
+void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 {
 	PIN_LockClient();
-	RTN callRtn = RTN_FindByAddress(v);
+	RTN callRtn = RTN_FindByAddress(callrtn_addr);
 	if (RTN_Valid(callRtn))
 	{
-		if (RTN_Name(callRtn) == ".plt.got" || RTN_Name(callRtn) == ".plt.sec" || RTN_Name(callRtn) == "_init")
-			return;
+		auto routineName = RTN_Name(callRtn);
+		string pltName = "@plt";
+		//if(strstr(routineName.c_str(),pltName.c_str()))
+		//	return;
 		RTN_Open(callRtn);
-		unwindStack.push(RTN_Name(callRtn).c_str());
-		cerr << "[*] " << RTN_Name(callRtn) << endl;
+		//unwindStack.push(RTN_Name(callRtn).c_str());
+		cerr << hex << ins_addr << " [*] " << RTN_Name(callRtn) << endl;
 		RTN_Close(callRtn);
 	}
 	PIN_UnlockClient();
@@ -134,7 +137,7 @@ VOID getMetadata(IMG img, void *v)
 					{
 						//auto OffsetAddress = (ADDRINT)INS_DirectBranchOrCallTargetAddress(ins) - (ADDRINT)IMG_LoadOffset;
 						//auto FindName = findRTNName(OffsetAddress);
-						INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)callUnwinding, IARG_BRANCH_TARGET_ADDR, IARG_PTR, instString->c_str(), IARG_END);
+						INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)callUnwinding, IARG_BRANCH_TARGET_ADDR, IARG_PTR, instString->c_str(), IARG_INST_PTR, IARG_END);
 					}
 				}
 				RTN_Close(rtn);
@@ -161,7 +164,7 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end()){
 		/* set the tag markings */ // << unwindStack.top() << " " << std::hex << ctx->arg[SYSCALL_ARG1]
 		//hex << ctx->arg[SYSCALL_ARG1] << "fd: " << ctx->arg[SYSCALL_ARG0] << " " << std::hex 
-		cerr << "\t► read(2) taint set "  << endl;
+		cerr << "\t► read(2) taint set " << endl;
 		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
 	}
 	else{
@@ -526,7 +529,6 @@ dta_instrument_jmp_call(INS ins)
 	}
 }
 
-
 /*
  * instrument the memory write instruction
  *
@@ -543,7 +545,7 @@ dta_tainted_mem_write(ADDRINT paddr, ADDRINT eaddr)
 		#if DBG_FLAG
 		printf("Tagged Mem Write (TMW)\n");
 		#endif
-		cerr << "\t▷ dta_mem_write()" << std::hex << " " << endl;
+		cerr << "\t▷ dta_mem_write() " << endl;
 		//fprintf(trace, "\tTMW: %s | %p", rtn_name.c_str(), (void *)ip);
 	}
 }
@@ -566,7 +568,6 @@ dta_tainted_mem_read(ADDRINT paddr, ADDRINT eaddr)
 VOID Instruction(INS ins, VOID* v)
 {
 	UINT32 memOperands = INS_MemoryOperandCount(ins);
- 
     // Iterate over each memory operand of the instruction.
     for (UINT32 memOp = 0; memOp < memOperands; memOp++)
     {
@@ -588,40 +589,6 @@ VOID Instruction(INS ins, VOID* v)
 		#endif 
     }
 }
-#endif
-
-#if 0
-
-void checkRtn(RTN inputFun)
-{
-	if (RTN_Valid(inputFun))
-	{
-		RTN_Open(inputFun);
-		// For each instruction of the routine
-		for (INS ins = RTN_InsHead(inputFun); INS_Valid(ins); ins = INS_Next(ins))
-		{
-			UINT32 MemOperands = INS_MemoryOperandCount(ins);
-			for (UINT32 MemOp = 0; MemOp < MemOperands; MemOp++) 
-			{
-				// Instructions have memory write
-				if (INS_MemoryOperandIsWritten(ins, MemOp)) 
-				{
-				//cerr << instString << endl;
-				INS_InsertPredicatedCall(ins, 
-								IPOINT_BEFORE,
-								(AFUNPTR)RecordMemWrite, 
-								IARG_INST_PTR,
-								IARG_MEMORYOP_EA, 
-								MemOp, 
-								IARG_END);
-				}	
-			}
-		}
-	}
-	RTN_Close(inputFun);
-}
-
-
 #endif
 
 /*
