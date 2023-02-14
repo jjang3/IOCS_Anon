@@ -57,6 +57,9 @@ std::ofstream TraceFile;
 uintptr_t offset_addr;
 
 static stack<const char*> unwindStack;
+static stack<const char*> routineStack;
+
+bool taintSrc = false;
 
 /*
  * flag variables
@@ -84,13 +87,20 @@ void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 	{
 		auto routineName = RTN_Name(callRtn);
 		string pltName = "@plt";
-		//if(strstr(routineName.c_str(),pltName.c_str()))
+		
+		//cerr << routineName << endl;
+		if(!(strstr(routineName.c_str(),pltName.c_str()))){
+			unwindStack.push(RTN_Name(callRtn).c_str());
+		}
+		else
+			routineStack.push(RTN_Name(callRtn).c_str());
 		//	return;
 		RTN_Open(callRtn);
-		//unwindStack.push(RTN_Name(callRtn).c_str());
+		
 		cerr << hex << ins_addr << " [*] " << RTN_Name(callRtn) << endl;
 		RTN_Close(callRtn);
 	}
+	taintSrc = false;
 	PIN_UnlockClient();
 }
 
@@ -164,8 +174,12 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end()){
 		/* set the tag markings */ // << unwindStack.top() << " " << std::hex << ctx->arg[SYSCALL_ARG1]
 		//hex << ctx->arg[SYSCALL_ARG1] << "fd: " << ctx->arg[SYSCALL_ARG0] << " " << std::hex 
-		cerr << "\t► read(2) taint set " << endl;
+		cerr << "\t► read(2) taint set | " << unwindStack.top() << endl;
+		taintSrc = true;
+		//fprintf(trace, "\tTMW: %s | %p\n", rtn_name.c_str(), (void *)ip);
+		cerr << "\t - Routine: " << routineStack.top() << endl;
 		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
+		unwindStack.pop();
 	}
 	else{
 		/* clear the tag markings */
@@ -210,8 +224,9 @@ post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
 		/* taint interesting data and zero everything else */	
 		if (it != fdset.end()) { 
 			/* set the tag markings */
-			cerr << "\t► readv(2) taint set " << endl;
+			cerr << "\t► readv(2) taint set | " << unwindStack.top() << endl;
 			tagmap_setn((size_t)iov->iov_base, iov_tot, TAG);
+			unwindStack.pop();
 		}
 		else {
 			/* clear the tag markings */
@@ -277,8 +292,9 @@ post_recvfrom_hook(THREADID tid, syscall_ctx_t *ctx)
 	if (fdset.find((int)ctx->arg[SYSCALL_ARG0]) != fdset.end())
 	{
 		/* set the tag markings */
-		cerr << "\t► recvfrom(2) taint set " << unwindStack.top() << endl;
+		cerr << "\t► recvfrom(2) taint set | " << unwindStack.top() << endl;
 		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
+		unwindStack.pop();
 		//printf("tag the buffer\n");
 	}
 	else
@@ -344,9 +360,10 @@ post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 		/* taint-source */
 		if (it != fdset.end()){
 			/* set the tag markings */
-			cerr << "\t► recvmsg(2) taint set " << unwindStack.top() << endl;
+			cerr << "\t► recvmsg(2) taint set | " << unwindStack.top() << endl;
 			tagmap_setn((size_t)msg->msg_control,
 				msg->msg_controllen, TAG);
+			unwindStack.pop();
 		}
 		else
 			/* clear the tag markings */
@@ -376,9 +393,10 @@ post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 		/* taint-source */	
 		if (it != fdset.end()) {
 			/* set the tag markings */
-			cerr << "\t► recvmsg(2) taint set " << unwindStack.top() << endl;
+			cerr << "\t► recvmsg(2) taint set | " << unwindStack.top() << endl;
 			tagmap_setn((size_t)iov->iov_base,
 						iov_tot, TAG);
+			unwindStack.pop();
 		}
 		else
 			/* clear the tag markings */
@@ -388,7 +406,7 @@ post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 		/* housekeeping */
 		tot -= iov_tot;
 	}
-	printf("tag the buffer\n");
+	//printf("tag the buffer\n");
 }
 #endif
 
@@ -545,7 +563,8 @@ dta_tainted_mem_write(ADDRINT paddr, ADDRINT eaddr)
 		#if DBG_FLAG
 		printf("Tagged Mem Write (TMW)\n");
 		#endif
-		cerr << "\t▷ dta_mem_write() " << endl;
+		if (taintSrc == false)
+			cerr << "\t▷ dta_mem_write() " << endl;
 		//fprintf(trace, "\tTMW: %s | %p", rtn_name.c_str(), (void *)ip);
 	}
 }
@@ -671,6 +690,11 @@ static void post_openat_hook(THREADID tid, syscall_ctx_t *ctx)
 		fdset.insert((int)ctx->ret);
 }
 
+VOID Fini(INT32 code, VOID *v)
+{
+	fclose(trace);	
+}
+
 /* 
  * DTA
  *
@@ -737,7 +761,6 @@ main(int argc, char **argv)
 				post_openat_hook);
 	}
 
-
 	// ---------- Taint sinks ---------- //
 	/* 
 	 * handle control transfer instructions
@@ -759,9 +782,10 @@ main(int argc, char **argv)
 			dta_instrument_ret);
 	#endif
 
+	PIN_AddFiniFunction(Fini, 0);
+
 	/* start Pin */
 	PIN_StartProgram();
-
 	/* typically not reached; make the compiler happy */
 	return EXIT_SUCCESS;
 
