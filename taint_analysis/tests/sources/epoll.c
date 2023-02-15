@@ -156,6 +156,8 @@ void process_new_data(int fd)
 			process_more_tainted_data(buf);
 		else if (!strcmp(buf, "unreachable"))
 			dynamically_unreachable(buf);
+		else if (!strcmp(buf, "exit"))
+			exit(1);
 	}
 
 	printf("Close connection on descriptor: %d\n", fd);

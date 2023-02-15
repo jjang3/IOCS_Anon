@@ -31,7 +31,11 @@ using std::endl;
 /* default suffixes for dynamic shared libraries */
 #define DLIB_SUFF	".so"
 #define DLIB_SUFF_ALT	".so."
-#define	TAG 	0x01U
+
+
+static std::map<int, uint8_t> fd2tag;
+#define	MAX_TAG 	  0x10U
+uint8_t NEXT_TAG 	= 0x01;
 
 #define DBG_FLAG 0
 
@@ -58,6 +62,7 @@ uintptr_t offset_addr;
 
 static stack<const char*> unwindStack;
 static stack<const char*> routineStack;
+static stack<ADDRINT> addressStack;
 
 bool taintSrc = false;
 
@@ -91,9 +96,12 @@ void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 		//cerr << routineName << endl;
 		if(!(strstr(routineName.c_str(),pltName.c_str()))){
 			unwindStack.push(RTN_Name(callRtn).c_str());
+			addressStack.push(ins_addr);
 		}
-		else
+		else{
 			routineStack.push(RTN_Name(callRtn).c_str());
+			addressStack.push(ins_addr);
+		}
 		//	return;
 		RTN_Open(callRtn);
 		
@@ -166,17 +174,28 @@ VOID getMetadata(IMG img, void *v)
 static void
 post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 {
+	uint8_t TAG;
+	
 	/* read() was not successful; optimized branch */
 	if (unlikely((long)ctx->ret <= 0))
 			return;
 
 	/* taint-source */
 	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end()){
+		if(!fd2tag[ctx->arg[SYSCALL_ARG0]]) {
+			TAG = NEXT_TAG;
+			fd2tag[ctx->arg[SYSCALL_ARG0]] = TAG;
+			if(NEXT_TAG < MAX_TAG) NEXT_TAG <<= 1;
+		} else {
+			/* reuse color of file with same fd which was opened previously */
+			TAG = fd2tag[ctx->arg[SYSCALL_ARG0]];
+		}
 		/* set the tag markings */ // << unwindStack.top() << " " << std::hex << ctx->arg[SYSCALL_ARG1]
 		//hex << ctx->arg[SYSCALL_ARG1] << "fd: " << ctx->arg[SYSCALL_ARG0] << " " << std::hex 
 		cerr << "\t► read(2) taint set | " << unwindStack.top() << endl;
 		taintSrc = true;
-		//fprintf(trace, "\tTMW: %s | %p\n", rtn_name.c_str(), (void *)ip);
+		// \nCurr Fun: %s\n\t  unwindStack.top()
+		fprintf(trace, "Taint source: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), TAG);
 		cerr << "\t - Routine: " << routineStack.top() << endl;
 		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
 		unwindStack.pop();
@@ -186,6 +205,7 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 		cerr << "\t► read(2) taint clear " << endl;
 		tagmap_clrn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret);
 	}
+	
 }
 
 /*
@@ -194,6 +214,7 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 static void
 post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
 {
+	uint8_t TAG;
 	/* iterators */
 	int i;
 	struct iovec *iov;
@@ -211,7 +232,14 @@ post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
 	
 	/* get the descriptor */
 	it = fdset.find((int)ctx->arg[SYSCALL_ARG0]);
-
+	if(!fd2tag[ctx->arg[SYSCALL_ARG0]]) {
+		TAG = NEXT_TAG;
+		fd2tag[ctx->arg[SYSCALL_ARG0]] = TAG;
+		if(NEXT_TAG < MAX_TAG) NEXT_TAG <<= 1;
+	} else {
+		/* reuse color of file with same fd which was opened previously */
+		TAG = fd2tag[ctx->arg[SYSCALL_ARG0]];
+	}
 	/* iterate the iovec structures */
 	for (i = 0; i < (int)ctx->arg[SYSCALL_ARG2] && tot > 0; i++) {
 		/* get an iovec  */
@@ -284,13 +312,22 @@ post_accept_hook(THREADID tid, syscall_ctx_t *ctx)
 static void 
 post_recvfrom_hook(THREADID tid, syscall_ctx_t *ctx)
 {
-  /* not successful; optimized branch */
+	uint8_t TAG;
+  	/* not successful; optimized branch */
 	if (unlikely((long)ctx->ret <= 0))
 		return;
 	
 	/* taint-source */	
 	if (fdset.find((int)ctx->arg[SYSCALL_ARG0]) != fdset.end())
 	{
+		if(!fd2tag[ctx->arg[SYSCALL_ARG0]]) {
+			TAG = NEXT_TAG;
+			fd2tag[ctx->arg[SYSCALL_ARG0]] = TAG;
+			if(NEXT_TAG < MAX_TAG) NEXT_TAG <<= 1;
+		} else {
+			/* reuse color of file with same fd which was opened previously */
+			TAG = fd2tag[ctx->arg[SYSCALL_ARG0]];
+		}
 		/* set the tag markings */
 		cerr << "\t► recvfrom(2) taint set | " << unwindStack.top() << endl;
 		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
@@ -321,7 +358,8 @@ post_recvfrom_hook(THREADID tid, syscall_ctx_t *ctx)
 static void 
 post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 {
-  /* message header; recvmsg(2) */
+	uint8_t TAG;
+  	/* message header; recvmsg(2) */
 	struct msghdr *msg;
 
 	/* iov bytes copied; recvmsg(2) */
@@ -355,6 +393,14 @@ post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 				sizeof(int));
 	}
 
+	if(!fd2tag[ctx->arg[SYSCALL_ARG0]]) {
+		TAG = NEXT_TAG;
+		fd2tag[ctx->arg[SYSCALL_ARG0]] = TAG;
+		if(NEXT_TAG < MAX_TAG) NEXT_TAG <<= 1;
+	} else {
+		/* reuse color of file with same fd which was opened previously */
+		TAG = fd2tag[ctx->arg[SYSCALL_ARG0]];
+	}
 	/* ancillary data specified */
 	if (msg->msg_control != NULL) {
 		/* taint-source */
@@ -558,13 +604,17 @@ static void
 dta_tainted_mem_write(ADDRINT paddr, ADDRINT eaddr)
 {
 	// print when addr is tagged.
+	
 	if (tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8))
 	{
+		auto tag_val = tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8);
 		#if DBG_FLAG
 		printf("Tagged Mem Write (TMW)\n");
 		#endif
-		if (taintSrc == false)
+		if (taintSrc == false){
 			cerr << "\t▷ dta_mem_write() " << endl;
+			fprintf(trace, "\tTaint sink: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), tag_val);
+		}
 		//fprintf(trace, "\tTMW: %s | %p", rtn_name.c_str(), (void *)ip);
 	}
 }

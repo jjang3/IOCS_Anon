@@ -7,6 +7,13 @@ TEST_DIR=$PARENT_DIR/tests
 SOURCE_DIR=$TEST_DIR/sources
 CC=clang
 
+
+exitfn () {
+    trap SIGINT              # Restore signal handling for SIGINT
+    echo; echo 'Aarghh!!'    # Growl at user,
+    exit                     #   then exit script.
+}
+
 usr_int(){
 
 if [ ! -d "$RESULTS_DIR" ]; then
@@ -27,4 +34,3 @@ if [ ! -d "$RESULTS_DIR" ]; then
 fi
 
 mv dft.out $RESULTS_DIR
-
