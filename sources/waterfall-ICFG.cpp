@@ -82,6 +82,21 @@ PTACallGraph *buildDTAInputGraph(SVFModule *input, PTACallGraph *PTACG)
     return output;
 }
 
+vector<ICFGNode*> getAllICFGStartPoints(ICFG* icfg) {
+	int counter = 1;
+	vector<ICFGNode*> startingPoints;
+	for(ICFG::iterator i = icfg->begin(); i != icfg->end(); i++) {
+		ICFGNode* node = i->second;
+		if (!node->hasIncomingEdge()) {
+			unordered_set<NodeID> visited;
+			// SVFUtil::outs() << "STARTPOINT COUNTER: " << counter << "\n";
+			startingPoints.push_back(node);
+			counter++;
+		}
+	}
+	return startingPoints;
+}
+
 // Definition of the run function of the analysis.
 // Here the actual stuff happens!!!
 WaterfallICFGAnalysis::Result 
@@ -106,9 +121,15 @@ WaterfallICFGAnalysis::Result
     SVFIRBuilder builder(svfModule);
     SVFIR* pag = builder.build();
     ICFG *icfg = pag->getICFG();
-    //icfg->dump(graphName);
+    icfg->dump(graphName);
     //pag->dump(graphName);
     // iterate each ICFGNode on ICFG
+    vector<ICFGNode*> startingPoints = getAllICFGStartPoints(icfg);
+    for (auto item : startingPoints)
+    {
+        //SVFUtil::outs() << item->toString() << "\n";
+    }
+    #if 1
     for(ICFG::iterator inode = icfg->begin(); inode != icfg->end(); inode++)
     {
         ICFGNode *n = inode->second;
@@ -116,16 +137,29 @@ WaterfallICFGAnalysis::Result
         // for(ICFGEdge* edge : n->getOutEdges()){
         //     SVFUtil::outs() << edge->toString() << "\n";
         // }
+        #if 0
+        
+        else if (SVFUtil::isa<IntraICFGNode>(n))
+        {
+            icfg_dbg << "IntraICFG: " << n->toString().c_str() << "\n";
+        }
+        #endif
+        #if 1
         if (SVFUtil::isa<FunEntryICFGNode>(n))
         {
             icfg_dbg << "Fun entry: " << n->toString().c_str() << "\n";
         }
         if (SVFUtil::isa<CallICFGNode>(n)) { 
             CallICFGNode* callNode =  SVFUtil::cast<CallICFGNode>(n);
-            const SVFInstruction* svfInst = callNode->getCallSite();
-            icfg_dbg << svfInst->toString().c_str() << "\n";
-        }          
+            if (callNode->getSVFStmts().empty())
+                icfg_dbg << callNode->toString().c_str() << " " <<  callNode->getCallSite()->toString().c_str() << "\n";
+            //const SVFInstruction* svfInst = callNode->getCallSite();
+            //auto sourceLoc =  callNode->getCallSite()->getFunction()->getSourceLoc();
+            //icfg_dbg << svfInst->toString().c_str() << " Line number: " << sourceLoc << "\n";
+        } 
+        #endif         
     }
+    #endif
     /// Create Andersen's pointer analysis
     //Andersen* ander = AndersenWaveDiff::createAndersenWaveDiff(pag);
     //ander->getPTACallGraph()->dump(graphName);

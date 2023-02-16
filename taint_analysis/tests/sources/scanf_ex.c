@@ -11,6 +11,12 @@ void bar (char **input) {
     scanf("%s", input_scanf);
     strcpy(*input, input_scanf);
     printf("scanf: %s\n", *input);
+    if (strcmp(*input, "second") == 0)
+    {
+        printf("Second scanf\n");
+        scanf("%s", *input);
+        printf("New output: %s\n", *input);
+    }
 }
 
 void foo(char **input) {

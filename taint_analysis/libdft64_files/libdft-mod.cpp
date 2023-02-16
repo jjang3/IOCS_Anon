@@ -77,7 +77,7 @@ bool taintSrc = false;
 static KNOB<size_t> stdin_(KNOB_MODE_WRITEONCE, "pintool", "s", "1", "");
 
 /* track fs (enabled by default) */
-static KNOB<size_t> fs(KNOB_MODE_WRITEONCE, "pintool", "f", "0", "");
+static KNOB<size_t> fs(KNOB_MODE_WRITEONCE, "pintool", "f", "1", "");
 
 /* track net (enabled by default) */
 static KNOB<size_t> net(KNOB_MODE_WRITEONCE, "pintool", "n", "1", "");
@@ -618,17 +618,21 @@ dta_tainted_mem_write(ADDRINT paddr, ADDRINT eaddr)
 		//fprintf(trace, "\tTMW: %s | %p", rtn_name.c_str(), (void *)ip);
 	}
 }
-#if 0
+#if 1
 static void
 dta_tainted_mem_read(ADDRINT paddr, ADDRINT eaddr)
 {
 	// print when addr is tagged.
 	if (tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8))
 	{
+		auto tag_val = tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8);
 		#if DBG_FLAG
-		printf("Tagged Mem Write (TMW)\n");
+		printf("Tagged Mem Read (TMR)\n");
 		#endif
-		cerr << "\t▷ dta_mem_read()" << std::hex << " " << endl;
+		if (taintSrc == false){
+			cerr << "\t▷ dta_mem_read()" << std::hex << " " << endl;
+			fprintf(trace, "\tTaint sink: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), tag_val);
+		}
 		//fprintf(trace, "\tTMW: %s | %p", rtn_name.c_str(), (void *)ip);
 	}
 }
@@ -648,7 +652,7 @@ VOID Instruction(INS ins, VOID* v)
             INS_InsertPredicatedCall(ins, IPOINT_BEFORE, (AFUNPTR)dta_tainted_mem_write, IARG_INST_PTR, IARG_MEMORYOP_EA, memOp,
                                      IARG_END);
         }
-		#if 0
+		#if 1
 		// Disabling this for now as there is no need to check on whether tagged memory is written.
 		if (INS_MemoryOperandIsRead(ins, memOp))
         {
@@ -656,6 +660,7 @@ VOID Instruction(INS ins, VOID* v)
                                      IARG_END);
         }
 		#endif 
+		 // UNUSED
     }
 }
 #endif
@@ -737,7 +742,10 @@ static void post_openat_hook(THREADID tid, syscall_ctx_t *ctx)
 	
 	/* add the fd of the document to the fdset */
 	if (strstr((char *)ctx->arg[SYSCALL_ARG1], FILE_NAME) != NULL)
+	{
+		// cerr << "Open fd: " << (int)ctx->ret << endl;
 		fdset.insert((int)ctx->ret);
+	}
 }
 
 VOID Fini(INT32 code, VOID *v)

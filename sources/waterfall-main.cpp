@@ -37,6 +37,13 @@ SetVector<Function*> buildWorklist(Module &M)
 
 PreservedAnalyses WaterfallPass::run(Module &M, 
                                   ModuleAnalysisManager &MM) {
+    // Parsing input list file:
+    std::ifstream infile(inputTaintFile);
+    main_dbg << "Parsing taint file\n";
+    for( std::string line; getline( infile, line ); )
+    {
+      main_dbg << line << "\n";
+    }
     WaterfallPass waterfall;
     waterfall.funsWorklist = buildWorklist(M);
     auto waterfallAnalysisResult = MM.getResult<WaterfallICFGAnalysis>(M);
