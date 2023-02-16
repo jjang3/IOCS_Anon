@@ -60,7 +60,6 @@ with open(in_file, "r") as infile:
                 tainted_sinks[addr_int] = taint_fun
                 #print("Sink", taint_fun, addr_int)
 
-
 for fun_class in fun_class_set:
     for addr in fun_class.addr_range:
         for src in tainted_sources:
@@ -71,9 +70,17 @@ for fun_class in fun_class_set:
                 fun_class.taint_sinks.add(tainted_sinks[sink])
     if len(fun_class.taint_srcs) != 0 or len(fun_class.taint_sinks) != 0 :
         print(fun_class.name, fun_class.taint_srcs, fun_class.taint_sinks)
+        entry_write = "Entry: " + fun_class.name + "\n"
+        out_file_open.write(entry_write)
+        src_write = "\tSources: { " 
+        for src in fun_class.taint_srcs:
+            src_write += src + " "
+        src_write += "}" + "\n"
+        sink_write = "\tSinks: { " 
+        for sink in fun_class.taint_sinks:
+            sink_write += sink + " "
+        sink_write += "}" + "\n"
+        out_file_open.write(src_write)
+        out_file_open.write(sink_write)
 
-
-"""
-    start_addr = ""
-        
-"""
+out_file_open.close()
