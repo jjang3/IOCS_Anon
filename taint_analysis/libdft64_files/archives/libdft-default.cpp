@@ -3,13 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <unistd.h>
-
-#include <iostream>
-#include <fstream>
 #include <set>
-#include <stack>
-#include <string>
+#include <unistd.h>
 
 #include "branch_pred.h"
 #include "libdft_api.h"
@@ -19,9 +14,6 @@
 #include "ins_helper.h"
 
 using namespace std;
-
-using std::cerr;
-using std::endl;
 
 #define WORD_LEN	4	/* size in bytes of a word value */
 
@@ -427,17 +419,14 @@ dta_instrument_ret(INS ins)
 static void
 post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 {
-        /* read() was not successful; optimized branch */
-        if (unlikely((long)ctx->ret <= 0))
-                return;
+	/* read() was not successful; optimized branch */
+	if (unlikely((long)ctx->ret <= 0))
+			return;
 	
 	/* taint-source */
-	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end()){
+	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end())
         	/* set the tag markings */
-            cerr << "Taint set read\n";
-
-            printf("Taint set read\n");
-	        tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);}
+	        tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
 	else
         	/* clear the tag markings */
 	        tagmap_clrn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret);
@@ -477,10 +466,9 @@ post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
 			(size_t)iov->iov_len : tot;
 	
 		/* taint interesting data and zero everything else */	
-		if (it != fdset.end()){
+		if (it != fdset.end())
                 	/* set the tag markings */
-                    cerr << "Taint set readv\n";
-                	tagmap_setn((size_t)iov->iov_base, iov_tot, TAG);}
+                	tagmap_setn((size_t)iov->iov_base, iov_tot, TAG);
 		else
                 	/* clear the tag markings */
                 	tagmap_clrn((size_t)iov->iov_base, iov_tot);
@@ -504,7 +492,6 @@ static void post_socket_hook(THREADID tid, syscall_ctx_t *ctx)
 	/* add the socket fd to the socketset */
 	if (likely(ctx->arg[SYSCALL_ARG0] == PF_INET || ctx->arg[SYSCALL_ARG0] == PF_INET6))
 	{
-        cerr << "fd add socketz\n";
 		fdset.insert((int)ctx->ret);
 		//printf("fdset insert\n");
 	}
@@ -521,10 +508,9 @@ static void post_accept_hook(THREADID tid, syscall_ctx_t *ctx)
 	if (unlikely((long)ctx->ret < 0))
 				return;
   /* add the socket fd to the socketset */
-	if (likely(fdset.find(ctx->arg[SYSCALL_ARG0]) !=fdset.end())){
-         cerr << "fd add accept\n";
+	if (likely(fdset.find(ctx->arg[SYSCALL_ARG0]) !=fdset.end()))
 		fdset.insert((int)ctx->ret);
-}}
+}
 
 /*
  * recvfrom() syscall post hook(source)
@@ -541,9 +527,8 @@ static void post_recvfrom_hook(THREADID tid, syscall_ctx_t *ctx)
 	if (fdset.find((int)ctx->arg[SYSCALL_ARG0]) != fdset.end())
 	{
 		/* set the tag markings */
-        printf("Taint set recvfrom\n");
 		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
-		printf("tag the buffer\n");
+		//printf("tag the buffer\n");
 	}
 	else
 		/* clear the tag markings */
@@ -605,11 +590,10 @@ static void post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 			/* ancillary data specified */
 			if (msg->msg_control != NULL) {
 				/* taint-source */
-				if (it != fdset.end()){
+				if (it != fdset.end())
 					/* set the tag markings */
-                    cerr << "Taint set recvmsg\n";
 					tagmap_setn((size_t)msg->msg_control,
-						msg->msg_controllen, TAG);}
+						msg->msg_controllen, TAG);
 					
 				else
 					/* clear the tag markings */
@@ -637,11 +621,10 @@ static void post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 						(size_t)iov->iov_len : tot;
 				
 				/* taint-source */	
-				if (it != fdset.end()){
+				if (it != fdset.end())
 					/* set the tag markings */
-                    cerr << "Taint set recvmsg\n";
 					tagmap_setn((size_t)iov->iov_base,
-								iov_tot, TAG);}
+								iov_tot, TAG);
 				else
 					/* clear the tag markings */
 					tagmap_clrn((size_t)iov->iov_base,
@@ -671,9 +654,8 @@ post_dup_hook(THREADID tid, syscall_ctx_t *ctx)
 	 * interesting, the returned handle is
 	 * also interesting
 	 */
-	if (likely(fdset.find((int)ctx->arg[SYSCALL_ARG0]) != fdset.end())){
-        cerr << "fd add dup\n";
-		fdset.insert((int)ctx->ret);}
+	if (likely(fdset.find((int)ctx->arg[SYSCALL_ARG0]) != fdset.end()))
+		fdset.insert((int)ctx->ret);
 }
 
 /*
@@ -720,7 +702,6 @@ post_open_hook(THREADID tid, syscall_ctx_t *ctx)
 	if (unlikely((long)ctx->ret < 0))
 		return;
 	
-    cerr << "post open hook\n";
 	/* ignore dynamic shared libraries */
 	if (strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF) == NULL &&
 		strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF_ALT) == NULL)

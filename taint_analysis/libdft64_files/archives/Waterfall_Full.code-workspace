@@ -11,6 +11,9 @@
 		},
 		{
 			"path": "../../../../Waterfall_iso"
+		},
+		{
+			"path": "../../../../Downloads/nginx-1.3.9"
 		}
 	],
 	"settings": {

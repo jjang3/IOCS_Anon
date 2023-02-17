@@ -31,11 +31,27 @@ using std::endl;
 /* default suffixes for dynamic shared libraries */
 #define DLIB_SUFF	".so"
 #define DLIB_SUFF_ALT	".so."
-
+#if 0
+static tag_traits<tag_t>::type dta_tag = 1;
+/* socket related syscalls */
+static int sock_syscalls[] = {
+	__NR_socket,
+	__NR_accept,
+	__NR_accept4,
+	__NR_getsockname,
+	__NR_getpeername,
+	__NR_socketpair,
+	__NR_recvfrom,
+	__NR_getsockopt,
+	__NR_recvmsg,
+	__NR_recvmmsg,
+};
+#endif
 
 static std::map<int, uint8_t> fd2tag;
 #define	MAX_TAG 	  0x10U
 uint8_t NEXT_TAG 	= 0x01;
+/* the tag value used for tainting */
 
 #define DBG_FLAG 0
 
@@ -104,8 +120,9 @@ void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 		}
 		//	return;
 		RTN_Open(callRtn);
-		
+		#if DBG_FLAG
 		cerr << hex << ins_addr << " [*] " << RTN_Name(callRtn) << endl;
+		#endif
 		RTN_Close(callRtn);
 	}
 	taintSrc = false;
@@ -139,7 +156,7 @@ VOID getMetadata(IMG img, void *v)
 		{
 			string undFuncName = PIN_UndecorateSymbolName(SYM_Name(sym), UNDECORATION_NAME_ONLY);
 			RTN rtn = RTN_FindByAddress(imgLoadOffset + SYM_Value(sym));
-			#if 1
+			#if DBG_FLAG
 			//const char* UndecoratedFuncName = PIN_UndecorateSymbolName(SYM_Name(sym), UNDECORATION_NAME_ONLY).c_str();
 			cerr << "[*] " << hex << "0x" << RTN_Address(rtn) << "\t" << undFuncName << endl;
 			#endif
@@ -180,6 +197,7 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 	if (unlikely((long)ctx->ret <= 0))
 			return;
 
+	cerr << "FD: " << ctx->arg[SYSCALL_ARG0] << endl;
 	/* taint-source */
 	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end()){
 		if(!fd2tag[ctx->arg[SYSCALL_ARG0]]) {
@@ -276,6 +294,8 @@ post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
 static void 
 post_socket_hook(THREADID tid, syscall_ctx_t *ctx) 
 {
+
+	cerr << "Socket FD: " << (int)ctx->ret << endl;
   /* sanity check */
 	if (unlikely((long)ctx->ret < 0))
 				return;
@@ -303,6 +323,45 @@ post_accept_hook(THREADID tid, syscall_ctx_t *ctx)
 	if (likely(fdset.find(ctx->arg[SYSCALL_ARG0]) !=fdset.end()))
 		fdset.insert((int)ctx->ret);
 }
+
+
+
+/*
+ *
+ */
+static void 
+post_sockpeer_hook(THREADID tid, syscall_ctx_t *ctx)
+{
+  if (unlikely((long)ctx->ret < 0))
+				return;
+	/* addr argument is provided */
+	if ((void *)ctx->arg[SYSCALL_ARG1] != NULL) {
+		cerr << "\t► sock/peer(2) taint clear " << endl;
+		/* clear the tag bits */
+		tagmap_clrn(ctx->arg[SYSCALL_ARG1],
+			*((int *)ctx->arg[SYSCALL_ARG2]));
+		
+		/* clear the tag bits */
+		tagmap_clrn(ctx->arg[SYSCALL_ARG2], sizeof(int));
+	}
+}
+
+/*
+ *
+ */
+static void 
+post_socketpair_hook(THREADID tid, syscall_ctx_t *ctx)
+{
+  	/* not successful; optimized branch */
+	if (unlikely((long)ctx->ret < 0))
+		return;
+
+	cerr << "\t► socketpair(2) taint clear " << endl;
+	/* clear the tag bits */
+	tagmap_clrn(ctx->arg[SYSCALL_ARG3], (sizeof(int) * 2));
+}
+
+
 
 /*
  * recvfrom() syscall post hook(source)
@@ -334,13 +393,16 @@ post_recvfrom_hook(THREADID tid, syscall_ctx_t *ctx)
 		unwindStack.pop();
 		//printf("tag the buffer\n");
 	}
-	else
+	else {
 		/* clear the tag markings */
+		cerr << "\t► recvfrom(2) taint clear " << endl;
 		tagmap_clrn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret);
+	}
 
 	/* sockaddr argument is specified */
 	if ((void *)ctx->arg[SYSCALL_ARG4] != NULL)
 	{
+		cerr << "\t► recvfrom(2) taint clear " << endl;
 		/* clear the tag bits */
 		tagmap_clrn(ctx->arg[SYSCALL_ARG4], *((int *)ctx->arg[SYSCALL_ARG5]));
 				
@@ -349,8 +411,25 @@ post_recvfrom_hook(THREADID tid, syscall_ctx_t *ctx)
 	}
 }
 
-
 /*
+ * recvfrom() syscall post hook(source)
+ *
+ * tag the buffer
+ */
+static void 
+post_getsockopt_hook(THREADID tid, syscall_ctx_t *ctx)
+{
+	if (unlikely((long)ctx->ret < 0))
+		return;
+		
+	cerr << "\t► getsockopt(2) taint clear " << endl;
+	/* clear the tag bits */
+	tagmap_clrn(ctx->arg[SYSCALL_ARG3],
+			*((int *)ctx->arg[SYSCALL_ARG4]));
+	
+	/* clear the tag bits */
+	tagmap_clrn(ctx->arg[SYSCALL_ARG4], sizeof(int));
+}/*
  * recvmsg() syscall post hook(source)
  *
  * tag the buffer
@@ -664,7 +743,212 @@ VOID Instruction(INS ins, VOID* v)
     }
 }
 #endif
+#if 0
+/*
+ * socketcall(2) handler
+ *
+ * attach taint-sources in the following
+ * syscalls:
+ * 	socket(2), accept(2), recv(2),
+ * 	recvfrom(2), recvmsg(2)
+ *
+ * everything else is left intact in order
+ * to avoid taint-leaks
+ */
+static void
+post_socketcall_hook(THREADID tid, syscall_ctx_t *ctx)
+{
+	/* message header; recvmsg(2) */
+	struct msghdr *msg;
 
+	/* iov bytes copied; recvmsg(2) */
+	size_t iov_tot;
+
+	/* iterators */
+	size_t i;
+	struct iovec *iov;
+	std::set<int>::iterator it;
+	
+	/* total bytes received */
+	size_t tot;
+	
+	/* socket call arguments */
+	unsigned long *args = (unsigned long *)ctx->arg[SYSCALL_ARG0];
+
+	/* demultiplex the socketcall */
+	switch (ctx->nr) {
+		case __NR_socket:
+			/* not successful; optimized branch */
+			if (unlikely((long)ctx->ret < 0))
+				return;
+
+			/*
+			 * PF_INET and PF_INET6 descriptors are
+			 * considered interesting
+			 */
+			if (likely(args[SYSCALL_ARG0] == PF_INET ||
+				args[SYSCALL_ARG0] == PF_INET6))
+				/* add the descriptor to the monitored set */
+				fdset.insert((int)ctx->ret);
+
+			/* done */
+			break;
+		case __NR_accept:
+		case __NR_accept4:
+			/* not successful; optimized branch */
+			if (unlikely((long)ctx->ret < 0))
+				return;
+			/*
+			 * if the socket argument is interesting,
+			 * the returned handle of accept(2) is also
+			 * interesting
+			 */
+			if (likely(fdset.find(args[SYSCALL_ARG0]) !=
+						fdset.end()))
+				/* add the descriptor to the monitored set */
+				fdset.insert((int)ctx->ret);
+		case __NR_getsockname:
+		case __NR_getpeername:
+			/* not successful; optimized branch */
+			if (unlikely((long)ctx->ret < 0))
+				return;
+
+			/* addr argument is provided */
+			if ((void *)args[SYSCALL_ARG1] != NULL) {
+				/* clear the tag bits */
+				tagmap_clrn(args[SYSCALL_ARG1],
+					*((int *)args[SYSCALL_ARG2]));
+				
+				/* clear the tag bits */
+				tagmap_clrn(args[SYSCALL_ARG2], sizeof(int));
+			}
+			break;
+		case __NR_socketpair:
+			/* not successful; optimized branch */
+			if (unlikely((long)ctx->ret < 0))
+				return;
+	
+			/* clear the tag bits */
+			tagmap_clrn(args[SYSCALL_ARG3], (sizeof(int) * 2));
+			break;
+		case __NR_recvfrom:
+			/* not successful; optimized branch */
+			if (unlikely((long)ctx->ret <= 0))
+				return;
+	
+			/* taint-source */	
+			if (fdset.find((int)args[SYSCALL_ARG0]) != fdset.end())
+				/* set the tag markings */
+				tagmap_setn(args[SYSCALL_ARG1],
+						(size_t)ctx->ret,
+						dta_tag);
+			else
+				/* clear the tag markings */
+				tagmap_clrn(args[SYSCALL_ARG1],
+						(size_t)ctx->ret);
+
+			/* sockaddr argument is specified */
+			if ((void *)args[SYSCALL_ARG4] != NULL) {
+				/* clear the tag bits */
+				tagmap_clrn(args[SYSCALL_ARG4],
+					*((int *)args[SYSCALL_ARG5]));
+				
+				/* clear the tag bits */
+				tagmap_clrn(args[SYSCALL_ARG5], sizeof(int));
+			}
+			break;
+		case __NR_getsockopt:
+			/* not successful; optimized branch */
+			if (unlikely((long)ctx->ret < 0))
+				return;
+	
+			/* clear the tag bits */
+			tagmap_clrn(args[SYSCALL_ARG3],
+					*((int *)args[SYSCALL_ARG4]));
+			
+			/* clear the tag bits */
+			tagmap_clrn(args[SYSCALL_ARG4], sizeof(int));
+			break;
+		case __NR_recvmsg:
+			/* not successful; optimized branch */
+			if (unlikely((long)ctx->ret <= 0))
+				return;
+			
+			/* get the descriptor */
+			it = fdset.find((int)ctx->arg[SYSCALL_ARG0]);
+
+			/* extract the message header */
+			msg = (struct msghdr *)args[SYSCALL_ARG1];
+
+			/* source address specified */
+			if (msg->msg_name != NULL) {
+				/* clear the tag bits */
+				tagmap_clrn((size_t)msg->msg_name,
+					msg->msg_namelen);
+				
+				/* clear the tag bits */
+				tagmap_clrn((size_t)&msg->msg_namelen,
+						sizeof(int));
+			}
+			
+			/* ancillary data specified */
+			if (msg->msg_control != NULL) {
+				/* taint-source */
+				if (it != fdset.end())
+					/* set the tag markings */
+					tagmap_setn((size_t)msg->msg_control,
+						msg->msg_controllen,
+						dta_tag);
+					
+				else
+					/* clear the tag markings */
+					tagmap_clrn((size_t)msg->msg_control,
+						msg->msg_controllen);
+					
+				/* clear the tag bits */
+				tagmap_clrn((size_t)&msg->msg_controllen,
+						sizeof(int));
+			}
+			
+			/* flags; clear the tag bits */
+			tagmap_clrn((size_t)&msg->msg_flags, sizeof(int));	
+			
+			/* total bytes received */	
+			tot = (size_t)ctx->ret;
+
+			/* iterate the iovec structures */
+			for (i = 0; i < msg->msg_iovlen && tot > 0; i++) {
+				/* get the next I/O vector */
+				iov = &msg->msg_iov[i];
+
+				/* get the length of the iovec */
+				iov_tot = (tot > (size_t)iov->iov_len) ?
+						(size_t)iov->iov_len : tot;
+				
+				/* taint-source */	
+				if (it != fdset.end())
+					/* set the tag markings */
+					tagmap_setn((size_t)iov->iov_base,
+								iov_tot,
+								dta_tag);
+				else
+					/* clear the tag markings */
+					tagmap_clrn((size_t)iov->iov_base,
+								iov_tot);
+		
+				/* housekeeping */
+				tot -= iov_tot;
+			}
+			break;
+#if LINUX_KERNEL >= 2633
+		case __NR_recvmmsg:
+#endif
+		default:
+			/* nothing to do */
+			return;
+	}
+}
+#endif
 /*
  * instrument the ret instruction
  *
@@ -701,7 +985,6 @@ dta_instrument_ret(INS ins)
 		IARG_BRANCH_TARGET_ADDR,
 		IARG_END);
 }
-
 
 #endif
 
@@ -775,16 +1058,13 @@ main(int argc, char **argv)
 	if (unlikely(libdft_init() != 0))
 		/* failed */
 		goto err;
-	
-	/* add stdin to the interesting descriptors set */
-	if (stdin_.Value() != 0)
-		fdset.insert(STDIN_FILENO);
 
 	trace = fopen("dft.out", "w");
 	if (trace != NULL)
 	{
 		printf("Success\n");
 	}
+	
 	IMG_AddInstrumentFunction(getMetadata, 0);
 	INS_AddInstrumentFunction(Instruction, 0);
 	// ---------- Taint sources ---------- // 
@@ -798,13 +1078,16 @@ main(int argc, char **argv)
 	/* readv(2) */
 	(void)syscall_set_post(&syscall_desc[__NR_readv], post_readv_hook);
 	#endif
-
 	#if 1
 	/* socket(2), accept(2), recvfrom(2), recvmsg(2) */
 	(void)syscall_set_post(&syscall_desc[__NR_socket], post_socket_hook);
 	(void)syscall_set_post(&syscall_desc[__NR_accept] , post_accept_hook);
 	(void)syscall_set_post(&syscall_desc[__NR_accept4] , post_accept_hook);
+	(void)syscall_set_post(&syscall_desc[__NR_getsockname] , post_sockpeer_hook);
+	(void)syscall_set_post(&syscall_desc[__NR_getpeername] , post_sockpeer_hook);
+	(void)syscall_set_post(&syscall_desc[__NR_socketpair] , post_socketpair_hook);
 	(void)syscall_set_post(&syscall_desc[__NR_recvfrom] , post_recvfrom_hook);
+	(void)syscall_set_post(&syscall_desc[__NR_getsockopt] , post_getsockopt_hook);
 	(void)syscall_set_post(&syscall_desc[__NR_recvmsg] , post_recvmsg_hook);
 	#endif
 
@@ -840,8 +1123,13 @@ main(int argc, char **argv)
 			dta_instrument_ret);
 	#endif
 
-	PIN_AddFiniFunction(Fini, 0);
 
+
+	/* add stdin to the interesting descriptors set */
+	if (stdin_.Value() != 0)
+		fdset.insert(STDIN_FILENO);
+
+	PIN_AddFiniFunction(Fini, 0);
 	/* start Pin */
 	PIN_StartProgram();
 	/* typically not reached; make the compiler happy */
