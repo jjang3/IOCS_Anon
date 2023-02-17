@@ -11,7 +11,7 @@ CC=clang
 if [ $1 == 'nginx' ]
 then
     echo $RESULTS_DIR 
-    pin -follow-execv -t $LIB_DIR/libdft-mod.so -- $NGINX_DIR/sbin/$1 -c $NGINX_DIR/conf/$1_taint.conf
+    pin -follow-execv -t $LIB_DIR/libdft-mod.so -- $NGINX_DIR/sbin/$1 -c $HOME/Downloads/nginx-1.3.9/conf/$1_taint.conf
     #-p $NGINX_DIR
     sleep 2
     ab -n 1 -c 1 http://127.0.0.1:8080/index.html
