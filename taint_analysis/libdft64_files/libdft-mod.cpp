@@ -25,37 +25,15 @@ using std::endl;
 
 #define WORD_LEN	4	/* size in bytes of a word value */
 
-/* input file prefix */
-#define FILE_NAME	"file.txt"
+/* default path for the log file (audit) */
+#define LOGFILE_DFL	"libdft-dta.log"
 
 /* default suffixes for dynamic shared libraries */
 #define DLIB_SUFF	".so"
 #define DLIB_SUFF_ALT	".so."
-#if 0
-static tag_traits<tag_t>::type dta_tag = 1;
-/* socket related syscalls */
-static int sock_syscalls[] = {
-	__NR_socket,
-	__NR_accept,
-	__NR_accept4,
-	__NR_getsockname,
-	__NR_getpeername,
-	__NR_socketpair,
-	__NR_recvfrom,
-	__NR_getsockopt,
-	__NR_recvmsg,
-	__NR_recvmmsg,
-};
-#endif
-
-static std::map<int, uint8_t> fd2tag;
-#define	MAX_TAG 	  0x10U
-uint8_t NEXT_TAG 	= 0x01;
-/* the tag value used for tainting */
+#define	TAG 	0x01U
 
 #define DBG_FLAG 0
-
-#define findRTNName(Address) RTN_Name(RTN_FindByAddress(Address))
 
 /* thread context */
 extern thread_ctx_t *threads_ctx;
@@ -68,6 +46,10 @@ extern syscall_desc_t syscall_desc[SYSCALL_MAX];
 
 /* set of interesting descriptors (sockets) */
 static set<int> fdset;
+
+/* log file path (auditing) */
+static KNOB<string> logpath(KNOB_MODE_WRITEONCE, "pintool", "l",
+		LOGFILE_DFL, "");
 
 /* trace file */
 FILE *trace;
@@ -98,8 +80,26 @@ static KNOB<size_t> fs(KNOB_MODE_WRITEONCE, "pintool", "f", "1", "");
 /* track net (enabled by default) */
 static KNOB<size_t> net(KNOB_MODE_WRITEONCE, "pintool", "n", "1", "");
 
-#if 1
+/* 
+ * DTA/DFT alert
+ *
+ * @ins:	address of the offending instruction
+ * @bt:		address of the branch target
+ */
+static void PIN_FAST_ANALYSIS_CALL
+alert(ADDRINT ins, ADDRINT bt)
+{
+	/* log file */
+	FILE *logfile;
+	/* auditing */
+	if (likely((logfile = fopen(logpath.Value().c_str(), "a")) != NULL)) {
+		(void)fprintf(logfile, " ____ ____ ____ ____\n");
+	}
+	/* terminate */
+	exit(EXIT_FAILURE);
+}
 
+#if 1
 void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 {
 	PIN_LockClient();
@@ -170,8 +170,6 @@ VOID getMetadata(IMG img, void *v)
 					string *instString = new string(INS_Disassemble(ins));
 					if (INS_IsDirectCall(ins))
 					{
-						//auto OffsetAddress = (ADDRINT)INS_DirectBranchOrCallTargetAddress(ins) - (ADDRINT)IMG_LoadOffset;
-						//auto FindName = findRTNName(OffsetAddress);
 						INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)callUnwinding, IARG_BRANCH_TARGET_ADDR, IARG_PTR, instString->c_str(), IARG_INST_PTR, IARG_END);
 					}
 				}
@@ -183,385 +181,6 @@ VOID getMetadata(IMG img, void *v)
 	}
 }
 #endif
-
-#if 1
-/*
- * read(2) handler (taint-source)
- */
-static void
-post_read_hook(THREADID tid, syscall_ctx_t *ctx)
-{
-	uint8_t TAG;
-	
-	/* read() was not successful; optimized branch */
-	if (unlikely((long)ctx->ret <= 0))
-			return;
-
-	cerr << "FD: " << ctx->arg[SYSCALL_ARG0] << endl;
-	/* taint-source */
-	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end()){
-		if(!fd2tag[ctx->arg[SYSCALL_ARG0]]) {
-			TAG = NEXT_TAG;
-			fd2tag[ctx->arg[SYSCALL_ARG0]] = TAG;
-			if(NEXT_TAG < MAX_TAG) NEXT_TAG <<= 1;
-		} else {
-			/* reuse color of file with same fd which was opened previously */
-			TAG = fd2tag[ctx->arg[SYSCALL_ARG0]];
-		}
-		/* set the tag markings */ // << unwindStack.top() << " " << std::hex << ctx->arg[SYSCALL_ARG1]
-		//hex << ctx->arg[SYSCALL_ARG1] << "fd: " << ctx->arg[SYSCALL_ARG0] << " " << std::hex 
-		cerr << "\t► read(2) taint set | " << unwindStack.top() << endl;
-		taintSrc = true;
-		// \nCurr Fun: %s\n\t  unwindStack.top()
-		fprintf(trace, "Taint source: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), TAG);
-		cerr << "\t - Routine: " << routineStack.top() << endl;
-		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
-		unwindStack.pop();
-	}
-	else{
-		/* clear the tag markings */
-		cerr << "\t► read(2) taint clear " << endl;
-		tagmap_clrn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret);
-	}
-	
-}
-
-/*
- * readv(2) handler (taint-source)
- */
-static void
-post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
-{
-	uint8_t TAG;
-	/* iterators */
-	int i;
-	struct iovec *iov;
-	set<int>::iterator it;
-
-	/* bytes copied in a iovec structure */
-	size_t iov_tot;
-
-	/* total bytes copied */
-	size_t tot = (size_t)ctx->ret;
-
-	/* readv() was not successful; optimized branch */
-	if (unlikely((long)ctx->ret <= 0))
-		return;
-	
-	/* get the descriptor */
-	it = fdset.find((int)ctx->arg[SYSCALL_ARG0]);
-	if(!fd2tag[ctx->arg[SYSCALL_ARG0]]) {
-		TAG = NEXT_TAG;
-		fd2tag[ctx->arg[SYSCALL_ARG0]] = TAG;
-		if(NEXT_TAG < MAX_TAG) NEXT_TAG <<= 1;
-	} else {
-		/* reuse color of file with same fd which was opened previously */
-		TAG = fd2tag[ctx->arg[SYSCALL_ARG0]];
-	}
-	/* iterate the iovec structures */
-	for (i = 0; i < (int)ctx->arg[SYSCALL_ARG2] && tot > 0; i++) {
-		/* get an iovec  */
-		iov = ((struct iovec *)ctx->arg[SYSCALL_ARG1]) + i;
-		
-		/* get the length of the iovec */
-		iov_tot = (tot >= (size_t)iov->iov_len) ?
-			(size_t)iov->iov_len : tot;
-	
-		/* taint interesting data and zero everything else */	
-		if (it != fdset.end()) { 
-			/* set the tag markings */
-			cerr << "\t► readv(2) taint set | " << unwindStack.top() << endl;
-			tagmap_setn((size_t)iov->iov_base, iov_tot, TAG);
-			unwindStack.pop();
-		}
-		else {
-			/* clear the tag markings */
-			cerr << "\t► readv(2) taint clear " << endl;
-			tagmap_clrn((size_t)iov->iov_base, iov_tot);
-		}
-		/* housekeeping */
-		tot -= iov_tot;
-        }
-}
-#endif
-
-/*
- * socket(2) syscall post hook(auxiliary)
- *
- * when socket(2) open INET fd, add the fd to the fdset
- */
-static void 
-post_socket_hook(THREADID tid, syscall_ctx_t *ctx) 
-{
-
-	cerr << "Socket FD: " << (int)ctx->ret << endl;
-  /* sanity check */
-	if (unlikely((long)ctx->ret < 0))
-				return;
-
-	/* add the socket fd to the socketset */
-	if (likely(ctx->arg[SYSCALL_ARG0] == PF_INET || ctx->arg[SYSCALL_ARG0] == PF_INET6))
-	{
-		fdset.insert((int)ctx->ret);
-		//printf("fdset insert\n");
-	}
-}
-
-/*
- * accept() and accept4() syscall post hook(auxiliary)
- *
- * add the new INET fd to the fdset
- */
-static void 
-post_accept_hook(THREADID tid, syscall_ctx_t *ctx)
-{
-  /* sanity check */
-	if (unlikely((long)ctx->ret < 0))
-				return;
-  /* add the socket fd to the socketset */
-	if (likely(fdset.find(ctx->arg[SYSCALL_ARG0]) !=fdset.end()))
-		fdset.insert((int)ctx->ret);
-}
-
-
-
-#if 0
-/*
- *
- */
-static void 
-post_sockpeer_hook(THREADID tid, syscall_ctx_t *ctx)
-{
-  if (unlikely((long)ctx->ret < 0))
-				return;
-	/* addr argument is provided */
-	if ((void *)ctx->arg[SYSCALL_ARG1] != NULL) {
-		cerr << "\t► sock/peer(2) taint clear " << endl;
-		/* clear the tag bits */
-		tagmap_clrn(ctx->arg[SYSCALL_ARG1],
-			*((int *)ctx->arg[SYSCALL_ARG2]));
-		
-		/* clear the tag bits */
-		tagmap_clrn(ctx->arg[SYSCALL_ARG2], sizeof(int));
-	}
-}
-
-/*
- *
- */
-static void 
-post_socketpair_hook(THREADID tid, syscall_ctx_t *ctx)
-{
-  	/* not successful; optimized branch */
-	if (unlikely((long)ctx->ret < 0))
-		return;
-
-	cerr << "\t► socketpair(2) taint clear " << endl;
-	/* clear the tag bits */
-	tagmap_clrn(ctx->arg[SYSCALL_ARG3], (sizeof(int) * 2));
-}
-
-/*
- * recvfrom() syscall post hook(source)
- *
- * tag the buffer
- */
-static void 
-post_getsockopt_hook(THREADID tid, syscall_ctx_t *ctx)
-{
-	if (unlikely((long)ctx->ret < 0))
-		return;
-		
-	cerr << "\t► getsockopt(2) taint clear " << endl;
-	/* clear the tag bits */
-	tagmap_clrn(ctx->arg[SYSCALL_ARG3],
-			*((int *)ctx->arg[SYSCALL_ARG4]));
-	
-	/* clear the tag bits */
-	tagmap_clrn(ctx->arg[SYSCALL_ARG4], sizeof(int));
-}
-#endif
-/*
- * recvfrom() syscall post hook(source)
- *
- * tag the buffer
- */
-#if 0
-static void 
-post_recvfrom_hook(THREADID tid, syscall_ctx_t *ctx)
-{
-	uint8_t TAG;
-  	/* not successful; optimized branch */
-	if (unlikely((long)ctx->ret <= 0))
-		return;
-	
-	/* taint-source */	
-	if (fdset.find((int)ctx->arg[SYSCALL_ARG0]) != fdset.end())
-	{
-		if(!fd2tag[ctx->arg[SYSCALL_ARG0]]) {
-			TAG = NEXT_TAG;
-			fd2tag[ctx->arg[SYSCALL_ARG0]] = TAG;
-			if(NEXT_TAG < MAX_TAG) NEXT_TAG <<= 1;
-		} else {
-			/* reuse color of file with same fd which was opened previously */
-			TAG = fd2tag[ctx->arg[SYSCALL_ARG0]];
-		}
-		/* set the tag markings */
-		cerr << "\t► recvfrom(2) taint set | " << unwindStack.top() << endl;
-		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
-		unwindStack.pop();
-		//printf("tag the buffer\n");
-	}
-	else {
-		/* clear the tag markings */
-		cerr << "\t► recvfrom(2) taint clear " << endl;
-		tagmap_clrn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret);
-	}
-
-	/* sockaddr argument is specified */
-	if ((void *)ctx->arg[SYSCALL_ARG4] != NULL)
-	{
-		cerr << "\t► recvfrom(2) taint clear " << endl;
-		/* clear the tag bits */
-		tagmap_clrn(ctx->arg[SYSCALL_ARG4], *((int *)ctx->arg[SYSCALL_ARG5]));
-				
-		/* clear the tag bits */
-		tagmap_clrn(ctx->arg[SYSCALL_ARG5], sizeof(int));
-	}
-}
-/*
- * recvmsg() syscall post hook(source)
- *
- * tag the buffer
- */
-static void 
-post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
-{
-	uint8_t TAG;
-  	/* message header; recvmsg(2) */
-	struct msghdr *msg;
-
-	/* iov bytes copied; recvmsg(2) */
-	size_t iov_tot;
-
-	/* iterators */
-	size_t i;
-	struct iovec *iov;
-	set<int>::iterator it;
-	
-	/* total bytes received */
-	size_t tot;
-	/* not successful; optimized branch */
-	if (unlikely((long)ctx->ret <= 0))
-		return;
-
-	/* get the descriptor */
-	it = fdset.find((int)ctx->arg[SYSCALL_ARG0]);
-
-	/* extract the message header */
-	msg = (struct msghdr *)ctx->arg[SYSCALL_ARG1];
-
-	/* source address specified */
-	if (msg->msg_name != NULL) {
-		/* clear the tag bits */
-		tagmap_clrn((size_t)msg->msg_name,
-			msg->msg_namelen);
-		
-		/* clear the tag bits */
-		tagmap_clrn((size_t)&msg->msg_namelen,
-				sizeof(int));
-	}
-
-	if(!fd2tag[ctx->arg[SYSCALL_ARG0]]) {
-		TAG = NEXT_TAG;
-		fd2tag[ctx->arg[SYSCALL_ARG0]] = TAG;
-		if(NEXT_TAG < MAX_TAG) NEXT_TAG <<= 1;
-	} else {
-		/* reuse color of file with same fd which was opened previously */
-		TAG = fd2tag[ctx->arg[SYSCALL_ARG0]];
-	}
-	/* ancillary data specified */
-	if (msg->msg_control != NULL) {
-		/* taint-source */
-		if (it != fdset.end()){
-			/* set the tag markings */
-			//cerr << "\t► recvmsg(2) taint set | " << unwindStack.top() << endl;
-			tagmap_setn((size_t)msg->msg_control,
-				msg->msg_controllen, TAG);
-			//unwindStack.pop();
-		}
-		else
-			/* clear the tag markings */
-			tagmap_clrn((size_t)msg->msg_control,
-				msg->msg_controllen);
-			
-		/* clear the tag bits */
-		tagmap_clrn((size_t)&msg->msg_controllen,
-				sizeof(int));
-	}
-
-	/* flags; clear the tag bits */
-	tagmap_clrn((size_t)&msg->msg_flags, sizeof(int));	
-
-	/* total bytes received */	
-	tot = (size_t)ctx->ret;
-
-	/* iterate the iovec structures */
-	for (i = 0; i < msg->msg_iovlen && tot > 0; i++) {
-		/* get the next I/O vector */
-		iov = &msg->msg_iov[i];
-
-		/* get the length of the iovec */
-		iov_tot = (tot > (size_t)iov->iov_len) ?
-				(size_t)iov->iov_len : tot;
-		
-		/* taint-source */	
-		if (it != fdset.end()) {
-			/* set the tag markings */
-			//cerr << "\t► recvmsg(2) taint set | " << unwindStack.top() << endl;
-			tagmap_setn((size_t)iov->iov_base,
-						iov_tot, TAG);
-			//unwindStack.pop();
-		}
-		else
-			/* clear the tag markings */
-			tagmap_clrn((size_t)iov->iov_base,
-						iov_tot);
-
-		/* housekeeping */
-		tot -= iov_tot;
-	}
-	//printf("tag the buffer\n");
-}
-#endif
-
-/* 
- * Alert Function
- *
- * @buff:	address of sensitive information buffer
- * @buffsize: buffer size
- * @tag: tag of the buffer
- */
-#if 0
-
-/* 
- * DTA/DFT alert
- *
- * @ins:	address of the offending instruction
- * @bt:		address of the branch target
- */
-static void PIN_FAST_ANALYSIS_CALL
-alert_branch(ADDRINT ins, BOOL isbt, ADDRINT bt)
-{
-	//cerr << "alert() " << isbt << endl;
-}
-static void 
-alert(ADDRINT buff, size_t buffsize , tag_t tag)
-{
-	printf("Info Leakage Detected!\n");
-
-}
-
 /*
  * 64-bit register assertion (taint-sink, DFT-sink)
  *
@@ -589,6 +208,57 @@ assert_reg64(THREADID tid, uint64_t reg, ADDRINT addr)
 	return tag | tagmap_getn(addr, 8);
 }
 
+
+
+/*
+ * 32-bit register assertion (taint-sink, DFT-sink)
+ *
+ * called before an instruction that uses a register
+ * for an indirect branch; returns a positive value
+ * whenever the register value or the target address
+ * are tainted
+ *
+ * returns:	0 (clean), >0 (tainted)
+ */
+static ADDRINT PIN_FAST_ANALYSIS_CALL
+assert_reg32(THREADID tid, uint32_t reg, ADDRINT addr)
+{
+	/* 
+	 * combine the register tag along with the tag
+	 * markings of the target address
+	 */
+	tag_t tag = 0x00U;
+	
+	for(int i = 0; i < 3; i++)
+	{
+		tag |= threads_ctx[tid].vcpu.gpr[reg][i] | threads_ctx[tid].vcpu.gpr[reg][i+1];
+	}
+	return tag | tagmap_getn(addr, 4);
+}
+
+/*
+ * 16-bit register assertion (taint-sink, DFT-sink)
+ *
+ * called before an instruction that uses a register
+ * for an indirect branch; returns a positive value
+ * whenever the register value or the target address
+ * are tainted
+ *
+ * returns:	0 (clean), >0 (tainted)
+ */
+static ADDRINT PIN_FAST_ANALYSIS_CALL
+assert_reg16(THREADID tid, uint32_t reg, ADDRINT addr)
+{
+	/* 
+	 * combine the register tag along with the tag
+	 * markings of the target address
+	 */
+	tag_t tag = 0x00U;
+	
+	tag |= threads_ctx[tid].vcpu.gpr[reg][0] | threads_ctx[tid].vcpu.gpr[reg][1];
+	return tag | tagmap_getn(addr, 2);
+}
+
 /*
  * 64-bit memory assertion (taint-sink, DFT-sink)
  *
@@ -604,23 +274,66 @@ assert_mem64(ADDRINT paddr, ADDRINT taddr)
 {
 	return tagmap_getn(paddr, 8) | tagmap_getn(taddr, 8);
 }
-#endif
-#if 0
+
+/*
+ * 32-bit memory assertion (taint-sink, DFT-sink)
+ *
+ * called before an instruction that uses a memory
+ * location for an indirect branch; returns a positive
+ * value whenever the memory value (i.e., effective address),
+ * or the target address, are tainted
+ *
+ * returns:	0 (clean), >0 (tainted)
+ */
+static ADDRINT PIN_FAST_ANALYSIS_CALL
+assert_mem32(ADDRINT paddr, ADDRINT taddr)
+{
+	return tagmap_getn(paddr, 4) | tagmap_getn(taddr, 4);
+}
+
+/*
+ * 16-bit memory assertion (taint-sink, DFT-sink)
+ *
+ * called before an instruction that uses a memory
+ * location for an indirect branch; returns a positive
+ * value whenever the memory value (i.e., effective address),
+ * or the target address, are tainted
+ *
+ * returns:	0 (clean), >0 (tainted)
+ */
+static ADDRINT PIN_FAST_ANALYSIS_CALL
+assert_mem16(ADDRINT paddr, ADDRINT taddr)
+{
+	return tagmap_getn(paddr, 2) | tagmap_getn(taddr, 2);
+}
+
+/*
+ * instrument the jmp/call instructions
+ *
+ * install the appropriate DTA/DFT logic (sinks)
+ *
+ * @ins:	the instruction to instrument
+ */
 static void
 dta_instrument_jmp_call(INS ins)
 {
 	/* temporaries */
 	REG reg;
+
 	/* 
-	 * we care about indirect calls because of control-flow hijacking attacks 
+	 * we only care about indirect calls;
+	 * optimized branch
 	 */
-	if (unlikely(INS_IsIndirectControlFlow(ins))) { //  optimized branch
+	if (unlikely(INS_IsIndirectControlFlow(ins))) {
 		/* perform operand analysis */
+
 		/* call via register */
 		if (INS_OperandIsReg(ins, 0)) {
 			/* extract the register from the instruction */
 			reg = INS_OperandReg(ins, 0);
+
 			/* size analysis */
+
 			/* 64-bit register */
 			if (REG_is_gr64(reg))
 				/*
@@ -635,10 +348,39 @@ dta_instrument_jmp_call(INS ins)
 					IARG_UINT32, REG_INDX(reg),
 					IARG_REG_VALUE, reg,
 					IARG_END);
+			/* 32-bit register */
+			else if (REG_is_gr32(reg))
+				/*
+				 * instrument assert_reg32() before branch;
+				 * conditional instrumentation -- if
+				 */
+				INS_InsertIfCall(ins,
+					IPOINT_BEFORE,
+					(AFUNPTR)assert_reg32,
+					IARG_FAST_ANALYSIS_CALL,
+					IARG_THREAD_ID,
+					IARG_UINT32, REG_INDX(reg),
+					IARG_REG_VALUE, reg,
+					IARG_END);
+			else
+				/* 16-bit register */
+				/*
+				 * instrument assert_reg16() before branch;
+				 * conditional instrumentation -- if
+				 */
+				INS_InsertIfCall(ins,
+					IPOINT_BEFORE,
+					(AFUNPTR)assert_reg16,
+					IARG_FAST_ANALYSIS_CALL,
+					IARG_THREAD_ID,
+					IARG_UINT32, REG_INDX(reg),
+					IARG_REG_VALUE, reg,
+					IARG_END);
 		}
 		else {
 		/* call via memory */
 			/* size analysis */
+				
 			/* 64-bit */
 			if (INS_MemoryReadSize(ins) == 2*WORD_LEN)
 				/*
@@ -652,24 +394,430 @@ dta_instrument_jmp_call(INS ins)
 					IARG_MEMORYREAD_EA,
 					IARG_BRANCH_TARGET_ADDR,
 					IARG_END);
+			/* 32-bit */
+			else if (INS_MemoryReadSize(ins) == WORD_LEN)
+				/*
+				 * instrument assert_mem32() before branch;
+				 * conditional instrumentation -- if
+				 */
+				INS_InsertIfCall(ins,
+					IPOINT_BEFORE,
+					(AFUNPTR)assert_mem32,
+					IARG_FAST_ANALYSIS_CALL,
+					IARG_MEMORYREAD_EA,
+					IARG_BRANCH_TARGET_ADDR,
+					IARG_END);
+			/* 16-bit */
+			else
+				/*
+				 * instrument assert_mem16() before branch;
+				 * conditional instrumentation -- if
+				 */
+				INS_InsertIfCall(ins,
+					IPOINT_BEFORE,
+					(AFUNPTR)assert_mem16,
+					IARG_FAST_ANALYSIS_CALL,
+					IARG_MEMORYREAD_EA,
+					IARG_BRANCH_TARGET_ADDR,
+					IARG_END);
 		}
 		/*
 		 * instrument alert() before branch;
 		 * conditional instrumentation -- then
 		 */
-		#if 1
 		INS_InsertThenCall(ins,
 			IPOINT_BEFORE,
-			(AFUNPTR)alert_branch,
+			(AFUNPTR)alert,
 			IARG_FAST_ANALYSIS_CALL,
 			IARG_INST_PTR,
-			IARG_BRANCH_TAKEN,
 			IARG_BRANCH_TARGET_ADDR,
 			IARG_END);
-		#endif
 	}
 }
-#endif
+
+/*
+ * instrument the ret instruction
+ *
+ * install the appropriate DTA/DFT logic (sinks)
+ *
+ * @ins:	the instruction to instrument
+ */
+static void
+dta_instrument_ret(INS ins)
+{
+	/* size analysis */
+				
+	/* 64-bit */
+	if (INS_MemoryReadSize(ins) == 2*WORD_LEN)
+		/*
+		 * instrument assert_mem64() before ret;
+		 * conditional instrumentation -- if
+		 */
+		INS_InsertIfCall(ins,
+			IPOINT_BEFORE,
+			(AFUNPTR)assert_mem64,
+			IARG_FAST_ANALYSIS_CALL,
+			IARG_MEMORYREAD_EA,
+			IARG_BRANCH_TARGET_ADDR,
+			IARG_END);
+	/* 32-bit */
+	else if (INS_MemoryReadSize(ins) == WORD_LEN)
+		/*
+		 * instrument assert_mem32() before ret;
+		 * conditional instrumentation -- if
+		 */
+		INS_InsertIfCall(ins,
+			IPOINT_BEFORE,
+			(AFUNPTR)assert_mem32,
+			IARG_FAST_ANALYSIS_CALL,
+			IARG_MEMORYREAD_EA,
+			IARG_BRANCH_TARGET_ADDR,
+			IARG_END);
+	/* 16-bit */
+	else
+		/*
+		 * instrument assert_mem16() before ret;
+		 * conditional instrumentation -- if
+		 */
+		INS_InsertIfCall(ins,
+			IPOINT_BEFORE,
+			(AFUNPTR)assert_mem16,
+			IARG_FAST_ANALYSIS_CALL,
+			IARG_MEMORYREAD_EA,
+			IARG_BRANCH_TARGET_ADDR,
+			IARG_END);
+	
+	/*
+	 * instrument alert() before ret;
+	 * conditional instrumentation -- then
+	 */
+	INS_InsertThenCall(ins,
+		IPOINT_BEFORE,
+		(AFUNPTR)alert,
+		IARG_FAST_ANALYSIS_CALL,
+		IARG_INST_PTR,
+		IARG_BRANCH_TARGET_ADDR,
+		IARG_END);
+}
+
+/*
+ * read(2) handler (taint-source)
+ */
+static void
+post_read_hook(THREADID tid, syscall_ctx_t *ctx)
+{
+	/* read() was not successful; optimized branch */
+	if (unlikely((long)ctx->ret <= 0))
+		return;
+	
+	cerr << "read(2) fd: " << ctx->arg[SYSCALL_ARG0] << endl;
+	/* taint-source */
+	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end())
+	{
+		/* set the tag markings */
+		cerr << "\t► read(2) taint set | " << unwindStack.top() << endl;
+		taintSrc = true;
+		// \nCurr Fun: %s\n\t  unwindStack.top()
+		fprintf(trace, "Taint source: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), TAG);
+		cerr << "\t - Routine: " << routineStack.top() << endl;
+		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
+		unwindStack.pop();
+	}
+	else {
+		/* clear the tag markings */
+		printf("read(2) taint clear\n");
+		tagmap_clrn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret);
+	}
+}
+
+/*
+ * readv(2) handler (taint-source)
+ */
+static void
+post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
+{
+	/* iterators */
+	int i;
+	struct iovec *iov;
+	set<int>::iterator it;
+
+	/* bytes copied in a iovec structure */
+	size_t iov_tot;
+
+	/* total bytes copied */
+	size_t tot = (size_t)ctx->ret;
+
+	/* readv() was not successful; optimized branch */
+	if (unlikely((long)ctx->ret <= 0))
+		return;
+	
+	/* get the descriptor */
+	it = fdset.find((int)ctx->arg[SYSCALL_ARG0]);
+
+	/* iterate the iovec structures */
+	for (i = 0; i < (int)ctx->arg[SYSCALL_ARG2] && tot > 0; i++) {
+		/* get an iovec  */
+		iov = ((struct iovec *)ctx->arg[SYSCALL_ARG1]) + i;
+		
+		/* get the length of the iovec */
+		iov_tot = (tot >= (size_t)iov->iov_len) ?
+			(size_t)iov->iov_len : tot;
+	
+		/* taint interesting data and zero everything else */	
+		if (it != fdset.end()) {
+			/* set the tag markings */
+			cerr << "\t► readv(2) taint set | " << unwindStack.top() << endl;
+			tagmap_setn((size_t)iov->iov_base, iov_tot, TAG);
+		}
+		else{
+			cerr << "\t► readv(2) taint clear " << endl;
+			/* clear the tag markings */
+			tagmap_clrn((size_t)iov->iov_base, iov_tot);
+		}		
+		/* housekeeping */
+		tot -= iov_tot;
+	}
+}
+
+/*
+ * socket(2) syscall post hook(auxiliary)
+ *
+ * when socket(2) open INET fd, add the fd to the fdset
+ */
+static void post_socket_hook(THREADID tid, syscall_ctx_t *ctx) 
+{
+  /* sanity check */
+	if (unlikely((long)ctx->ret < 0))
+				return;
+
+	/* add the socket fd to the socketset */
+	if (likely(ctx->arg[SYSCALL_ARG0] == PF_INET || ctx->arg[SYSCALL_ARG0] == PF_INET6))
+	{
+        cerr << "\t► socket(2) fd add " << (int)ctx->ret << endl;
+		fdset.insert((int)ctx->ret);
+		//printf("fdset insert\n");
+	}
+}
+
+/*
+ * accept() and accept4() syscall post hook(auxiliary)
+ *
+ * add the new INET fd to the fdset
+ */
+static void post_accept_hook(THREADID tid, syscall_ctx_t *ctx)
+{
+  /* sanity check */
+	if (unlikely((long)ctx->ret < 0))
+				return;
+  /* add the socket fd to the socketset */
+	if (likely(fdset.find(ctx->arg[SYSCALL_ARG0]) !=fdset.end())){
+         cerr << "fd add accept\n";
+		fdset.insert((int)ctx->ret);
+}}
+
+/*
+ * recvfrom() syscall post hook(source)
+ *
+ * tag the buffer
+ */
+static void post_recvfrom_hook(THREADID tid, syscall_ctx_t *ctx)
+{
+  /* not successful; optimized branch */
+	if (unlikely((long)ctx->ret <= 0))
+		return;
+	
+	/* taint-source */	
+	if (fdset.find((int)ctx->arg[SYSCALL_ARG0]) != fdset.end())
+	{
+		/* set the tag markings */
+        printf("Taint set recvfrom\n");
+		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
+		printf("tag the buffer\n");
+	}
+	else
+		/* clear the tag markings */
+		tagmap_clrn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret);
+
+	/* sockaddr argument is specified */
+	if ((void *)ctx->arg[SYSCALL_ARG4] != NULL)
+	{
+		/* clear the tag bits */
+		tagmap_clrn(ctx->arg[SYSCALL_ARG4], *((int *)ctx->arg[SYSCALL_ARG5]));
+				
+		/* clear the tag bits */
+		tagmap_clrn(ctx->arg[SYSCALL_ARG5], sizeof(int));
+	}
+}
+
+
+/*
+ * recvmsg() syscall post hook(source)
+ *
+ * tag the buffer
+ */
+static void post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
+{
+  /* message header; recvmsg(2) */
+	struct msghdr *msg;
+
+	/* iov bytes copied; recvmsg(2) */
+	size_t iov_tot;
+
+	/* iterators */
+	size_t i;
+	struct iovec *iov;
+	set<int>::iterator it;
+	
+	/* total bytes received */
+	size_t tot;
+	/* not successful; optimized branch */
+	if (unlikely((long)ctx->ret <= 0))
+		return;
+	
+	/* get the descriptor */
+	it = fdset.find((int)ctx->arg[SYSCALL_ARG0]);
+
+	/* extract the message header */
+	msg = (struct msghdr *)ctx->arg[SYSCALL_ARG1];
+
+	/* source address specified */
+	if (msg->msg_name != NULL) {
+		/* clear the tag bits */
+		tagmap_clrn((size_t)msg->msg_name,
+			msg->msg_namelen);
+		
+		/* clear the tag bits */
+		tagmap_clrn((size_t)&msg->msg_namelen,
+				sizeof(int));
+	}
+	
+	/* ancillary data specified */
+	if (msg->msg_control != NULL) {
+		/* taint-source */
+		if (it != fdset.end()){
+			/* set the tag markings */
+			cerr << "\t► recvmsg(2) taint set | " << unwindStack.top() << endl;
+			tagmap_setn((size_t)msg->msg_control,
+				msg->msg_controllen, TAG);
+		}
+		else {
+			cerr << "\t► recvmsg(2) taint clear " << endl;
+			/* clear the tag markings */
+			tagmap_clrn((size_t)msg->msg_control,
+				msg->msg_controllen);
+		}
+		/* clear the tag bits */
+		tagmap_clrn((size_t)&msg->msg_controllen,
+				sizeof(int));
+	}
+	
+	/* flags; clear the tag bits */
+	tagmap_clrn((size_t)&msg->msg_flags, sizeof(int));	
+	
+	/* total bytes received */	
+	tot = (size_t)ctx->ret;
+
+	/* iterate the iovec structures */
+	for (i = 0; i < msg->msg_iovlen && tot > 0; i++) {
+		/* get the next I/O vector */
+		iov = &msg->msg_iov[i];
+
+		/* get the length of the iovec */
+		iov_tot = (tot > (size_t)iov->iov_len) ?
+				(size_t)iov->iov_len : tot;
+		
+		/* taint-source */	
+		if (it != fdset.end()){
+			/* set the tag markings */
+			cerr << "Taint set recvmsg\n";
+			tagmap_setn((size_t)iov->iov_base,
+						iov_tot, TAG);}
+		else
+			/* clear the tag markings */
+			tagmap_clrn((size_t)iov->iov_base,
+						iov_tot);
+
+		/* housekeeping */
+		tot -= iov_tot;
+	}
+	printf("tag the buffer\n");
+}
+
+/*
+ * auxiliary (helper) function
+ *
+ * duplicated descriptors are added into
+ * the monitored set
+ */
+static void
+post_dup_hook(THREADID tid, syscall_ctx_t *ctx)
+{
+	/* not successful; optimized branch */
+	if (unlikely((long)ctx->ret < 0))
+		return;
+	
+	/*
+	 * if the old descriptor argument is
+	 * interesting, the returned handle is
+	 * also interesting
+	 */
+	if (likely(fdset.find((int)ctx->arg[SYSCALL_ARG0]) != fdset.end())){
+        cerr << "fd add dup\n";
+		fdset.insert((int)ctx->ret);}
+}
+
+/*
+ * auxiliary (helper) function
+ *
+ * whenever close(2) is invoked, check
+ * the descriptor and remove if it was
+ * inside the monitored set of descriptors
+ */
+static void
+post_close_hook(THREADID tid, syscall_ctx_t *ctx)
+{
+	/* iterator */
+	set<int>::iterator it;
+
+	/* not successful; optimized branch */
+	if (unlikely((long)ctx->ret < 0))
+		return;
+	
+	/*
+	 * if the descriptor (argument) is
+	 * interesting, remove it from the
+	 * monitored set
+	 */
+	it = fdset.find((int)ctx->arg[SYSCALL_ARG0]);
+	if (likely(it != fdset.end()))
+		fdset.erase(it);
+}
+
+/*
+ * auxiliary (helper) function
+ *
+ * whenever open(2)/creat(2) is invoked,
+ * add the descriptor inside the monitored
+ * set of descriptors
+ *
+ * NOTE: it does not track dynamic shared
+ * libraries
+ */
+static void
+post_open_hook(THREADID tid, syscall_ctx_t *ctx)
+{
+	/* not successful; optimized branch */
+	if (unlikely((long)ctx->ret < 0))
+		return;
+	
+    cerr << "post open hook\n";
+	/* ignore dynamic shared libraries */
+	if (strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF) == NULL &&
+		strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF_ALT) == NULL)
+		fdset.insert((int)ctx->ret);
+}
+
+#if 1
 /*
  * instrument the memory write instruction
  *
@@ -684,31 +832,30 @@ dta_tainted_mem_write(ADDRINT paddr, ADDRINT eaddr)
 	
 	if (tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8))
 	{
-		auto tag_val = tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8);
+		//auto tag_val = tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8);
 		#if DBG_FLAG
 		printf("Tagged Mem Write (TMW)\n");
 		#endif
 		if (taintSrc == false){
 			cerr << "\t▷ dta_mem_write() " << endl;
-			fprintf(trace, "\tTaint sink: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), tag_val);
+			//fprintf(trace, "\tTaint sink: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), tag_val);
 		}
 		//fprintf(trace, "\tTMW: %s | %p", rtn_name.c_str(), (void *)ip);
 	}
 }
-#if 1
 static void
 dta_tainted_mem_read(ADDRINT paddr, ADDRINT eaddr)
 {
 	// print when addr is tagged.
 	if (tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8))
 	{
-		auto tag_val = tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8);
+		//auto tag_val = tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8);
 		#if DBG_FLAG
 		printf("Tagged Mem Read (TMR)\n");
 		#endif
 		if (taintSrc == false){
 			cerr << "\t▷ dta_mem_read()" << std::hex << " " << endl;
-			fprintf(trace, "\tTaint sink: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), tag_val);
+			//fprintf(trace, "\tTaint sink: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), tag_val);
 		}
 		//fprintf(trace, "\tTMW: %s | %p", rtn_name.c_str(), (void *)ip);
 	}
@@ -741,88 +888,6 @@ VOID Instruction(INS ins, VOID* v)
     }
 }
 #endif
-#if 0
-static void
-dta_instrument_ret(INS ins)
-{
-	/* size analysis */	
-	/* 64-bit */
-	if (INS_MemoryReadSize(ins) == 2*WORD_LEN)
-		/*
-		 * instrument assert_mem64() before ret;
-		 * conditional instrumentation -- if
-		 */
-		INS_InsertIfCall(ins,
-			IPOINT_BEFORE,
-			(AFUNPTR)assert_mem64,
-			IARG_FAST_ANALYSIS_CALL,
-			IARG_MEMORYREAD_EA,
-			IARG_BRANCH_TARGET_ADDR,
-			IARG_END);
-	/*
-	 * instrument alert() before ret;
-	 * conditional instrumentation -- then
-	 */
-	INS_InsertThenCall(ins,
-		IPOINT_BEFORE,
-		(AFUNPTR)alert_branch,
-		IARG_FAST_ANALYSIS_CALL,
-		IARG_INST_PTR,
-		IARG_BRANCH_TARGET_ADDR,
-		IARG_END);
-}
-
-#endif
-
-#if 0
-/*
- * auxiliary (helper) function
- *
- * whenever open(2)/creat(2) is invoked,
- * add the descriptor inside the monitored
- * set of descriptors
- *
- * NOTE: it does not track dynamic shared
- * libraries
- */
-static void
-post_open_hook(THREADID tid, syscall_ctx_t *ctx)
-{
-	/* not successful; optimized branch */
-	if (unlikely((long)ctx->ret < 0))
-		return;
-	
-	/* ignore dynamic shared libraries */
-	if (strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF) == NULL &&
-		strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF_ALT) == NULL)
-		fdset.insert((int)ctx->ret);
-}
-
-/*
- * openat() syscall post hook(auxiliary)
- *
- * when openat() open the sensitive document
- * add the fd of the document to the fdset
- */
-static void post_openat_hook(THREADID tid, syscall_ctx_t *ctx) 
-{
-  /* sanity check */
-	if (unlikely((long)ctx->ret < 0))
-		return;
-	
-	/* add the fd of the document to the fdset */
-	if (strstr((char *)ctx->arg[SYSCALL_ARG1], FILE_NAME) != NULL)
-	{
-		// cerr << "Open fd: " << (int)ctx->ret << endl;
-		fdset.insert((int)ctx->ret);
-	}
-}
-#endif
-VOID Fini(INT32 code, VOID *v)
-{
-	fclose(trace);	
-}
-
 /* 
  * DTA
  *
@@ -845,7 +910,7 @@ main(int argc, char **argv)
 	if (unlikely(libdft_init() != 0))
 		/* failed */
 		goto err;
-
+	
 	trace = fopen("dft.out", "w");
 	if (trace != NULL)
 	{
@@ -853,31 +918,77 @@ main(int argc, char **argv)
 	}
 	IMG_AddInstrumentFunction(getMetadata, 0);
 	INS_AddInstrumentFunction(Instruction, 0);
+	/* 
+	 * handle control transfer instructions
+	 *
+	 * instrument the branch instructions, accordingly,
+	 * for installing taint-sinks (DFT-logic) that check
+	 * for tainted targets (i.e., tainted operands or
+	 * tainted branch targets) -- For brevity I omitted
+	 * checking the result of each instrumentation for
+	 * success or failure
+	 */
 
-	// ---------- Taint sources ---------- // 
-	#if 1
+	/* instrument call */
+	(void)ins_set_post(&ins_desc[XED_ICLASS_CALL_NEAR],
+			dta_instrument_jmp_call);
+	
+	/* instrument jmp */
+	(void)ins_set_post(&ins_desc[XED_ICLASS_JMP],
+			dta_instrument_jmp_call);
+
+	/* instrument ret */
+	(void)ins_set_post(&ins_desc[XED_ICLASS_RET_NEAR],
+			dta_instrument_ret);
+
+	/* 
+	 * install taint-sources
+	 *
+	 * all network-related I/O calls are
+	 * assumed to be taint-sources; we
+	 * install the appropriate wrappers
+	 * for tagging the received data
+	 * accordingly -- Again, for brevity
+	 * I assume that all calls to
+	 * syscall_set_post() are successful
+	 */
+	
 	/* read(2) */
 	(void)syscall_set_post(&syscall_desc[__NR_read], post_read_hook);
 
 	/* readv(2) */
 	(void)syscall_set_post(&syscall_desc[__NR_readv], post_readv_hook);
-	#endif
-	#if 1
+
 	/* socket(2), accept(2), recvfrom(2), recvmsg(2) */
 	(void)syscall_set_post(&syscall_desc[__NR_socket], post_socket_hook);
 	(void)syscall_set_post(&syscall_desc[__NR_accept] , post_accept_hook);
 	(void)syscall_set_post(&syscall_desc[__NR_accept4] , post_accept_hook);
-	//(void)syscall_set_post(&syscall_desc[__NR_recvfrom] , post_recvfrom_hook);
-	//(void)syscall_set_post(&syscall_desc[__NR_recvmsg] , post_recvmsg_hook);
-	#endif
+	(void)syscall_set_post(&syscall_desc[__NR_recvfrom] , post_recvfrom_hook);
+	(void)syscall_set_post(&syscall_desc[__NR_recvmsg] , post_recvmsg_hook);
+	
 
+	/* dup(2), dup2(2) */
+	(void)syscall_set_post(&syscall_desc[__NR_dup], post_dup_hook);
+	(void)syscall_set_post(&syscall_desc[__NR_dup2], post_dup_hook);
+
+	/* close(2) */
+	(void)syscall_set_post(&syscall_desc[__NR_close], post_close_hook);
+	
+	/* open(2), creat(2) */
+	if (fs.Value() != 0) {
+		(void)syscall_set_post(&syscall_desc[__NR_open],
+				post_open_hook);
+		(void)syscall_set_post(&syscall_desc[__NR_creat],
+				post_open_hook);
+	}
+	
 	/* add stdin to the interesting descriptors set */
 	if (stdin_.Value() != 0)
 		fdset.insert(STDIN_FILENO);
 
-	PIN_AddFiniFunction(Fini, 0);
 	/* start Pin */
 	PIN_StartProgram();
+
 	/* typically not reached; make the compiler happy */
 	return EXIT_SUCCESS;
 
