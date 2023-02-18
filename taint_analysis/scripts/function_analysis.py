@@ -39,48 +39,59 @@ if (args.binary != None):
             range_list = fun.address_ranges
             fun_class = fun_dataclass(fun.name, range_list, set(), set())   # Initializing function dataclass
             fun_class_set.add(fun_class)                                    # Adding dataclass to a set
+            print(range_list)
 
 # ----- Parsing dft.out file to organize everything ----- #
-tainted_sources = dict()
-tainted_sinks = dict()
+#tainted_sources = dict()    # if routine name (w/ @plt) is available
+#tainted_sinks = dict()      # if routine name (w/ @plt) is available
+
+tainted_srcs_addr   = set()
+tainted_sinks_addr  = set()
 with open(in_file, "r") as infile:
     for line in infile:
-        taint_type_regex = re.search(r'(?<=Taint\s).*(?=:)', line)
-        taint_fun_regex =  re.search(r'(?<=:\s)(.*)(?=@plt)', line)
-        taint_addr_regex =  re.search(r'(?<=@plt\s)(.*)(?=\s[0-9].*)', line)
+        taint_type_regex = re.search(r'(?<=Taint\s).*(?=\s[a-z,0-9].*\(.*\))', line)
+        #taint_fun_regex =  re.search(r'(?<=:\s)(.*)(?=@plt)', line)
+        taint_addr_regex =  re.search(r'(?<=:\s)(.*)', line)
         taint_type = taint_type_regex.group(0)
-        taint_fun = taint_fun_regex.group(0)
         addr_int = int(taint_addr_regex.group(0), base=16)
         for addr in fun_class.addr_range:
             # print(addr.start, addr.end)
             if taint_type == "source":
-                tainted_sources[addr_int] = taint_fun
-                #print("Source: ", taint_fun, addr_int)
+                #tainted_sources[addr_int] = taint_fun
+                #print(taint_type, "addr: ", addr_int)
+                tainted_srcs_addr.add(addr_int)
             else:
-                tainted_sinks[addr_int] = taint_fun
-                #print("Sink", taint_fun, addr_int)
+                #tainted_sinks[addr_int] = taint_fun
+                #print(taint_type, "addr: ", addr_int)
+                tainted_sinks_addr.add(addr_int)
+
+tainted_srcs_funs   = set()
+tainted_sinks_funs  = set()
 
 for fun_class in fun_class_set:
+    #print(fun_class.name)
     for addr in fun_class.addr_range:
-        for src in tainted_sources:
-            if (src > addr.start) and (src < addr.end):
-                fun_class.taint_srcs.add(tainted_sources[src])
-        for sink in tainted_sinks:
-            if (sink > addr.start) and (sink < addr.end):
-                fun_class.taint_sinks.add(tainted_sinks[sink])
-    if len(fun_class.taint_srcs) != 0 or len(fun_class.taint_sinks) != 0 :
-        print(fun_class.name, fun_class.taint_srcs, fun_class.taint_sinks)
-        entry_write = "Entry: " + fun_class.name + "\n"
-        out_file_open.write(entry_write)
-        src_write = "\tSources: { " 
-        for src in fun_class.taint_srcs:
-            src_write += src + " "
-        src_write += "}" + "\n"
-        sink_write = "\tSinks: { " 
-        for sink in fun_class.taint_sinks:
-            sink_write += sink + " "
-        sink_write += "}" + "\n"
-        out_file_open.write(src_write)
-        out_file_open.write(sink_write)
+         #print(addr)
+         for srcs_addr in tainted_srcs_addr:
+            if (srcs_addr > addr.start) and (srcs_addr < addr.end):
+                tainted_srcs_funs.add(fun_class.name)
+         for sinks_addr in tainted_sinks_addr:
+            #print(sinks_addr)
+            if (sinks_addr > addr.start) and (sinks_addr < addr.end):
+                tainted_sinks_funs.add(fun_class.name)
 
+
+src_write = "\tSources: { " 
+for item in tainted_srcs_funs:
+    print("Source: ", item)
+    src_write += item + " "
+src_write += "}" + "\n"
+out_file_open.write(src_write)
+
+sink_write = "\tSinks: { " 
+for item in tainted_sinks_funs:
+    print("Sink: ", item)
+    sink_write += item + " "
+sink_write += "}" + "\n"
+out_file_open.write(sink_write)
 out_file_open.close()
