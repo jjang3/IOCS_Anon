@@ -80,25 +80,6 @@ static KNOB<size_t> fs(KNOB_MODE_WRITEONCE, "pintool", "f", "1", "");
 /* track net (enabled by default) */
 static KNOB<size_t> net(KNOB_MODE_WRITEONCE, "pintool", "n", "1", "");
 
-/* 
- * DTA/DFT alert
- *
- * @ins:	address of the offending instruction
- * @bt:		address of the branch target
- */
-static void PIN_FAST_ANALYSIS_CALL
-alert(ADDRINT ins, ADDRINT bt)
-{
-	/* log file */
-	FILE *logfile;
-	/* auditing */
-	if (likely((logfile = fopen(logpath.Value().c_str(), "a")) != NULL)) {
-		(void)fprintf(logfile, " ____ ____ ____ ____\n");
-	}
-	/* terminate */
-	exit(EXIT_FAILURE);
-}
-
 #if 1
 void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 {
@@ -183,6 +164,26 @@ VOID getMetadata(IMG img, void *v)
 	}
 }
 #endif
+
+/* 
+ * DTA/DFT alert
+ *
+ * @ins:	address of the offending instruction
+ * @bt:		address of the branch target
+ */
+static void PIN_FAST_ANALYSIS_CALL
+alert(ADDRINT ins, ADDRINT bt)
+{
+	/* log file */
+	FILE *logfile;
+	/* auditing */
+	if (likely((logfile = fopen(logpath.Value().c_str(), "a")) != NULL)) {
+		(void)fprintf(logfile, " ____ ____ ____ ____\n");
+	}
+	/* terminate */
+	exit(EXIT_FAILURE);
+}
+
 /*
  * 64-bit register assertion (taint-sink, DFT-sink)
  *
@@ -502,6 +503,7 @@ dta_instrument_ret(INS ins)
 		IARG_END);
 }
 
+
 /*
  * read(2) handler (taint-source)
  */
@@ -517,11 +519,11 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end())
 	{
 		/* set the tag markings */
-		cerr << "\t► read(2) taint set | " << unwindStack.top() << endl;
+		//cerr << "\t► read(2) taint set | " << unwindStack.top() << endl;
 		taintSrc = true;
 		// \nCurr Fun: %s\n\t  unwindStack.top()
 		fprintf(trace, "Taint source read(2): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
-		cerr << "\t - Routine: " << routineStack.top() << endl;
+		//cerr << "\t - Routine: " << routineStack.top() << endl;
 		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
 		unwindStack.pop();
 	}
@@ -569,7 +571,7 @@ post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
 		if (it != fdset.end()) {
 			/* set the tag markings */
 			fprintf(trace, "Taint source readv(2): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
-			cerr << "\t► readv(2) taint set | " << unwindStack.top() << endl;
+			//cerr << "\t► readv(2) taint set | " << unwindStack.top() << endl;
 			tagmap_setn((size_t)iov->iov_base, iov_tot, TAG);
 		}
 		else{
@@ -581,7 +583,6 @@ post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
 		tot -= iov_tot;
 	}
 }
-
 /*
  * socket(2) syscall post hook(auxiliary)
  *
@@ -701,7 +702,7 @@ static void post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 		if (it != fdset.end()){
 			/* set the tag markings */
 			fprintf(trace, "Taint source recvmsg(2): 0x%lx\n", addressStack.top());
-			cerr << "\t► recvmsg(2) taint set | " << unwindStack.top() << endl;
+			//cerr << "\t► recvmsg(2) taint set | " << unwindStack.top() << endl;
 			tagmap_setn((size_t)msg->msg_control,
 				msg->msg_controllen, TAG);
 		}
@@ -735,7 +736,7 @@ static void post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 		if (it != fdset.end()){
 			/* set the tag markings */
 			fprintf(trace, "Taint source recvmsg(2): 0x%lx\n", addressStack.top());
-			cerr << "Taint set recvmsg\n";
+			//cerr << "Taint set recvmsg\n";
 			tagmap_setn((size_t)iov->iov_base,
 						iov_tot, TAG);}
 		else
@@ -809,6 +810,8 @@ post_close_hook(THREADID tid, syscall_ctx_t *ctx)
  * NOTE: it does not track dynamic shared
  * libraries
  */
+
+#if 0 // Temporarily disabled as this is causing segmentation fault in MIR machine
 static void
 post_open_hook(THREADID tid, syscall_ctx_t *ctx)
 {
@@ -822,7 +825,7 @@ post_open_hook(THREADID tid, syscall_ctx_t *ctx)
 		strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF_ALT) == NULL)
 		fdset.insert((int)ctx->ret);
 }
-
+#endif
 #if 1
 /*
  * instrument the memory write instruction
@@ -843,8 +846,8 @@ dta_tainted_mem_write(ADDRINT paddr, ADDRINT eaddr)
 		printf("Tagged Mem Write (TMW)\n");
 		#endif
 		if (taintSrc == false){
-			cerr << "\t▷ dta_mem_write() " << endl;
-			printf("dta_mem_write\n");
+			//cerr << "\t▷ dta_mem_write() " << endl;
+			//printf("dta_mem_write\n");
 			//fprintf(trace, "\tTaint sink: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), tag_val);
 			fprintf(trace, "\tTaint sink dta_mem_write(): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
 		}
@@ -862,8 +865,8 @@ dta_tainted_mem_read(ADDRINT paddr, ADDRINT eaddr)
 		printf("Tagged Mem Read (TMR)\n");
 		#endif
 		if (taintSrc == false){
-			cerr << "\t▷ dta_mem_read()" << std::hex << " " << endl;
-			printf("dta_mem_read\n");
+			//cerr << "\t▷ dta_mem_read()" << std::hex << " " << endl;
+			//printf("dta_mem_read\n");
 			//fprintf(trace, "\tTaint sink: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), tag_val);
 			fprintf(trace, "\tTaint sink dta_mem_read(): 0x%lx\n",  (uintptr_t)(addressStack.top()-offset_addr));
 		}
@@ -938,7 +941,7 @@ main(int argc, char **argv)
 	 * checking the result of each instrumentation for
 	 * success or failure
 	 */
-
+	#if 1
 	/* instrument call */
 	(void)ins_set_post(&ins_desc[XED_ICLASS_CALL_NEAR],
 			dta_instrument_jmp_call);
@@ -950,8 +953,8 @@ main(int argc, char **argv)
 	/* instrument ret */
 	(void)ins_set_post(&ins_desc[XED_ICLASS_RET_NEAR],
 			dta_instrument_ret);
-
-	/* 
+	#endif
+		/* 
 	 * install taint-sources
 	 *
 	 * all network-related I/O calls are
@@ -984,6 +987,7 @@ main(int argc, char **argv)
 	/* close(2) */
 	(void)syscall_set_post(&syscall_desc[__NR_close], post_close_hook);
 	
+	#if 0
 	/* open(2), creat(2) */
 	if (fs.Value() != 0) {
 		(void)syscall_set_post(&syscall_desc[__NR_open],
@@ -991,7 +995,9 @@ main(int argc, char **argv)
 		(void)syscall_set_post(&syscall_desc[__NR_creat],
 				post_open_hook);
 	}
-	
+
+
+	#endif
 	/* add stdin to the interesting descriptors set */
 	if (stdin_.Value() != 0)
 		fdset.insert(STDIN_FILENO);

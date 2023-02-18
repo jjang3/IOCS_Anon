@@ -18,6 +18,7 @@ Repository for the Waterfall project
 
 ## How to use (To-do)
 1) *Recommended*: `cd taint_analysis && make all`  - This is highly recommended. 
+    - `export PIN_ROOT=dir/to/pin-3.20_build/`
 
 2) *Alternative*: `git submodule init && git submodule update`
 
