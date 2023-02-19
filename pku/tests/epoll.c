@@ -198,6 +198,7 @@ int main()
 			return 1;
 		}	
 	}
+	
 	#if 1 
 	if(pkey_mprotect(process_new_data, PAGESIZE, PROT_EXEC, pkey) == -1) {
 		perror("pkey_mprotect()");
