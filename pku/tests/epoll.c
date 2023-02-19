@@ -22,7 +22,7 @@ static int socket_fd, epoll_fd;
 
 //void process_new_data(int fd) __attribute__((aligned(PAGESIZE))) __attribute__ ((section ("isolate_target")));
 void process_new_data(int fd) __attribute__((aligned(PAGESIZE))) __attribute__ ((section ("isolate_target")));
-void process_more_tainted_data(char *str) __attribute__((aligned(PAGESIZE)))  __attribute__ ((section ("isolate_target")));
+//void process_more_tainted_data(char *str) __attribute__((aligned(PAGESIZE)))  __attribute__ ((section ("isolate_target")));
 
 static void socket_create_bind_local()
 {
@@ -173,21 +173,36 @@ void process_new_data(int fd)
 
 int main()
 {
-
     int pkey = pkey_alloc();
     if (pkey == -1) {
         perror("pkey_alloc()");
         return 1;
 	}
-    if (pkey_set(pkey, PKEY_DISABLE_ACCESS, 0) == -1) {
-		perror("pkey_set()");
-        return 1;
-    }
-	#if 1
+
+	char *command;
+	printf("Enter protection command: ");
+	scanf("%s", command);
+
+	if (strcmp(command,"y") == 0) {
+		printf("Set protection\n");
+		if (pkey_set(pkey, PKEY_DISABLE_ACCESS, 0) == -1) {
+			perror("pkey_set()");
+			return 1;
+		}
+	}
+	else if (strcmp(command,"n") == 0)
+	{
+		printf("Disable protection\n");
+		if (pkey_set(pkey, PKEY_ALL_ACCESS, 0) == -1) {
+			perror("pkey_set()");
+			return 1;
+		}	
+	}
+	#if 1 
 	if(pkey_mprotect(process_new_data, PAGESIZE, PROT_EXEC, pkey) == -1) {
-        perror("pkey_mprotect()");
-        return 1;
-    }
+		perror("pkey_mprotect()");
+		return 1;
+	}
 	#endif
 	#if 0
 	if(pkey_mprotect(process_more_tainted_data, strlen(process_more_tainted_data) + 1, PROT_READ | PROT_WRITE, pkey) == -1) {
