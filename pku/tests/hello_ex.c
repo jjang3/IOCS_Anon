@@ -50,21 +50,44 @@ int main()
         perror("pkey_alloc()");
         return 1;
 	}
-    // Assign "No access" permission to permission key (not designated to any memory locations yet)
-    if (pkey_set(pkey, PKEY_DISABLE_ACCESS, 0) == -1) {
+    // Assign "All Access" permission to pkey (not designated to any memory locations yet)
+    if (pkey_set(pkey, PKEY_ALL_ACCESS, 0) == -1) {
         perror("pkey_set()");
         return 1;
     }
     #endif
 
     #if 1
+    /*
+    PROT_NONE
+        The memory cannot be accessed at all.
+    PROT_READ
+        The memory can be read.
+    PROT_WRITE
+        The memory can be modified.
+    PROT_EXEC
+        The memory can be executed.
+    */
     // Question, why do I get segmentation fault here when I'm not even trying to access function foo?
+    // Furthermore, I am using PKEY_ALL_ACCESS which means there is no pkey set to the memory region.
     // We are designating pkey (which has disable access flag) to the isolated_target ELF section
     if(pkey_mprotect(&__start_isolate_target, pagelen * getpagesize(), PROT_READ | PROT_WRITE, pkey) == -1) {
         perror("pkey_mprotect()");
         return 1;
     }
     #endif
+
+    #if 0
+    // However, if mprotect is assigned with PROT_EXEC flag, then there is no segmentation fault.
+    // Some potential information regarding PROT_EXEC: 
+    // https://people.cs.kuleuven.be/~stijn.volckaert/papers/2022_EuroSys_Cerberus.pdf
+    // https://man7.org/linux/man-pages/man2/pkey_mprotect.2.html - There is a note regarding PROT_EXEC
+    if(pkey_mprotect(&__start_isolate_target, pagelen * getpagesize(), PROT_EXEC, pkey) == -1) {
+        perror("pkey_mprotect()");
+        return 1;
+    }
+    #endif
+
     printf("Hello World\n");
     return 0;
 }
