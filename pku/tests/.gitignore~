@@ -1,0 +1,6 @@
+*.code-space
+*.o
+*.out
+*.objdump
+archives
+*.sh~

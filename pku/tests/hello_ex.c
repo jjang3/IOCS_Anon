@@ -2,27 +2,27 @@
 
 #define PAGESIZE 	4096
 
-
+// This line creates a custom section called "isolate_target", and then align this section with the pagesize
+// More information here: https://stackoverflow.com/questions/16552710/how-do-you-get-the-start-and-end-addresses-of-a-custom-elf-section
 void foo() __attribute__((aligned(PAGESIZE)))  __attribute__ ((section ("isolate_target")));
-
-struct fun_info {
-    char *name;
-};
 
 /* The linker automatically creates these symbols for "my_custom_section". */
 extern struct fun_info *__start_isolate_target;
 extern struct fun_info *__stop_isolate_target;
 
+// We are making pkey global because we want to use pkey_set to flexibly enable/disable access
 int pkey;
 
 int main()
 {
-
-    printf("Hello World\n");
+    // Sanity check.
     printf("Isolated functions are sitting from %p to %p\n",
 	   (void *)&__start_isolate_target,
 	   (void *)&__stop_isolate_target);
-
+    /*
+        This is used to figure out the pagesize length of section
+        as there could be multiple functions in a section. 
+    */
     size_t isolate_target_len = ((uintptr_t)&__stop_isolate_target)-((uintptr_t)&__start_isolate_target);
     int pagelen;
     if (isolate_target_len < PAGESIZE)
@@ -38,29 +38,44 @@ int main()
         }
         pagelen = base;
     }
+
+    /*
+        MPK-related stuff.
+    */
     #if 1
-    // Allocate protection key
+    // Allocate protection key (how this is used is in pkuapi.c)
     pkey = pkey_alloc();
     if (pkey == -1) {
         perror("pkey_alloc()");
         return 1;
 	}
-    // Assign "No access" permission to permission key (not designated)
+    // Assign "No access" permission to permission key (not designated to any memory locations yet)
     if (pkey_set(pkey, PKEY_DISABLE_ACCESS, 0) == -1) {
         perror("pkey_set()");
         return 1;
     }
+    #endif
 
-    if(pkey_mprotect(&__start_isolate_target, getpagesize(), PROT_READ | PROT_WRITE, pkey) == -1) {
+    #if 1
+    // Question, why do I get segmentation fault here when I'm not even trying to access function foo?
+    // We are designating pkey (which has disable access flag) to the isolated_target ELF section
+    if(pkey_mprotect(&__start_isolate_target, pagelen * getpagesize(), PROT_READ | PROT_WRITE, pkey) == -1) {
         perror("pkey_mprotect()");
         return 1;
     }
     #endif
-    
+    printf("Hello World\n");
     return 0;
 }
 
 void foo()
 {
     printf("Foo\n");
+    #if 0 
+    // Disabled for now.
+    if (pkey_set(pkey, PKEY_DISABLE_ACCESS, 0) == -1) {
+        perror("pkey_set()");
+        return 1;
+    }
+    #endif
 }

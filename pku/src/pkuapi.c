@@ -1,7 +1,5 @@
 #include "../include/pkuapi.h"
 
-
-
 static inline int
 wrpkru(unsigned int pkru)
 {
