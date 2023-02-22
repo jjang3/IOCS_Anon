@@ -3,3 +3,4 @@
 3. `bash execute.sh` with updated `LD_LIBRARY_PATH` to the pku library folder will execute.
     - Default: `$HOME/Waterfall/pku`
 
+`https://github.com/cyrus-and/gdb-dashboard.git` < Useful GDB tool >

@@ -5,6 +5,7 @@
 // This line creates a custom section called "isolate_target", and then align this section with the pagesize
 // More information here: https://stackoverflow.com/questions/16552710/how-do-you-get-the-start-and-end-addresses-of-a-custom-elf-section
 void foo() __attribute__((aligned(PAGESIZE)))  __attribute__ ((section ("isolate_target")));
+// objdump -d hello_ex.out &> hello.objdump will dump isolated section
 
 /* The linker automatically creates these symbols for "my_custom_section". */
 extern struct fun_info *__start_isolate_target;
