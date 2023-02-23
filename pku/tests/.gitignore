@@ -4,3 +4,6 @@
 *.objdump
 archives
 *.sh~
+metadata.c
+stackoverflow.c
+*.ld

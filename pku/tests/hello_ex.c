@@ -71,7 +71,13 @@ int main()
     // Question, why do I get segmentation fault here when I'm not even trying to access function foo?
     // Furthermore, I am using PKEY_ALL_ACCESS which means there is no pkey set to the memory region.
     // We are designating pkey (which has disable access flag) to the isolated_target ELF section
+    /*
     if(pkey_mprotect(&__start_isolate_target, pagelen * getpagesize(), PROT_READ | PROT_WRITE, pkey) == -1) {
+        perror("pkey_mprotect()");
+        return 1;
+    }
+    */
+    if(mprotect(&__start_isolate_target, pagelen * getpagesize(), PROT_READ | PROT_WRITE) == -1) {
         perror("pkey_mprotect()");
         return 1;
     }
