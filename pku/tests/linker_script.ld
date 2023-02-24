@@ -1,10 +1,10 @@
 SECTIONS
 {
-    _smysection = .;
+    _start_isolate_sec = .;
     .isolate_target BLOCK(4096) : ALIGN(4096) {
             *(.isolate_target)
     }
-    _emysection = .;
+    _end_isolate_sec = .;
 }
 
 INSERT AFTER .rodata;

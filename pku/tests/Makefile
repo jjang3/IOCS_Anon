@@ -9,4 +9,4 @@ clean:
 	rm -f *.out
 
 %.out : %.c
-	$(CC) $(LIBDIR) $(CFLAGS) $< -o $@ $(LDFLAGS)
+	$(CC) -T linker_script.ld $(LIBDIR) $(CFLAGS) $< -o $@ $(LDFLAGS)

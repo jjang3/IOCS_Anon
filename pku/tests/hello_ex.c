@@ -4,12 +4,12 @@
 
 // This line creates a custom section called "isolate_target", and then align this section with the pagesize
 // More information here: https://stackoverflow.com/questions/16552710/how-do-you-get-the-start-and-end-addresses-of-a-custom-elf-section
-void foo() __attribute__((aligned(PAGESIZE)))  __attribute__ ((section ("isolate_target")));
+void foo()  __attribute__ ((section (".isolate_target")));
 // objdump -d hello_ex.out &> hello.objdump will dump isolated section
 
 /* The linker automatically creates these symbols for "my_custom_section". */
-extern struct fun_info *__start_isolate_target;
-extern struct fun_info *__stop_isolate_target;
+const void * _start_isolate_sec;
+const void * _end_isolate_sec;
 
 // We are making pkey global because we want to use pkey_set to flexibly enable/disable access
 int pkey;
@@ -18,13 +18,13 @@ int main()
 {
     // Sanity check.
     printf("Isolated functions are sitting from %p to %p\n",
-	   (void *)&__start_isolate_target,
-	   (void *)&__stop_isolate_target);
+	   (void *)&_start_isolate_sec,
+	   (void *)&_end_isolate_sec);
     /*
         This is used to figure out the pagesize length of section
         as there could be multiple functions in a section. 
     */
-    size_t isolate_target_len = ((uintptr_t)&__stop_isolate_target)-((uintptr_t)&__start_isolate_target);
+    size_t isolate_target_len = ((uintptr_t)&_end_isolate_sec)-((uintptr_t)&_start_isolate_sec);
     int pagelen;
     if (isolate_target_len < PAGESIZE)
     {
@@ -71,13 +71,17 @@ int main()
     // Question, why do I get segmentation fault here when I'm not even trying to access function foo?
     // Furthermore, I am using PKEY_ALL_ACCESS which means there is no pkey set to the memory region.
     // We are designating pkey (which has disable access flag) to the isolated_target ELF section
+
+    // Potential reason of why segmentation fault is happening: because inside of this "isolate_target" section
+    // there is still a code which is inside of this region that is being touched.
     /*
     if(pkey_mprotect(&__start_isolate_target, pagelen * getpagesize(), PROT_READ | PROT_WRITE, pkey) == -1) {
         perror("pkey_mprotect()");
         return 1;
     }
     */
-    if(mprotect(&__start_isolate_target, pagelen * getpagesize(), PROT_READ | PROT_WRITE) == -1) {
+    // As discussed, we only want read / execute permission to the function
+    if(mprotect(&foo, pagelen * getpagesize(), PROT_READ | PROT_EXEC) == -1) {
         perror("pkey_mprotect()");
         return 1;
     }

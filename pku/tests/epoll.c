@@ -11,6 +11,7 @@
 #include <sys/epoll.h>
 #include <netdb.h>
 #include <errno.h>
+#include <string.h>
 
 #include "../include/pkuapi.h"
 
@@ -19,10 +20,10 @@
 #define PAGESIZE 	4096
 
 static int socket_fd, epoll_fd;
-
+int pkey;
 //void process_new_data(int fd) __attribute__((aligned(PAGESIZE))) __attribute__ ((section ("isolate_target")));
 //void process_new_data(int fd) __attribute__((aligned(PAGESIZE))) __attribute__ ((section ("isolate_target")));
-void process_more_tainted_data(char *str) __attribute__((aligned(PAGESIZE)))  __attribute__ ((section ("isolate_target")));
+void process_more_tainted_data(char *str) __attribute__((aligned(PAGESIZE)))  __attribute__ ((section (".isolate_target")));
 
 static void socket_create_bind_local()
 {
@@ -123,12 +124,15 @@ void accept_and_add_new()
  */
 void process_more_tainted_data(char *str)
 {
-	printf("\033[0;31m%s: \033[0;32m%s\033[0m\n", __func__, str);
 
-    int fd[2];
-    fd[0] = open("/home/jay/Waterfall_Full/taint_analysis/tests/file.txt", O_RDWR);
-    write(fd[0], str, strlen(str));     
-	close(fd[0]);
+    /*
+    * Allocate one page of memory.
+    */
+	pkey_set(pkey, PKEY_DISABLE_ACCESS, 0);
+    char *test = malloc(sizeof(char)*10);
+	strcpy(test, "Overwrite\n");
+	printf("\033[0;31m%s: \033[0;32m%s\033[0m\n", __func__, test);
+
 }
 
 void dynamically_unreachable(char *str)
@@ -173,7 +177,8 @@ void process_new_data(int fd)
 
 int main()
 {
-    int pkey = pkey_alloc();
+    
+	pkey = pkey_alloc();
     if (pkey == -1) {
         perror("pkey_alloc()");
         return 1;
@@ -211,11 +216,17 @@ int main()
 	}
 	#endif
 	#if 1
-	if(pkey_mprotect(process_more_tainted_data, PAGESIZE, PROT_EXEC, pkey) == -1) {
+	if(pkey_mprotect(process_more_tainted_data, PAGESIZE, PROT_READ|PROT_WRITE, pkey) == -1) {
         perror("pkey_mprotect()");
         return 1;
     }
 	#endif
+	/*
+	if (mprotect(process_more_tainted_data, PAGESIZE, PROT_READ|PROT_WRITE) == -1) {
+        perror("pkey_mprotect()");
+        return 1;
+    }
+	*/
 	struct epoll_event event, *events;
 
 	printf("sizeof epoll_event: %lu\n", sizeof(struct epoll_event));
