@@ -6,3 +6,6 @@
 	path = taint_analysis/libdft64
 	url = https://github.com/AngoraFuzzer/libdft64.git
 	dirty = ignore
+[submodule "e9patch"]
+	path = e9patch
+	url = https://github.com/GJDuck/e9patch.git
