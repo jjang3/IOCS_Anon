@@ -25,7 +25,7 @@ Repository for the Waterfall project
 1) `git submodule init && git submodule update`
 2) `cd e9patch && bash build.sh` - This will build `e9patch` to be used later
 3) `cd taint_analysis && make all`  
-    - `export PIN_ROOT=dir/to/pin-3.20_build/`
+    - Sanity check: `cd scripts && bash execute.sh hello`
 4) `export LLVM_DIR="/location/"` with your LLVM directory location.
 5) From the `Waterfall` root directory, `mkdir build && cd build`
 6) `cmake .. && make -j4`, this will first build the `SVF` library, then `waterfall`.
