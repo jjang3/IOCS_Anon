@@ -5,25 +5,29 @@ Repository for the Waterfall project
 
 ```
 ./
+├── e9patch (sudmodule)
+├── e9stuff
 ├── include
+├── pku
 ├── sources
 ├── SVF (submodule)
-├── taint_analysis  
+├── taint_analysis (submodule)
 └── waterfall.sh
 ```
-- `include` = contains header files for the waterfall pass
-- `sources` = contains source files for the waterfall pass
-- `taint_analysis` = contains files for the taint  analysis
-- `waterfall.sh` = a script that will `waterfall` a source code.
+- `e9stuff` = contains script files for the `e9patch`-related binary rewriting.
+- `include` = contains header files for the waterfall LLVM pass
+- `pku` = contains necessary files for the Intel Memory Protection Key (MPK)
+- `sources` = contains source files for the waterfall LLVM pass
+- `taint_analysis` = contains files for the taint analysis using Intel PIN
+- `waterfall.sh` = a script that will `waterfall` a source code
 
 ## How to use (To-do)
-1) *Recommended*: `cd taint_analysis && make all`  - This is highly recommended. 
+1) `git submodule init && git submodule update`
+2) `cd e9patch && bash build.sh` - This will build `e9patch` to be used later
+3) `cd taint_analysis && make all`  
     - `export PIN_ROOT=dir/to/pin-3.20_build/`
-
-2) *Alternative*: `git submodule init && git submodule update`
-
-3) `export LLVM_DIR="/location/"` with your LLVM directory location.
-4) From the `Waterfall` root directory, `mkdir build && cd build`
-5) `cmake .. && make -j4`, this will first build the `SVF` library, then `waterfall`.
-6) Insert an input file to `./inputs`
-7) `bash waterfall.sh <source code name> waterfall (e.g., `bash waterfall.sh vuln_srv waterfall`)
+4) `export LLVM_DIR="/location/"` with your LLVM directory location.
+5) From the `Waterfall` root directory, `mkdir build && cd build`
+6) `cmake .. && make -j4`, this will first build the `SVF` library, then `waterfall`.
+7) Insert an input file to `./inputs`
+8) `bash waterfall.sh <source code name> waterfall (e.g., `bash waterfall.sh vuln_srv waterfall`)
