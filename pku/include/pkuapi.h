@@ -9,7 +9,7 @@
 #include <stdbool.h>
 #include <signal.h>
 #include <assert.h>
-#include <stdlib.h>
+//#include <stdlib.h>
 #include <ucontext.h>
 #include <sys/mman.h>
 #include <sys/types.h>
@@ -33,6 +33,8 @@ void __cyg_profile_func_enter (void *this_fn, void *call_site){}
 
 #define errExit(msg)    do { perror(msg); exit(EXIT_FAILURE); \
                             } while (0)
+
+int pkey;
 
 static inline int
 wrpkru(unsigned int pkru);

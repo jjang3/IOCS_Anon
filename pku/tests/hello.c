@@ -2,9 +2,13 @@
 
 #define PAGESIZE 	4096
 
+void __attribute__((constructor)) init();
 // This line creates a custom section called "isolate_target", and then align this section with the pagesize
 // More information here: https://stackoverflow.com/questions/16552710/how-do-you-get-the-start-and-end-addresses-of-a-custom-elf-section
-void foo()  __attribute__ ((section (".isolate_target")));
+void foo() __attribute__ ((section (".isolate_target")));
+//void foo();
+//void bar() __attribute__ ((section (".isolate_target")));
+void bar();
 // objdump -d hello_ex.out &> hello.objdump will dump isolated section
 
 /* The linker automatically creates these symbols for "my_custom_section". */
@@ -12,9 +16,7 @@ const void * _start_isolate_sec;
 const void * _end_isolate_sec;
 
 // We are making pkey global because we want to use pkey_set to flexibly enable/disable access
-int pkey;
-
-int main()
+void init()
 {
     // Sanity check.
     printf("Isolated functions are sitting from %p to %p\n",
@@ -48,12 +50,12 @@ int main()
     pkey = pkey_alloc();
     if (pkey == -1) {
         perror("pkey_alloc()");
-        return 1;
+        return;
 	}
     // Assign "All Access" permission to pkey (not designated to any memory locations yet)
-    if (pkey_set(pkey, PKEY_ALL_ACCESS, 0) == -1) {
+    if (pkey_set(pkey, PKEY_DISABLE_ACCESS, 0) == -1) {
         perror("pkey_set()");
-        return 1;
+        return;
     }
     #endif
 
@@ -81,26 +83,16 @@ int main()
     }
     */
     // As discussed, we only want read / execute permission to the function
-    if(mprotect(&foo, pagelen * getpagesize(), PROT_READ | PROT_EXEC) == -1) {
+    if(pkey_mprotect(&_start_isolate_sec, pagelen * getpagesize(), PROT_READ | PROT_EXEC, pkey) == -1) {
         perror("pkey_mprotect()");
-        return 1;
+        return;
     }
     #endif
+}
 
-    #if 0
-    // However, if mprotect is assigned with PROT_EXEC flag, then there is no segmentation fault.
-    // Some potential information regarding PROT_EXEC: 
-    // https://people.cs.kuleuven.be/~stijn.volckaert/papers/2022_EuroSys_Cerberus.pdf
-    // https://man7.org/linux/man-pages/man2/pkey_mprotect.2.html - There is a note regarding PROT_EXEC
-    if(pkey_mprotect(&__start_isolate_target, pagelen * getpagesize(), PROT_EXEC, pkey) == -1) {
-        perror("pkey_mprotect()");
-        return 1;
-    }
-    #endif
-    void *(*fun_ptr)(void);
-    
+int main()
+{
     printf("Hello World\n");
-    fun_ptr = &foo;
     foo();
     return 0;
 }
@@ -108,10 +100,12 @@ int main()
 void foo()
 {
     printf("Foo\n");
-    /*
-    asm volatile ( "xor %%rax,%%rax"
-        : 
-        :
-        : );
-    */
+    bar();
+    printf("After\n");
+}
+
+void bar()
+{
+    //foo();
+    printf("Bar\n");
 }

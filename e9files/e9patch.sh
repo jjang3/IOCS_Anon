@@ -20,5 +20,5 @@ if [ ! -d "$OUTPUT_DIR" ]; then
 fi
 
 #cd $E9BIN_DIR && e9tool -M 'call and target = &process_new_data || call and target == &process_more_tainted_data || asm=/xor.+%rax\,\s%rax/' -P 'entry(offset,asm)@trampoline' $INPUT_DIR/$2.out
-cd $E9BIN_DIR && e9tool -M 'call and target = &foo || call and target = &__cyg_profile_func_exit' -P 'entry(offset,asm)@trampoline' $INPUT_DIR/$2.out
+cd $E9BIN_DIR && e9tool -M 'call and target = &bar' -P 'before entry(offset,asm,"entry")@trampoline' -M 'call and target = &__cyg_profile_func_exit' -P 'before entry(offset,asm,"exit")@trampoline' $INPUT_DIR/$2.out
 mv $E9BIN_DIR/a.out $OUTPUT_DIR/$2.out
