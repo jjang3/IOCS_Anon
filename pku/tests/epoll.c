@@ -133,6 +133,11 @@ void process_more_tainted_data(char *str)
 	strcpy(test, "Overwrite\n");
 	printf("\033[0;31m%s: \033[0;32m%s\033[0m\n", __func__, test);
 
+    asm volatile ( "xor %%rax,%%rax"
+        : 
+        :
+        : );
+
 }
 
 void dynamically_unreachable(char *str)
@@ -173,6 +178,11 @@ void process_new_data(int fd)
 
 	printf("Close connection on descriptor: %d\n", fd);
 	close(fd);
+	
+    asm volatile ( "xor %%rax,%%rax"
+        : 
+        :
+        : );
 }
 
 int main()
@@ -215,8 +225,8 @@ int main()
 		return 1;
 	}
 	#endif
-	#if 1
-	if(pkey_mprotect(process_more_tainted_data, PAGESIZE, PROT_READ|PROT_WRITE, pkey) == -1) {
+	#if 0
+	if(pkey_mprotect(process_more_tainted_data, PAGESIZE, PROT_READ|PROT_EXEC, pkey) == -1) {
         perror("pkey_mprotect()");
         return 1;
     }

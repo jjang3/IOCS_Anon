@@ -1,12 +1,17 @@
 CC		= gcc
-CFLAGS	= -fPIC -g -Wall
+CFLAGS	= -g -O1 -Wall -finstrument-functions
 LIBDIR 	= -L/home/jaewon/Waterfall/pku
-LDFLAGS = -lpkuapi
+LIBS 	= -lpkuapi
+
+.PHONY: all %.out clean
 
 all: $(TARGET)
 
-clean:
-	rm -f *.out
+%.out : %.o
+	$(CC) $(CFLAGS) $(LIBDIR)  -T linker_script.ld  $< -o $@  $(LIBS)
 
-%.out : %.c
-	$(CC) -T linker_script.ld $(LIBDIR) $(CFLAGS) $< -o $@ $(LDFLAGS)
+%.o : %.c
+	$(CC) $(CFLAGS) -c $< -o $@ 
+
+clean:
+	rm -f *.out *.o

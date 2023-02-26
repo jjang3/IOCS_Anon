@@ -20,6 +20,13 @@
 #include <sys/ptrace.h>
 #include <setjmp.h>
 
+
+__attribute__((no_instrument_function))
+void __cyg_profile_func_enter (void *this_fn, void *call_site){}
+
+//void __cyg_profile_func_exit  (void *this_fn, void *call_site)
+//{ /* Landing pad for binary rewriting  */ } 
+
 #define PKEY_ALL_ACCESS 0x0
 #define PKEY_DISABLE_ACCESS	0x1
 #define PKEY_DISABLE_WRITE	0x2

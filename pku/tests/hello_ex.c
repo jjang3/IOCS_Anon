@@ -97,19 +97,21 @@ int main()
         return 1;
     }
     #endif
-
+    void *(*fun_ptr)(void);
+    
     printf("Hello World\n");
+    fun_ptr = &foo;
+    foo();
     return 0;
 }
 
 void foo()
 {
     printf("Foo\n");
-    #if 0 
-    // Disabled for now.
-    if (pkey_set(pkey, PKEY_DISABLE_ACCESS, 0) == -1) {
-        perror("pkey_set()");
-        return 1;
-    }
-    #endif
+    /*
+    asm volatile ( "xor %%rax,%%rax"
+        : 
+        :
+        : );
+    */
 }

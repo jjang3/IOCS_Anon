@@ -7,3 +7,4 @@ archives
 metadata.c
 stackoverflow.c
 *.ld
+instrument_test
