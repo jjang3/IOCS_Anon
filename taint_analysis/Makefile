@@ -1,4 +1,5 @@
 ROOT_DIR=$(shell pwd)
+LIB_DIR=${ROOT_DIR}/lib
 LIBDFT_DIR=${ROOT_DIR}/libdft64
 SOURCE_DIR=${ROOT_DIR}/libdft64_files
 PIN_BUILD=${ROOT_DIR}/pin-3.20_build
@@ -15,7 +16,10 @@ export PIN_ROOT := ${PIN_BUILD}
 
 all: build 
 
-build: update ${PIN_VER}_build ${LIBDFT}_build
+build: update ${PIN_VER}_build ${LIBDFT}_build compile
+
+compile:
+	bash compile.sh
 
 ${PIN}.tar.gz:
 ifneq ($(PIN).tar.gz,"")
@@ -45,4 +49,5 @@ update:
 clean:
 		rm -rf ${PIN}
 		rm -rf ${PIN_BUILD}
+		rm -rf ${LIB_DIR}
 		rm ${PIN}.tar.gz*
