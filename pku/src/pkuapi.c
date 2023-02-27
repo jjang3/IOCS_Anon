@@ -37,3 +37,9 @@ pkey_free(unsigned long pkey)
 {
     return syscall(SYS_pkey_free, pkey);
 }
+
+void pkey_enable()
+{
+    //printf("Pkey enable\n");
+    pkey_set(pkey, PKEY_ALL_ACCESS, 0);
+}

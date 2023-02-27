@@ -21,8 +21,8 @@
 #include <setjmp.h>
 
 
-__attribute__((no_instrument_function))
-void __cyg_profile_func_enter (void *this_fn, void *call_site){}
+//__attribute__((no_instrument_function))
+//void __cyg_profile_func_enter (void *this_fn, void *call_site){}
 
 //void __cyg_profile_func_exit  (void *this_fn, void *call_site)
 //{ /* Landing pad for binary rewriting  */ } 
@@ -49,6 +49,7 @@ pkey_mprotect(void *ptr, size_t size, unsigned long orig_prot,
 int
 pkey_alloc(void);
 
-
 int
 pkey_free(unsigned long pkey);
+
+void pkey_enable();
