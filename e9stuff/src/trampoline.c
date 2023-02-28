@@ -20,7 +20,7 @@ void entry(intptr_t static_addr, intptr_t asm_str, const char *entry_exit_flag, 
 {
     if (strcmp(entry_exit_flag, "entry") == 0) {
         fprintf(stderr, YELLOW "%.16lx: pkey_set" GREEN " %s %d\n" WHITE, static_addr, entry_exit_flag, pkey);
-        //pkey_enable(); // uncomment this to enable restriction access
+        pkey_enable(); // uncomment this to enable restriction access
     }
     else {
         fprintf(stderr, YELLOW "%.16lx: pkey_set" RED " %s\n"  WHITE, static_addr, entry_exit_flag);

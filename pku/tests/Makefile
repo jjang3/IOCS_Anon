@@ -1,6 +1,6 @@
 CC		= gcc
 CFLAGS	= -g -O1 -Wall -finstrument-functions
-EXFLAGS	= -finstrument-functions-exclude-function-list=init,main
+EXFLAGS	= -finstrument-functions-exclude-function-list=init,main,foo
 LIBDIR 	= -L/home/jaewon/Waterfall/pku
 LIBS 	= -lpkuapi
 

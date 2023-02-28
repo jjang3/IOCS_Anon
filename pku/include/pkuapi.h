@@ -36,7 +36,7 @@
 
 int pkey;
 
-static inline int
+int
 wrpkru(unsigned int pkru);
 
 int

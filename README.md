@@ -28,6 +28,7 @@ Repository for the Waterfall project
     - Sanity check: `cd scripts && bash execute.sh hello`
 4) `export LLVM_DIR="/location/"` with your LLVM directory location.
 5) From the `Waterfall` root directory, `mkdir build && cd build`
-6) `cmake .. && make -j4`, this will first build the `SVF` library, then `waterfall`.
-7) Insert an input file to `./inputs`
-8) `bash waterfall.sh <source code name> waterfall (e.g., `bash waterfall.sh vuln_srv waterfall`)
+6) Install Z3: `sudo apt-get install z3 libz3-dev`
+7) `cmake .. && make -j4`, this will first build the `SVF` library, then `waterfall`.
+8) Insert an input file to `./inputs`
+9) `bash waterfall.sh <source code name> waterfall (e.g., `bash waterfall.sh vuln_srv waterfall`)

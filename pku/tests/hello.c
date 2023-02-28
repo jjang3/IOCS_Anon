@@ -15,6 +15,8 @@ void bar();
 const void * _start_isolate_sec;
 const void * _end_isolate_sec;
 
+extern int pkey;
+
 // We are making pkey global because we want to use pkey_set to flexibly enable/disable access
 void init()
 {
@@ -70,18 +72,6 @@ void init()
     PROT_EXEC
         The memory can be executed.
     */
-    // Question, why do I get segmentation fault here when I'm not even trying to access function foo?
-    // Furthermore, I am using PKEY_ALL_ACCESS which means there is no pkey set to the memory region.
-    // We are designating pkey (which has disable access flag) to the isolated_target ELF section
-
-    // Potential reason of why segmentation fault is happening: because inside of this "isolate_target" section
-    // there is still a code which is inside of this region that is being touched.
-    /*
-    if(pkey_mprotect(&__start_isolate_target, pagelen * getpagesize(), PROT_READ | PROT_WRITE, pkey) == -1) {
-        perror("pkey_mprotect()");
-        return 1;
-    }
-    */
     // As discussed, we only want read / execute permission to the function
     if(pkey_mprotect(&_start_isolate_sec, pagelen * getpagesize(), PROT_READ | PROT_EXEC, pkey) == -1) {
         perror("pkey_mprotect()");
@@ -99,7 +89,8 @@ int main()
 
 void foo()
 {
-    printf("Foo\n");
+    int a[5];
+    a[3] = 1;
     bar();
     printf("After\n");
 }

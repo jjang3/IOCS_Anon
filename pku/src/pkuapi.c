@@ -1,6 +1,6 @@
 #include "../include/pkuapi.h"
 
-static inline int
+int
 wrpkru(unsigned int pkru)
 {
     unsigned int eax = pkru;

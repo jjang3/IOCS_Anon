@@ -2,6 +2,8 @@ import argparse
 import pprint
 from binaryninja import *
 from dataclasses import dataclass, field
+import os
+core_set_license(os.environ['BNLICENSE'])
 
 # Data class
 @dataclass(unsafe_hash=True)
