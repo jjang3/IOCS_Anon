@@ -2,8 +2,6 @@ import argparse
 import pprint
 from binaryninja import *
 from dataclasses import dataclass, field
-import os
-core_set_license(os.environ['BNLICENSE'])
 
 # Data class
 @dataclass(unsafe_hash=True)
@@ -41,7 +39,7 @@ if (args.binary != None):
             range_list = fun.address_ranges
             fun_class = fun_dataclass(fun.name, range_list, set(), set())   # Initializing function dataclass
             fun_class_set.add(fun_class)                                    # Adding dataclass to a set
-            print(range_list)
+            #print(range_list)
 
 # ----- Parsing dft.out file to organize everything ----- #
 #tainted_sources = dict()    # if routine name (w/ @plt) is available
@@ -52,10 +50,11 @@ tainted_sinks_addr  = set()
 with open(in_file, "r") as infile:
     for line in infile:
         taint_type_regex = re.search(r'(?<=Taint\s).*(?=\s[a-z,0-9].*\(.*\))', line)
-        #taint_fun_regex =  re.search(r'(?<=:\s)(.*)(?=@plt)', line)
+        #taint_fun_regex =  re.search(r'(?:(?<=source\s)|(?<=sink\s))(.*)(?=:)', line)
         taint_addr_regex =  re.search(r'(?<=:\s)(.*)', line)
         taint_type = taint_type_regex.group(0)
         addr_int = int(taint_addr_regex.group(0), base=16)
+        #print(taint_fun_regex.group(0))
         for addr in fun_class.addr_range:
             # print(addr.start, addr.end)
             if taint_type == "source":
@@ -69,11 +68,11 @@ with open(in_file, "r") as infile:
 
 tainted_srcs_funs   = set()
 tainted_sinks_funs  = set()
+exclude_funs        = set() # This is list of functions that will be excluded
 
 for fun_class in fun_class_set:
     #print(fun_class.name)
     for addr in fun_class.addr_range:
-         #print(addr)
          for srcs_addr in tainted_srcs_addr:
             if (srcs_addr > addr.start) and (srcs_addr < addr.end):
                 tainted_srcs_funs.add(fun_class.name)
@@ -81,6 +80,10 @@ for fun_class in fun_class_set:
             #print(sinks_addr)
             if (sinks_addr > addr.start) and (sinks_addr < addr.end):
                 tainted_sinks_funs.add(fun_class.name)
+    if (fun_class.name not in (tainted_sinks_funs or tainted_srcs_funs)):
+        exclude_funs.add(fun_class.name)
+
+
 
 
 src_write = "\tSources: { " 
@@ -96,4 +99,16 @@ for item in tainted_sinks_funs:
     sink_write += item + " "
 sink_write += "}" + "\n"
 out_file_open.write(sink_write)
+
+exclude_write="\tExclude: "
+iterator = 0
+for item in exclude_funs:
+    iterator += 1
+    if (iterator == len(exclude_funs)):
+        exclude_write += item + "\n"
+        break
+    exclude_write += item + ", "
+out_file_open.write(exclude_write)
+
 out_file_open.close()
+
