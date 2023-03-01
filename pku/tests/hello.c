@@ -11,6 +11,8 @@ void foo() __attribute__ ((section (".isolate_target")));
 void bar();
 // objdump -d hello_ex.out &> hello.objdump will dump isolated section
 
+void (*MyCallBack)(void);
+
 /* The linker automatically creates these symbols for "my_custom_section". */
 const void * _start_isolate_sec;
 const void * _end_isolate_sec;
@@ -82,20 +84,20 @@ void init()
 
 int main()
 {
+    MyCallBack = foo;
     printf("Hello World\n");
     foo();
+    printf("%p %p\n", foo, MyCallBack);
     return 0;
 }
 
-void foo()
+
+void foo() // Trusted component
 {
-    int a[5];
-    a[3] = 1;
-    bar();
     printf("After\n");
 }
 
-void bar()
+void bar() // Untrusted component
 {
     //foo();
     printf("Bar\n");

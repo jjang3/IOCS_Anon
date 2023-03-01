@@ -1,12 +1,12 @@
-#include "../include/pkuapi.h"
+#include "../src/pkuapi.c"
 
 #include <stdlib.h>
 
 #define PAGESIZE 	4096
 
 extern int pkey;
-
-void foo();
+void foo() __attribute__ ((section (".isolate_target")));
+//void foo();
 
 int main()
 {
