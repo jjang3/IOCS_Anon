@@ -13,7 +13,7 @@
 #include <errno.h>
 #include <string.h>
 
-#include "../include/pkuapi.h"
+#include "../src/pkuapi.c"
 
 #define MAXEVENTS	64
 #define PORT		5000

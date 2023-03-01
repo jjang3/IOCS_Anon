@@ -1,5 +1,9 @@
 #include "../include/pkuapi.h"
 
+
+__attribute__((no_instrument_function))
+void __cyg_profile_func_enter (void *this_fn, void *call_site){}
+
 int
 wrpkru(unsigned int pkru)
 {

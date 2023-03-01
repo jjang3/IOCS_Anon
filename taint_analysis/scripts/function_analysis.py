@@ -81,7 +81,8 @@ for fun_class in fun_class_set:
             if (sinks_addr > addr.start) and (sinks_addr < addr.end):
                 tainted_sinks_funs.add(fun_class.name)
     if (fun_class.name not in (tainted_sinks_funs or tainted_srcs_funs)):
-        exclude_funs.add(fun_class.name)
+        if ("sub_" not in fun_class.name):
+            exclude_funs.add(fun_class.name)
 
 
 
@@ -107,7 +108,7 @@ for item in exclude_funs:
     if (iterator == len(exclude_funs)):
         exclude_write += item + "\n"
         break
-    exclude_write += item + ", "
+    exclude_write += item + ","
 out_file_open.write(exclude_write)
 
 out_file_open.close()

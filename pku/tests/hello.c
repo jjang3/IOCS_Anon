@@ -1,4 +1,4 @@
-#include "../include/pkuapi.h"
+#include "../src/pkuapi.c"
 
 #define PAGESIZE 	4096
 
