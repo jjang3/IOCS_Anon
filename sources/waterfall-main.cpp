@@ -1,6 +1,8 @@
 #include "../include/waterfall-main.h"
 #include "../include/waterfall-ICFG.h"
 
+#include <string.h>
+
 #define DBG_FLAG 0
 
 using namespace llvm;
@@ -14,7 +16,36 @@ cl::opt<string> inputTaintFile("taint", cl::desc("<input file>"), cl::OneOrMore)
 llvm::raw_ostream &main_dbg = llvm::errs();
 
 namespace {
-    
+
+std::vector<string> parseTaintFile(std::ifstream &inputFile)
+{
+  std::vector<string> result;
+  main_dbg << "Parsing taint file\n";
+  if ( inputFile.is_open() ){
+    for( std::string line; getline( inputFile, line ); )
+    {
+      string word = "Summary: ";
+
+      if (strstr(line.c_str(), word.c_str()) != NULL) {  
+        
+        size_t colonPos = line.rfind(": ");
+        auto parseString = line.substr(colonPos+2);
+        string delimiter = " ";
+        size_t pos;
+        while ((pos = parseString.find(delimiter)) != std::string::npos) {
+            auto token = parseString.substr(0, pos);
+            main_dbg << token << "\n";
+            parseString.erase(0, pos + delimiter.length());
+            if (strcmp(token.c_str(), "") != 0)
+              result.push_back(token);
+        }
+      }
+    }
+  }
+  inputFile.close();
+  return result;
+}
+
 SetVector<Function*> buildWorklist(Module &M)
 {
     SetVector<Function*> Result;
@@ -39,13 +70,14 @@ PreservedAnalyses WaterfallPass::run(Module &M,
                                   ModuleAnalysisManager &MM) {
     // Parsing input list file:
     std::ifstream infile(inputTaintFile);
-    main_dbg << "Parsing taint file\n";
-    for( std::string line; getline( infile, line ); )
-    {
-      main_dbg << line << "\n";
-    }
     WaterfallPass waterfall;
     waterfall.funsWorklist = buildWorklist(M);
+    waterfall.funsTainted = parseTaintFile(infile);
+    for (auto item : waterfall.funsTainted)
+    {
+      main_dbg << item << "\n";
+    }
+    exit(1);
     auto waterfallAnalysisResult = MM.getResult<WaterfallICFGAnalysis>(M);
     return PreservedAnalyses::all();
 }

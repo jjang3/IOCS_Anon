@@ -26,9 +26,7 @@ using namespace SVF;
 using namespace SVFUtil;
 using namespace llvm;
 
-std::vector<FunctionInfo> extractCallGraph(Module &M, PTACallGraph* inputCG);
-
-PTACallGraph *buildDTAInputGraph(SVFModule *input, ICFG *icfg);
+PTACallGraph *buildNonIntrinsicCG(SVFModule *input, ICFG *icfg);
 
 class WaterfallICFGAnalysis
     : public llvm::AnalysisInfoMixin<WaterfallICFGAnalysis> {

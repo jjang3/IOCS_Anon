@@ -25,7 +25,7 @@ public:
 
 private:
     SetVector<Function*> funsWorklist;
-
+    std::vector<string> funsTainted;
 };
 
 }

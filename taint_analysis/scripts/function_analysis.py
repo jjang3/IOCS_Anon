@@ -68,6 +68,7 @@ with open(in_file, "r") as infile:
 
 tainted_srcs_funs   = set()
 tainted_sinks_funs  = set()
+tainted_total_funs  = set()
 exclude_funs        = set() # This is list of functions that will be excluded
 
 for fun_class in fun_class_set:
@@ -84,8 +85,9 @@ for fun_class in fun_class_set:
         if ("sub_" not in fun_class.name):
             exclude_funs.add(fun_class.name)
 
+tainted_total_funs = tainted_sinks_funs.union(tainted_srcs_funs)
 
-
+#print(tainted_total_funs)
 
 src_write = "\tSources: { " 
 for item in tainted_srcs_funs:
@@ -100,6 +102,12 @@ for item in tainted_sinks_funs:
     sink_write += item + " "
 sink_write += "}" + "\n"
 out_file_open.write(sink_write)
+
+total_write = "\tSummary: "
+for item in tainted_total_funs:
+    total_write += item + " "
+total_write += "\n"
+out_file_open.write(total_write)
 
 exclude_write="\tExclude: "
 iterator = 0

@@ -17,7 +17,6 @@
 #include "Graphs/SVFG.h"
 
 using namespace llvm;
-
 using namespace SVF;
 using namespace SVFUtil;
 
@@ -25,10 +24,7 @@ using namespace SVFUtil;
 #define UNIQUE_IDENTIFIER_HERE
 
 struct FunctionInfo {
-    PTACallGraphNode* PTACGNode;
-    uint32_t ID;
-    SetVector<int> dstIDs;
-    Function *nodeFun;
+    PTACallGraph* resultGraph;
 };
 
 #endif // ndef UNIQUE_IDENTIFIER_HERE
