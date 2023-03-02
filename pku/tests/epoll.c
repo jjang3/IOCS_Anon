@@ -22,19 +22,25 @@ void __attribute__((constructor)) init();
 static int socket_fd, epoll_fd;
 int pkey;
 
-int canary = 0; __attribute__ ((section (".isolate_target"))) // Barrier variable
-void process_more_tainted_data(char *str) __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".isolate_target")));
+__attribute__ ((section (".isolate_data"))) int canary = 0; // Barrier variable
+void dynamically_unreachable() __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".isolate_target")));
 //int canary = 0;
 /* The linker automatically creates these symbols for "my_custom_section". */
 const void * _start_isolate_sec;
 const void * _end_isolate_sec;
+const void * _start_isolate_data;
+const void * _end_isolate_data;
 // We are making pkey global because we want to use pkey_set to flexibly enable/disable access
 void init()
 {
     // Sanity check.
+    printf("Isolated data are sitting from %p to %p\n",
+	   (void *)&_start_isolate_data,
+	   (void *)&_end_isolate_data);
     printf("Isolated functions are sitting from %p to %p\n",
 	   (void *)&_start_isolate_sec,
 	   (void *)&_end_isolate_sec);
+	
     /*
         This is used to figure out the pagesize length of section
         as there could be multiple functions in a section. 
@@ -191,13 +197,19 @@ void accept_and_add_new()
  */
 void process_more_tainted_data(char *str)
 {
+	//printf("%p\n", &process_new_data);
 	printf("\033[0;31m%s: \033[0;32m%s\033[0m\n", __func__, str);
 
+	//asm volatile("jmp *%0" : : "r" (&dynamically_unreachable));
+	printf("%p\n", dynamically_unreachable);
+	void *ptr = (void *)dynamically_unreachable;
+	goto *ptr;
 }
 
 void dynamically_unreachable(char *str)
 {
 	printf("Dynamically unreachable, but touches tainted value\n");
+	return;
 }
 
 /**
@@ -230,8 +242,7 @@ void process_new_data(int fd)
 		else if (!strcmp(buf, "exit"))
 			exit(1);
 	}
-	
-	asm (" mov $0x0 , %0" : "=r" ( canary ) ) ;
+	//printf("%d\n", canary);
 	printf("Close connection on descriptor: %d\n", fd);
 	close(fd);
 }
