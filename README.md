@@ -32,3 +32,8 @@ Repository for the Waterfall project
 7) `cmake .. && make -j4`, this will first build the `SVF` library, then `waterfall`.
 8) Insert an input file to `./inputs`
 9) `bash waterfall.sh <source code name> waterfall (e.g., `bash waterfall.sh vuln_srv waterfall`)
+
+
+## Side notes:
+- Z3 version: `https://github.com/Z3Prover/z3/archive/refs/tags/z3-4.8.8.zip`
+  - Make sure to `EXPORT Z3_DIR=/path/to/z3-build`
