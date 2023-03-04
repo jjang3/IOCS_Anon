@@ -22,12 +22,15 @@ void __attribute__((constructor)) init();
 static int socket_fd, epoll_fd;
 int pkey;
 
-__attribute__ ((section (".isolate_data"))) int canary = 0; // Barrier variable
-void dynamically_unreachable() __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".isolate_target")));
+//__attribute__ ((section (".isolate_data"))) int canary = 0; // Barrier variable
+void process_new_data() __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".isolate_target")));
+void process_new_data() __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".isolate_target")));
 //int canary = 0;
 /* The linker automatically creates these symbols for "my_custom_section". */
-const void * _start_isolate_sec;
-const void * _end_isolate_sec;
+const void * _start_text_section;
+const void * _end_text_section;
+const void * _start_isolate_target;
+const void * _end_isolate_target;
 const void * _start_isolate_data;
 const void * _end_isolate_data;
 // We are making pkey global because we want to use pkey_set to flexibly enable/disable access
@@ -38,14 +41,14 @@ void init()
 	   (void *)&_start_isolate_data,
 	   (void *)&_end_isolate_data);
     printf("Isolated functions are sitting from %p to %p\n",
-	   (void *)&_start_isolate_sec,
-	   (void *)&_end_isolate_sec);
+	   (void *)&_start_isolate_target,
+	   (void *)&_end_isolate_target);
 	
     /*
         This is used to figure out the pagesize length of section
         as there could be multiple functions in a section. 
     */
-    size_t isolate_target_len = ((uintptr_t)&_end_isolate_sec)-((uintptr_t)&_start_isolate_sec);
+    size_t isolate_target_len = ((uintptr_t)&_end_isolate_target)-((uintptr_t)&_start_isolate_target);
     int pagelen;
     if (isolate_target_len < PAGESIZE)
     {
@@ -90,7 +93,7 @@ void init()
         The memory can be executed.
     */
     // This will make the .isolate_sec execute-only page. 
-    if(pkey_mprotect(&_start_isolate_sec, pagelen * getpagesize(), PROT_READ | PROT_EXEC, pkey) == -1) {
+    if(pkey_mprotect(&_start_isolate_target, pagelen * getpagesize(), PROT_READ | PROT_EXEC, pkey) == -1) {
         perror("pkey_mprotect()");
         return;
     }
@@ -192,18 +195,28 @@ void accept_and_add_new()
 	 */
 }
 
+void (*functionPointer)() = dynamically_unreachable;
+
 /**
  * Should be a tainted function when input == "secret"
  */
 void process_more_tainted_data(char *str)
 {
-	//printf("%p\n", &process_new_data);
 	printf("\033[0;31m%s: \033[0;32m%s\033[0m\n", __func__, str);
 
-	//asm volatile("jmp *%0" : : "r" (&dynamically_unreachable));
+	//asm volatile("jmp *%0" : : "r" (dynamically_unreachable));
+	//printf("%p\n", *dynamically_unreachable+1);
+	
+	//printf("%p\n", ptr);
+    //asm (" mov $0, %(0)" :"=r" ( ptr ) ) ;
+	char *ptr = (char *)dynamically_unreachable;
+	printf("%p\n", *ptr);
 	printf("%p\n", dynamically_unreachable);
-	void *ptr = (void *)dynamically_unreachable;
-	goto *ptr;
+	printf("%p\n", functionPointer);
+	//__asm__("call *%0"::"m"(functionPointer):); // good 
+	printf("0x%hhx\n", *(char*)dynamically_unreachable);
+  
+	//goto *ptr;
 }
 
 void dynamically_unreachable(char *str)
@@ -219,7 +232,6 @@ void process_new_data(int fd)
 {
 	ssize_t count;
 	char buf[16];
-
 	while ((count = read(fd, buf, sizeof(buf) - 1))) {
 		if (count == -1) {
 			/* EAGAIN, read all data */

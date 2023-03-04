@@ -5,13 +5,12 @@
 void __attribute__((constructor)) init();
 // This line creates a custom section called "isolate_target", and then align this section with the pagesize
 // More information here: https://stackoverflow.com/questions/16552710/how-do-you-get-the-start-and-end-addresses-of-a-custom-elf-section
-void foo() __attribute__ ((section (".isolate_target")));
+//int main() __attribute__ ((section (".isolate_target")));
+int canary = 0; __attribute((section (".isolate_target")))
 //void foo();
 //void bar() __attribute__ ((section (".isolate_target")));
 void bar();
 // objdump -d hello_ex.out &> hello.objdump will dump isolated section
-
-void (*MyCallBack)(void);
 
 /* The linker automatically creates these symbols for "my_custom_section". */
 const void * _start_isolate_sec;
@@ -82,15 +81,6 @@ void init()
     #endif
 }
 
-int main()
-{
-    MyCallBack = foo;
-    printf("Hello World\n");
-    foo();
-    printf("%p %p\n", foo, MyCallBack);
-    return 0;
-}
-
 
 void foo() // Trusted component
 {
@@ -101,4 +91,12 @@ void bar() // Untrusted component
 {
     //foo();
     printf("Bar\n");
+}
+
+int main()
+{
+    printf("Hello World\n");
+    foo();
+    asm (" mov $0x0, %0" :"=r" ( canary ) ) ;
+    return 0;
 }

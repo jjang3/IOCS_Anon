@@ -7,9 +7,9 @@ SECTIONS
     }
 
     .isolate_target BLOCK(4096) : ALIGN(4096) {
-    _start_isolate_sec = .;
+    _start_isolate_target = .;
             *(.isolate_target)
-    _end_isolate_sec = .;
+    _end_isolate_target = .;
     }
     
 }
