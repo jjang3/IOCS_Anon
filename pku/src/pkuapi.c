@@ -1,8 +1,8 @@
 #include "../include/pkuapi.h"
 
 
-__attribute__((no_instrument_function))
-void __cyg_profile_func_enter (void *this_fn, void *call_site){}
+//__attribute__((no_instrument_function))
+//void __cyg_profile_func_enter (void *this_fn, void *call_site){}
 
 int
 wrpkru(unsigned int pkru)
@@ -42,7 +42,12 @@ pkey_free(unsigned long pkey)
     return syscall(SYS_pkey_free, pkey);
 }
 
-void pkey_enable()
+void pkey_disable_access()
+{
+    //printf("Pkey enable\n");
+    pkey_set(pkey, PKEY_DISABLE_ACCESS, 0);
+}
+void pkey_all_access()
 {
     //printf("Pkey enable\n");
     pkey_set(pkey, PKEY_ALL_ACCESS, 0);

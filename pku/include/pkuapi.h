@@ -50,4 +50,6 @@ pkey_alloc(void);
 int
 pkey_free(unsigned long pkey);
 
-void pkey_enable();
+void pkey_disable_access();
+
+void pkey_all_access();

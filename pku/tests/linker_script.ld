@@ -1,17 +1,16 @@
 SECTIONS
 {
-    .isolate_data BLOCK(4096) : ALIGN(4096) {
-        _start_isolate_data = .;
-            *(.isolate_data)
-        _end_isolate_data = .;
-    }
 
-    .isolate_target BLOCK(4096) : ALIGN(4096) {
-    _start_isolate_target = .;
-            *(.isolate_target)
-    _end_isolate_target = .;
+    .protected BLOCK(4096) : ALIGN(4096) {
+        _start_protected_sec = .;
+            *(.protected)
+        _end_protected_sec = .;
+    }
+    .untrusted BLOCK(4096) : ALIGN(4096) {
+    _start_untrusted_sec = .;
+            *(.untrusted)
+    _end_untrusted_sec = .;
     }
     
 }
-
 INSERT AFTER .rodata;
