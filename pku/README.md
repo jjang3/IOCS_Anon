@@ -1,8 +1,10 @@
 # PKU-related README
 
-1. `make` from this directory will create `libpkuapi.so`
-2. `cd tests && make hello.out` will create the test executable
-3. `bash execute.sh $test_name` with updated `LD_LIBRARY_PATH` to the pku library folder will execute.
-    - Example: `bash execute.sh hello`
+> Input file (e.g., inputs/epoll.c) needs to be modified so that protected / untrusted sections are specifically designated.
+
+1. `make lib` will create `libpkuapi.so`
+2. `make /input/.out` will generate an executable with the isolated regions.
+3. `bash execute.sh /output name/` to execute the application
+    - Example: `bash execute.sh epoll`
 
 `https://github.com/cyrus-and/gdb-dashboard.git` < Useful GDB tool >
