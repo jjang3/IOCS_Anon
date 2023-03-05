@@ -4,7 +4,7 @@ FLAGS	= -std=gnu99
 CFLAGS	= -fPIC -g -Wall
 LDFLAGS = -shared
 
-TARGET  = libpkuapi.so
+TARGET  = lib/libpkuapi.so
 SOURCES = $(shell echo src/*.c)
 HEADERS = $(shell echo include/*.h)
 OBJECTS = $(SOURCES:.c=.o)
@@ -12,7 +12,8 @@ OBJECTS = $(SOURCES:.c=.o)
 all: $(TARGET)
 
 clean:
-	rm -f $(OBJECTS) $(TARGET)
+	rm -rf $(OBJECTS) $(TARGET) lib
 
 $(TARGET): $(OBJECTS)
+	@mkdir -p lib
 	$(CC) $(FLAGS) $(CFLAGS) $(OBJECTS) -o $@ $(LDFLAGS)
