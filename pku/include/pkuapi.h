@@ -32,7 +32,7 @@
 #define errExit(msg)    do { perror(msg); exit(EXIT_FAILURE); \
                             } while (0)
 
-int pkey;
+int pkey; 
 
 int
 wrpkru(unsigned int pkru);

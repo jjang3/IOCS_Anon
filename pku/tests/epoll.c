@@ -18,13 +18,12 @@
 #define MAXEVENTS	64
 #define PORT		5000
 #define PAGESIZE 	4096
-void __attribute__((constructor)) init();
 static int socket_fd, epoll_fd;
-int pkey;
 
 //__attribute__ ((section (".isolate_data"))) int canary = 0; // Barrier variable
+void __attribute__((constructor)) init();
 int main()  __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".protected")));
-void process_new_data() __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".untrusted")));
+void process_new_data() __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".protected")));
 void process_more_tainted_data() __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".untrusted")));
 //int canary = 0;
 /* The linker automatically creates these symbols for "my_custom_section". */
@@ -91,7 +90,7 @@ void init()
         return;
     }
     #endif
-	printf("Pkey: %d |  Page length: %d\n", pkey, pagelen);
+	printf("Protecting from %p - %p\n\tPkey: %d\n", &_start_protected_sec, &_end_protected_sec, pkey);
 }
 
 static void socket_create_bind_local()
@@ -196,6 +195,7 @@ void process_more_tainted_data(char *str)
 {
 	printf("\033[0;31m%s: \033[0;32m%s\033[0m\n", __func__, str);
 
+	//printf("0x%hhx\n", *(int*)main);
 	return;
 }
 
@@ -210,6 +210,7 @@ void dynamically_unreachable(char *str)
  */
 void process_new_data(int fd)
 {
+	//asm volatile("xor %rax, %rax\n");
 	ssize_t count;
 	char buf[16];
 	while ((count = read(fd, buf, sizeof(buf) - 1))) {
@@ -229,8 +230,6 @@ void process_new_data(int fd)
 		/* Process more tainted data. */
 		if (!strcmp(buf, "secret"))
 			process_more_tainted_data(buf);
-		else if (!strcmp(buf, "unreachable"))
-			dynamically_unreachable(buf);
 		else if (!strcmp(buf, "exit"))
 			exit(1);
 		

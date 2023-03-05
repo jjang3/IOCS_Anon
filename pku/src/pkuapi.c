@@ -1,4 +1,5 @@
 #include "../include/pkuapi.h"
+//#include "/home/jaewon/Waterfall/e9stuff/include/stdlib.c"
 
 
 //__attribute__((no_instrument_function))
@@ -44,7 +45,7 @@ pkey_free(unsigned long pkey)
 
 void pkey_disable_access()
 {
-    //printf("Pkey enable\n");
+    //printf("Pkey disable\n");
     pkey_set(pkey, PKEY_DISABLE_ACCESS, 0);
 }
 void pkey_all_access()
