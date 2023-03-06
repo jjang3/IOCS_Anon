@@ -12,9 +12,10 @@ OBJECTS 	= $(SOURCES:.c=.o)
 
 # Patching-related
 INSTFLAGS	= -O1 -Wall -finstrument-functions
-EXCLUDE		= process_new_data,__bswap_16,pkey_free,pkey_mprotect,pkey_disable_access,pkey_all_access,wrpkru,pkey_set,pkey_alloc,init,socket,listen,frame_dummy,register_tm_clones,epoll_ctl,_fini,printf,fcntl,dynamically_unreachable,abort,perror,memset,_start,write,__errno_location,__libc_csu_init,open,getnameinfo,setsockopt,epoll_wait,epoll_create1,fflush,close,accept,calloc,_dl_relocate_static_pie,deregister_tm_clones,_init,__libc_csu_fini,strlen,strcmp,fprintf,htons,accept_and_add_new,make_socket_non_blocking,read,__do_global_dtors_aux,exit,socket_create_bind_local,bind,main
+EXC_DEFAU	= __bswap_16,pkey_free,pkey_mprotect,pkey_disable_access,pkey_all_access,wrpkru,pkey_set,pkey_alloc,init,
+EXCLUDE		= read,bind,setsockopt,memset,deregister_tm_clones,accept_and_add_new,abort,__libc_csu_fini,__do_global_dtors_aux,write,strcmp,_start,getnameinfo,exit,fflush,fcntl,main,perror,htons,epoll_create1,printf,socket_create_bind_local,_init,_fini,listen,epoll_ctl,close,register_tm_clones,_dl_relocate_static_pie,open,__errno_location,frame_dummy,socket,accept,strlen,epoll_wait,calloc,dynamically_unreachable,__libc_csu_init,make_socket_non_blocking,fprintf
 
-EXCFLAGS	= -finstrument-functions-exclude-function-list=$(EXCLUDE)
+EXCFLAGS	= -finstrument-functions-exclude-function-list=$(EXC_DEFAU)$(EXCLUDE)
 LIBDIR 		= -L$(HOME)/Waterfall/pku/lib
 LIBS 		= -lpkuapi
 
@@ -30,6 +31,7 @@ $(TARGET): $(OBJECTS)
 %.out : inputs/%.o
 	$(CC) $(CFLAGS) $(INSTFLAGS) $(LIBDIR) -T inputs/linker_script.ld  $< -o $@ $(LIBS)
 	@mkdir -p outputs
+	objdump -d $@ &> outputs/temp.objdump
 	mv $@ outputs
 
 inputs/%.o : inputs/%.c

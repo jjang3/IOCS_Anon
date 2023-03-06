@@ -23,7 +23,7 @@ static int socket_fd, epoll_fd;
 //__attribute__ ((section (".isolate_data"))) int canary = 0; // Barrier variable
 void __attribute__((constructor)) init();
 int main()  __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".protected")));
-void process_new_data() __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".protected")));
+void process_new_data() __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".untrusted")));
 void process_more_tainted_data() __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".untrusted")));
 //int canary = 0;
 /* The linker automatically creates these symbols for "my_custom_section". */
