@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+
+import os
+import os.path
+import argparse
+import subprocess
+
+from io import BytesIO
+from os import path
+
+parser = argparse.ArgumentParser(description="Running reassembly tool for the example")
+# ----- Parser arguments ----- #
+parser.add_argument('-p', '--patch', required=True)             # patch
+parser.add_argument('-i', '--input', required=True)             # input file
+args            = parser.parse_args()
+
+fun_list=["ngx_http_core_root","ngx_http_write_filter","ngx_http_core_location","ngx_http_keepalive_handler","ngx_exec_new_binary","ngx_http_core_server_name","ngx_http_header_filter","ngx_http_subrequest","ngx_event_pipe","ngx_http_lingering_close_handler","ngx_http_alloc_large_header_buffer","ngx_http_upstream_add","ngx_http_init_request","ngx_http_internal_redirect","ngx_http_core_try_files","ngx_http_upstream_init_round_robin"]
+
+# ----- Setup file name ------ #
+home            = os.getcwd()
+in_bin_dir      = os.path.join(home, "input")
+out_bin_dir     = os.path.join(home, "output")
+patch_dir       = os.path.join(home, "e9bin")
+
+parent          = os.path.abspath(os.path.join(home, os.pardir))
+e9patch_dir     = os.path.join(parent, "e9patch") 
+e9tool          = os.path.join(e9patch_dir, "e9tool")
+e9patch         = os.path.join(home, "e9patch.sh")
+
+in_file         = os.path.join(in_bin_dir, args.input+".out")
+
+print("Step: E9Patch")
+subprocess.call([e9patch, args.patch])
+os.chdir(patch_dir)
+args = list()
+for item in fun_list:
+    args.append("-M call and target = &"+item)
+    args.append("-P before entry(offset,asm,\"entry\")@trampoline")
+args.append("-M call and target = &__cyg_profile_func_exit")
+args.append("-P before entry(offset,asm,\"exit\")@trampoline")
+
+subprocess.call([e9tool, *args, in_file])

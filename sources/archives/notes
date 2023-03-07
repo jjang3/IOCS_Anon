@@ -142,3 +142,93 @@ vector<ICFGNode*> getAllICFGStartPoints(ICFG* icfg) {
     //callgraph->dump(graphName);
     //AnalysisResult = extractCallGraph(M, callgraph);
     
+
+Script:
+
+#mov.+\(%rax.*
+#cd $E9BIN_DIR && e9tool -M 'asm=/xor.+%rax.*/' -P 'after entry(offset,asm,"entry")@trampoline' $INPUT_DIR/$2.out
+#cd $E9BIN_DIR && e9tool -M 'call and target = &__cyg_profile_func_enter' -P 'before entry(offset,asm,"entry")@trampoline' -M 'call and target = &__cyg_profile_func_exit' -P 'before entry(offset,asm,"exit")@trampoline' $INPUT_DIR/$2.out
+#e9toolc -P 'before entry(offset,asm,"entry")@trampoline' -M 'call and target = &__cyg_profile_func_exit' -P 'before entry(offset,asm,"exit")@trampoline' $INPUT_DIR/$2.out
+#TEST_TARGET='"-M '"call and target = &__cyg_profile_func_exit"' -P print"'
+
+TEST_TARGET='-M '"call and target = &__cyg_profile_func_exit"''
+TEST_PATCH='-P '"before entry(offset,asm,\"exit\")@trampoline"''
+
+cd $E9BIN_DIR && 
+e9tool \
+for i in ${ISO_LIST//,/};
+do
+"$TEST_TARGET" \
+"-P print" \
+done
+$INPUT_DIR/$2.out
+
+mv $E9BIN_DIR/a.out $OUTPUT_DIR/$2.out
+
+#cd $E9BIN_DIR &&
+#e9tool "$TEST_TARGET" \
+#$INPUT_DIR/$2.out
+#TEST="'-M \'call and target = &__cyg_profile_func_exit\' "-P "print"
+
+#TEST_TARGET="-M 'call and target = &__cyg_profile_func_exit' -P print"
+#TEST_PATCH='-P '"before entry(offset,asm,\"exit\")@trampoline"''
+
+#echo $TEST_TARGET
+#cd $E9BIN_DIR &&
+#e9tool \
+#$TEST_TARGET \
+#$INPUT_DIR/$2.out
+#cd $E9BIN_DIR &&
+#e9tool \
+
+: <<'END_COMMENT'
+
+    '-M '"call and target = &__cyg_profile_func_exit"'' \
+    '-P '"before entry(offset,asm,\"exit\")@trampoline"'' \
+cd $E9BIN_DIR
+#e9tool 
+$INPUT_DIR/$2.out
+"$TEST_TARGET" "$TEST_PATCH" \
+$INPUT_DIR/$2.out
+
+mv $E9BIN_DIR/a.out $OUTPUT_DIR/$2.out
+
+PATCHING_TARGETS=""
+for i in ${ISO_LIST//,/" "}
+do
+    PATCHING_TARGETS+="-M '\''call and target = &$i'\'' -P '\''before entry(offset,asm,\"entry\")@trampoline'\'' " 
+done
+PATCHING_TARGETS+="-M 'call and target = &__cyg_profile_func_exit' -P 'before entry(offset,asm,"exit")@trampoline'"
+echo $PATCHING_TARGETS
+#EQ="("
+#EQ2=")"
+#TEST_TARGET="-M \'call and target = &__cyg_profile_func_exit\' "-P" \'before entry${EQ}offset,asm,asm${EQ2}@trampoline\'"
+#TEST="-M 'call and target = &__cyg_profile_func_exit' -P 'before entry(offset,asm,"exit")@trampoline"
+#TEST=`-M "call and target = &__cyg_profile_func_exit" -P "before entry(offset,asm,"exit")@trampoline"`
+#TEST_TEST="-M '\''call and target = &__cyg_profile_func_exit'\''"
+#TEST_TEST_TEST="-P '\''before entry(offset,asm,asm)@trampoline'\''"
+#TEST_2="-P \'before entry(offset,asm,"exit")@trampoline\'"
+TEST_TARGET='-M '"call and target = &__cyg_profile_func_exit"''
+TEST_PATCH='-P '"before entry(offset,asm,\"exit\")@trampoline"''
+
+cd $E9BIN_DIR &&
+e9tool \
+"$TEST_TARGET" "$TEST_PATCH" \
+for i in ${ISO_LIST//,/};
+do
+    echo $i
+done
+$INPUT_DIR/$2.out
+
+
+#e9tool "$TEST" $INPUT_DIR/$2.out #"$TEST_2" 
+#echo $TEST
+#echo $PATCHING_TARGETS
+#echo "e9tool $TEST_TARGET $INPUT_DIR/$2.out"
+#e9tool $TEST_TARGET $INPUT_DIR/$2.out
+#$PATCHING_TARGETS
+#-M 'call and target = &__cyg_profile_func_exit' -P 'before entry(offset,asm,"exit")@trampoline' \
+
+mv $E9BIN_DIR/a.out $OUTPUT_DIR/$2.out
+##-M 'call and target = &process_new_data' -P 'before entry(offset,asm,"entry")@trampoline' \
+END_COMMENT

@@ -103,10 +103,15 @@ for item in tainted_sinks_funs:
 sink_write += "}" + "\n"
 out_file_open.write(sink_write)
 
-total_write = "\tSummary: "
+sum_iterator = 0
+total_write = "\tSummary: ["
 for item in tainted_total_funs:
-    total_write += item + " "
-total_write += "\n"
+    sum_iterator += 1
+    if (sum_iterator == len(tainted_total_funs)):
+        total_write += "\""+item+"\""
+        break
+    total_write += "\""+item+"\""+ ","
+total_write += "]\n"
 out_file_open.write(total_write)
 
 exclude_write="\tExclude: "
