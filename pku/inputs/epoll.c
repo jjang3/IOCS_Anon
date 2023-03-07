@@ -22,7 +22,8 @@ static int socket_fd, epoll_fd;
 
 //__attribute__ ((section (".isolate_data"))) int canary = 0; // Barrier variable
 void __attribute__((constructor)) init();
-int main()  __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".protected")));
+//int main()  __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".protected")));
+int main();
 void process_new_data() __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".untrusted")));
 void process_more_tainted_data() __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".untrusted")));
 //int canary = 0;
@@ -31,6 +32,8 @@ const void * _start_protected_sec;
 const void * _end_protected_sec;
 const void * _start_untrusted_sec;
 const void * _end_untrusted_sec;
+const void * _start_text;
+const void * _end_text;
 // We are making pkey global because we want to use pkey_set to flexibly enable/disable access
 void init()
 {
@@ -39,7 +42,7 @@ void init()
         This is used to figure out the pagesize length of section
         as there could be multiple functions in a section. 
     */
-    size_t protect_len = ((uintptr_t)&_end_protected_sec)-((uintptr_t)&_start_protected_sec);
+    size_t protect_len = ((uintptr_t)&_end_text)-((uintptr_t)&_start_text);
     //size_t untrusted_len = ((uintptr_t)&_end_untrusted_sec)-((uintptr_t)&_start_untrusted_sec);
     int pagelen;
     if (protect_len < PAGESIZE)
@@ -85,12 +88,12 @@ void init()
         The memory can be executed.
     */
     // This will make the .isolate_sec execute-only page. 
-    if(pkey_mprotect(&_start_protected_sec, pagelen * getpagesize(), PROT_READ | PROT_EXEC, pkey) == -1) {
+    if(pkey_mprotect(&_start_text, pagelen * getpagesize(), PROT_READ | PROT_EXEC, pkey) == -1) {
         perror("pkey_mprotect()");
         return;
     }
     #endif
-	printf("Protecting from %p - %p\n\tPkey: %d\n", &_start_protected_sec, &_end_protected_sec, pkey);
+	printf("Protecting from %p - %p\n\tPkey: %d\n", &_start_text, &_end_text, pkey);
 }
 
 static void socket_create_bind_local()
@@ -194,7 +197,7 @@ void accept_and_add_new()
 void process_more_tainted_data(char *str)
 {
 	printf("\033[0;31m%s: \033[0;32m%s\033[0m\n", __func__, str);
-	printf("0x%hhx\n", *(int*)main);
+	//printf("0x%hhx\n", *(int*)main);
 	return;
 }
 
@@ -232,7 +235,7 @@ void process_new_data(int fd)
 		else if (!strcmp(buf, "exit"))
 			exit(1);
 		
-		printf("0x%hhx\n", *(int*)main);
+		//printf("0x%hhx\n", *(int*)main);
 	}
 	//printf("%d\n", canary);
 	printf("Close connection on descriptor: %d\n", fd);

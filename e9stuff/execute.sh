@@ -1,1 +1,1 @@
-LD_LIBRARY_PATH=$HOME/Waterfall/pku/lib ./output/$1.out
+LD_LIBRARY_PATH=$HOME/Waterfall/pku/lib ./outputs/$1.out
