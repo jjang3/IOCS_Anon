@@ -4,6 +4,7 @@ import os
 import os.path
 import argparse
 import subprocess
+import re
 
 from io import BytesIO
 from os import path
@@ -14,7 +15,7 @@ parser.add_argument('-p', '--patch', required=True)             # patch
 parser.add_argument('-i', '--input', required=True)             # input file
 args            = parser.parse_args()
 
-fun_list=["ngx_http_core_root","ngx_http_write_filter","ngx_http_core_location","ngx_http_keepalive_handler","ngx_exec_new_binary","ngx_http_core_server_name","ngx_http_header_filter","ngx_http_subrequest","ngx_event_pipe","ngx_http_lingering_close_handler","ngx_http_alloc_large_header_buffer","ngx_http_upstream_add","ngx_http_init_request","ngx_http_internal_redirect","ngx_http_core_try_files","ngx_http_upstream_init_round_robin"]
+#fun_list=["ngx_http_core_root","ngx_http_write_filter","ngx_http_core_location","ngx_http_keepalive_handler","ngx_exec_new_binary","ngx_http_core_server_name","ngx_http_header_filter","ngx_http_subrequest","ngx_event_pipe","ngx_http_lingering_close_handler","ngx_http_alloc_large_header_buffer","ngx_http_upstream_add","ngx_http_init_request","ngx_http_internal_redirect","ngx_http_core_try_files","ngx_http_upstream_init_round_robin"]
 
 # ----- Setup file name ------ #
 home            = os.getcwd()
@@ -27,7 +28,18 @@ e9patch_dir     = os.path.join(parent, "e9patch")
 e9tool          = os.path.join(e9patch_dir, "e9tool")
 e9patch         = os.path.join(home, "e9patch.sh")
 
+taint_dir       = os.path.join(parent, "taint_analysis", "scripts")
+tainted_in_dir  = os.path.join(taint_dir, args.input) 
+tainted_in_file = os.path.join(tainted_in_dir, args.input+"_list.out")
+
 in_file         = os.path.join(in_bin_dir, args.input+".out")
+
+parse_taint_file = open(tainted_in_file, 'r')
+for line in parse_taint_file:
+    taint_type_regex = re.search(r'(?<=Summary:\s\[).*(?=\])', line)
+    if (taint_type_regex != None):
+        functions = (taint_type_regex.group(0))
+fun_list = list(functions.split(","))
 
 print("Step: E9Patch")
 subprocess.call([e9patch, args.patch])
