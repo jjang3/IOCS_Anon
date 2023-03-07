@@ -3,7 +3,7 @@
 BASE_DIR=$(pwd)
 PARENT_DIR="$(dirname $BASE_DIR)"
 E9BIN_DIR=$BASE_DIR/e9bin
-OUTPUT_DIR=$BASE_DIR/output
+OUTPUT_DIR=$BASE_DIR/outputs
 echo $ISO_LIST
 export PATH="$PATH:$PARENT_DIR/e9patch" # Change this to e9patch directory
 

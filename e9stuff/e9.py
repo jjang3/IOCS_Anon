@@ -19,8 +19,8 @@ args            = parser.parse_args()
 
 # ----- Setup file name ------ #
 home            = os.getcwd()
-in_bin_dir      = os.path.join(home, "input")
-out_bin_dir     = os.path.join(home, "output")
+in_bin_dir      = os.path.join(home, "inputs")
+out_bin_dir     = os.path.join(home, "outputs")
 patch_dir       = os.path.join(home, "e9bin")
 
 parent          = os.path.abspath(os.path.join(home, os.pardir))
@@ -33,6 +33,8 @@ tainted_in_dir  = os.path.join(taint_dir, args.input)
 tainted_in_file = os.path.join(tainted_in_dir, args.input+"_list.out")
 
 in_file         = os.path.join(in_bin_dir, args.input+".out")
+out_file        = os.path.join(out_bin_dir, args.input+".out")
+temp_file       = os.path.join(patch_dir, "a.out")
 
 parse_taint_file = open(tainted_in_file, 'r')
 for line in parse_taint_file:
@@ -48,7 +50,10 @@ args = list()
 for item in fun_list:
     args.append("-M call and target = &"+item)
     args.append("-P before entry(offset,asm,\"entry\")@trampoline")
+    #args.append("-P print")
 args.append("-M call and target = &__cyg_profile_func_exit")
 args.append("-P before entry(offset,asm,\"exit\")@trampoline")
 
 subprocess.call([e9tool, *args, in_file])
+
+subprocess.call(["mv", temp_file, out_file])

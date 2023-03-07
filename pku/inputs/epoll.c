@@ -194,7 +194,7 @@ void accept_and_add_new()
 void process_more_tainted_data(char *str)
 {
 	printf("\033[0;31m%s: \033[0;32m%s\033[0m\n", __func__, str);
-	//printf("0x%hhx\n", *(int*)main);
+	printf("0x%hhx\n", *(int*)main);
 	return;
 }
 

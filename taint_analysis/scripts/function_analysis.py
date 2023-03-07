@@ -89,14 +89,14 @@ tainted_total_funs = tainted_sinks_funs.union(tainted_srcs_funs)
 
 #print(tainted_total_funs)
 
-src_write = "\tSources: { " 
+src_write = "Sources: { " 
 for item in tainted_srcs_funs:
     print("Source: ", item)
     src_write += item + " "
 src_write += "}" + "\n"
 out_file_open.write(src_write)
 
-sink_write = "\tSinks: { " 
+sink_write = "Sinks: { " 
 for item in tainted_sinks_funs:
     print("Sink: ", item)
     sink_write += item + " "
@@ -104,7 +104,7 @@ sink_write += "}" + "\n"
 out_file_open.write(sink_write)
 
 sum_iterator = 0
-total_write = "\tSummary: ["
+total_write = "Summary: ["
 for item in tainted_total_funs:
     sum_iterator += 1
     if (sum_iterator == len(tainted_total_funs)):
@@ -114,7 +114,7 @@ for item in tainted_total_funs:
 total_write += "]\n"
 out_file_open.write(total_write)
 
-exclude_write="\tExclude: "
+exclude_write="Exclude: "
 iterator = 0
 for item in exclude_funs:
     iterator += 1
