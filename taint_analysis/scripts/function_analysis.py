@@ -23,11 +23,14 @@ parent          = os.path.dirname(cwd)
 in_folder       = os.path.join(cwd, args.input)
 in_file         = os.path.join(in_folder, "dft.out")
 out_file        = os.path.join(in_folder, args.input+"_list.out")
+nm_file         = os.path.join(in_folder, args.input+".nm")
 
 out_file_open   = open(out_file, "w")
 
 # ----- Start of binary ninja ----- #
 fun_class_set = set()
+
+
 
 if (args.binary != None):
     bin_folder      = os.path.join(parent, "tests")
@@ -87,7 +90,24 @@ for fun_class in fun_class_set:
 
 tainted_total_funs = tainted_sinks_funs.union(tainted_srcs_funs)
 
-#print(tainted_total_funs)
+nm_funs         = set()
+nm_file_open    = open(nm_file, "r")
+for line in nm_file_open:
+    nm_regex = re.search(r'(?<=[0-9,a-z]\s[a-z,A-Z]\s)(.*)(?!=)', line)
+    if(nm_regex):
+        #print(nm_regex.group(0))
+        if (str(nm_regex.group(0)) not in exclude_funs):
+            exclude_funs.add(str(nm_regex.group(0)))
+
+for item in exclude_funs:
+    if str(item) in tainted_total_funs:
+        print("Found")
+        
+uniq_funs = exclude_funs.difference(tainted_total_funs)
+#uniq_funs = exclude_funs
+#for item in uniq_funs:
+#    if str(item) in tainted_total_funs:
+#        print("Removed") # Need to not show
 
 src_write = "Sources: { " 
 for item in tainted_srcs_funs:
@@ -116,9 +136,9 @@ out_file_open.write(total_write)
 
 exclude_write="Exclude: "
 iterator = 0
-for item in exclude_funs:
+for item in uniq_funs:
     iterator += 1
-    if (iterator == len(exclude_funs)):
+    if (iterator == len(uniq_funs)):
         exclude_write += item + "\n"
         break
     exclude_write += item + ","
