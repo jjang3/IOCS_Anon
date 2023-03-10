@@ -34,6 +34,9 @@
 
 int pkey; 
 
+const void * __text_start;
+const void * __text_end;
+
 int
 wrpkru(unsigned int pkru);
 

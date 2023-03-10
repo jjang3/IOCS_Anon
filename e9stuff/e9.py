@@ -49,11 +49,14 @@ os.chdir(patch_dir)
 args = list()
 for item in fun_list:
     #args.append("-M call and target = &"+item)
-    args.append("-M call and target = &__cyg_profile_func_enter")
-    args.append("-P before entry(offset,asm,\"entry\")@trampoline")
+    #args.append("-M call and target = &__cyg_profile_func_enter")
+    #args.append("-P before entry(offset,asm,\"entry\")@trampoline")
     #args.append("-P print")
-args.append("-M call and target = &__cyg_profile_func_exit")
-args.append("-P before entry(offset,asm,\"exit\")@trampoline")
+    args.append("-M call and target = &_init")
+    #args.append("-P before entry(offset,asm,base,&\".text\")@print")
+    args.append("-P before entry(&\".text\")@init_mprotect")
+#args.append("-M call and target = &__cyg_profile_func_exit")
+#args.append("-P before entry(offset,asm,\"exit\")@trampoline")
 
 subprocess.call([e9tool, *args, in_file])
 

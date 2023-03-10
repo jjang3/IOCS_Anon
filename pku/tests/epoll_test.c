@@ -20,9 +20,9 @@
 #define PORT		5000
 #define PAGESIZE 	4096
 static int socket_fd, epoll_fd;
+extern const void *_start_text;
+extern const void *_end_text;
 
-extern const void *__text_start;
-extern const void *__text_end;
 //__attribute__ ((section (".isolate_data"))) int canary = 0; // Barrier variable
 //void __attribute__((constructor)) init();
 //int main()  __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".protected")));
@@ -186,8 +186,13 @@ void process_new_data(int fd)
 int main()
 {
 
-	printf("Text section ranging from %p - %p\n", &__text_start, &__text_end);
-	
+	printf("Text section ranging from %p - %p\n", &_start_text, &_end_text);
+    #if 1
+	if(mprotect(&_start_text, getpagesize(), PROT_READ | PROT_EXEC) == -1) {
+        perror("mprotect()");
+        return 1;
+    }
+    #endif
 	struct epoll_event event, *events;
 
 	printf("sizeof epoll_event: %lu\n", sizeof(struct epoll_event));

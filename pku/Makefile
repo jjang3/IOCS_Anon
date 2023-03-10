@@ -27,9 +27,9 @@ lib: $(TARGET)
 
 $(TARGET): $(OBJECTS)
 	$(CC) $(FLAGS) $(CFLAGS) $(OBJECTS) -o $@ $(LDFLAGS)
-#-T inputs/linker_script.ld
+#-T inputs/linker_script.ld $(LIBDIR) $(LIBS)
 %.out : inputs/%.o
-	$(CC) $(CFLAGS) $(INSTFLAGS) $(LIBDIR) -T inputs/linker_text.ld  $< -o $@ $(LIBS)
+	$(CC) $(CFLAGS) $(INSTFLAGS) -T inputs/linker_temp.ld $(LIBDIR) $< -o $@ $(LIBS)
 	@mkdir -p outputs
 	objdump -d $@ &> outputs/temp.objdump
 	mv $@ outputs
