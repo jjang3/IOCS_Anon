@@ -33,7 +33,7 @@ using std::endl;
 #define DLIB_SUFF_ALT	".so."
 #define	TAG 	0x01U
 
-#define DBG_FLAG 0
+#define DBG_FLAG 1
 
 /* thread context */
 extern thread_ctx_t *threads_ctx;
@@ -103,7 +103,7 @@ void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 		//	return;
 		RTN_Open(callRtn);
 		#if DBG_FLAG
-		cerr << hex << ins_addr << " [*] " << RTN_Name(callRtn) << endl;
+		//cerr << hex << ins_addr << " [*] " << RTN_Name(callRtn) << endl;
 		#endif
 		RTN_Close(callRtn);
 	}
@@ -113,8 +113,9 @@ void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 
 VOID getMetadata(IMG img, void *v)
 {
+	#if DBG_FLAG
 	printf("Loading %s, Image id = %d \n", IMG_Name(img).c_str(), IMG_Id(img));
-
+	#endif
 	ADDRINT imgEntry         	= IMG_Entry(img);
 	// Global pointer (GP) of image, if a GP is used to address global data
 	ADDRINT imgGlobalPt			= IMG_Gp(img);
@@ -126,6 +127,7 @@ VOID getMetadata(IMG img, void *v)
 	bool isMainExecutable       = IMG_IsMainExecutable(img);
 	if (isMainExecutable == true)
 	{
+		#if DBG_FLAG
 		printf ("   image_entry         = 0x%zx \n",imgEntry);
 		printf ("   image_globalPointer = 0x%zx \n",imgGlobalPt);
 		printf ("   image_loadOffset    = 0x%zx \n",imgLoadOffset);
@@ -133,6 +135,7 @@ VOID getMetadata(IMG img, void *v)
 		printf ("   image_highAddress   = 0x%zx \n",imgHighAddr);
 		printf ("   image_startAddress  = 0x%zx \n",imgStartAddr);
 		printf ("   image_sizeMapped    = %lu \n",imgSizeMapping);
+		#endif
 		offset_addr = (uintptr_t)(imgLoadOffset);
 		#if 1
 		for (SYM sym = IMG_RegsymHead(img); SYM_Valid(sym); sym = SYM_Next(sym))
@@ -141,7 +144,7 @@ VOID getMetadata(IMG img, void *v)
 			RTN rtn = RTN_FindByAddress(imgLoadOffset + SYM_Value(sym));
 			#if DBG_FLAG
 			//const char* UndecoratedFuncName = PIN_UndecorateSymbolName(SYM_Name(sym), UNDECORATION_NAME_ONLY).c_str();
-			cerr << "[*] " << hex << "0x" << RTN_Address(rtn) << "\t" << undFuncName << endl;
+			//cerr << "[*] " << hex << "0x" << RTN_Address(rtn) << "\t" << undFuncName << endl;
 			#endif
 			#if 1
 			if (RTN_Valid(rtn))
@@ -513,8 +516,9 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 	/* read() was not successful; optimized branch */
 	if (unlikely((long)ctx->ret <= 0))
 		return;
-	
+	#if DBG_FLAG
 	cerr << "read(2) fd: " << ctx->arg[SYSCALL_ARG0] << endl;
+	#endif
 	/* taint-source */
 	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end())
 	{
@@ -529,7 +533,9 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 	}
 	else {
 		/* clear the tag markings */
+		#if DBG_FLAG
 		printf("read(2) taint clear\n");
+		#endif
 		tagmap_clrn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret);
 	}
 }
@@ -575,7 +581,9 @@ post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
 			tagmap_setn((size_t)iov->iov_base, iov_tot, TAG);
 		}
 		else{
+			#if DBG_FLAG
 			cerr << "\t► readv(2) taint clear " << endl;
+			#endif
 			/* clear the tag markings */
 			tagmap_clrn((size_t)iov->iov_base, iov_tot);
 		}		
@@ -597,7 +605,10 @@ static void post_socket_hook(THREADID tid, syscall_ctx_t *ctx)
 	/* add the socket fd to the socketset */
 	if (likely(ctx->arg[SYSCALL_ARG0] == PF_INET || ctx->arg[SYSCALL_ARG0] == PF_INET6))
 	{
+
+		#if DBG_FLAG
         cerr << "\t► socket(2) fd add " << (int)ctx->ret << endl;
+		#endif
 		fdset.insert((int)ctx->ret);
 		//printf("fdset insert\n");
 	}
@@ -615,8 +626,13 @@ static void post_accept_hook(THREADID tid, syscall_ctx_t *ctx)
 				return;
   /* add the socket fd to the socketset */
 	if (likely(fdset.find(ctx->arg[SYSCALL_ARG0]) !=fdset.end())){
-         cerr << "fd add accept\n";
+		#if DBG_FLAG
+        cerr << "fd add accept\n";
+		#endif
+		// Fix this bug later
+		//if ((int)ctx->ret < 8)
 		fdset.insert((int)ctx->ret);
+		//fdset.insert(8);
 }}
 
 /*
@@ -707,7 +723,9 @@ static void post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 				msg->msg_controllen, TAG);
 		}
 		else {
+			#if DBG_FLAG
 			cerr << "\t► recvmsg(2) taint clear " << endl;
+			#endif
 			/* clear the tag markings */
 			tagmap_clrn((size_t)msg->msg_control,
 				msg->msg_controllen);
@@ -769,7 +787,9 @@ post_dup_hook(THREADID tid, syscall_ctx_t *ctx)
 	 * also interesting
 	 */
 	if (likely(fdset.find((int)ctx->arg[SYSCALL_ARG0]) != fdset.end())){
+		#if DBG_FLAG
         cerr << "fd add dup\n";
+		#endif
 		fdset.insert((int)ctx->ret);}
 }
 
@@ -819,7 +839,9 @@ post_open_hook(THREADID tid, syscall_ctx_t *ctx)
 	if (unlikely((long)ctx->ret < 0))
 		return;
 	
+	#if DBG_FLAG
     cerr << "post open hook\n";
+	#endif
 	/* ignore dynamic shared libraries */
 	if (strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF) == NULL &&
 		strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF_ALT) == NULL)
@@ -884,12 +906,13 @@ VOID Instruction(INS ins, VOID* v)
         // Note that in some architectures a single memory operand can be
         // both read and written (for instance incl (%eax) on IA-32)
         // In that case we instrument it once for read and once for write.
+
+		#if 1
         if (INS_MemoryOperandIsWritten(ins, memOp))
         {
             INS_InsertPredicatedCall(ins, IPOINT_BEFORE, (AFUNPTR)dta_tainted_mem_write, IARG_INST_PTR, IARG_MEMORYOP_EA, memOp,
                                      IARG_END);
         }
-		#if 1
 		// Disabling this for now as there is no need to check on whether tagged memory is written.
 		if (INS_MemoryOperandIsRead(ins, memOp))
         {
@@ -927,7 +950,7 @@ main(int argc, char **argv)
 	trace = fopen("dft.out", "w");
 	if (trace != NULL)
 	{
-		printf("Success\n");
+		//printf("Success\n");
 	}
 	IMG_AddInstrumentFunction(getMetadata, 0);
 	INS_AddInstrumentFunction(Instruction, 0);
@@ -995,8 +1018,6 @@ main(int argc, char **argv)
 		(void)syscall_set_post(&syscall_desc[__NR_creat],
 				post_open_hook);
 	}
-
-
 	#endif
 	/* add stdin to the interesting descriptors set */
 	if (stdin_.Value() != 0)

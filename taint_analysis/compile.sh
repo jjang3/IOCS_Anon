@@ -8,7 +8,7 @@ LIB_DIR=$LIBDFT_DIR/tools/obj-intel64
 
 cp $SOURCE_DIR/libdft-mod.cpp $LIBDFT_DIR/tools/
 cp $SOURCE_DIR/libdft-default.cpp $LIBDFT_DIR/tools/
-cd $LIBDFT_DIR/tools/ && make -j4
+cd $LIBDFT_DIR/tools/ && make DEBUG=1 -j4
 
 if [ ! -d "$RESULTS_DIR" ]; then
     mkdir $RESULTS_DIR

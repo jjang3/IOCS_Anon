@@ -1,20 +1,26 @@
 SECTIONS
 {
-    .isolated_data BLOCK(4096) : ALIGN(4096) {
-        _start_isolated_data = .;
-            *(.isolated_data)
-        _end_isolated_data = .;
+    .text BLOCK(4096) : ALIGN(4096)
+    {
+    __text_start = .;
+        *(.text)
+    __text_end = .;
     }
-    .protected BLOCK(4096) : ALIGN(4096) {
-        _start_protected_sec = .;
-            *(.protected)
-        _end_protected_sec = .;
-    }
-    .untrusted BLOCK(4096) : ALIGN(4096) {
-        _start_untrusted_sec = .;
-            *(.untrusted)
-        _end_untrusted_sec = .;
-    }
-    
-}
-INSERT AFTER .rodata;
+    .fini : AT (__text_end) 
+    {
+    fini_begin = .;
+    *(.fini)
+    fini_end = .;
+    } 
+    .rodata :
+    {
+    *(.rodata)
+    rodata_end = .;
+    } 
+    .isolated_target : 
+    {
+        _start_isolated_target = .;
+            *(.isolated_target)
+        _end_isolated_target = .;
+    } 
+} INSERT BEFORE .eh_frame_hdr;

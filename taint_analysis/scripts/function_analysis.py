@@ -90,14 +90,14 @@ for fun_class in fun_class_set:
 
 tainted_total_funs = tainted_sinks_funs.union(tainted_srcs_funs)
 
-nm_funs         = set()
-nm_file_open    = open(nm_file, "r")
-for line in nm_file_open:
-    nm_regex = re.search(r'(?<=[0-9,a-z]\s[a-z,A-Z]\s)(.*)(?!=)', line)
-    if(nm_regex):
-        #print(nm_regex.group(0))
-        if (str(nm_regex.group(0)) not in exclude_funs):
-            exclude_funs.add(str(nm_regex.group(0)))
+#nm_funs         = set()
+#nm_file_open    = open(nm_file, "r")
+#for line in nm_file_open:
+#    nm_regex = re.search(r'(?<=[0-9,a-z]\s[a-z,A-Z]\s)(.*)(?!=)', line)
+#    if(nm_regex):
+#        #print(nm_regex.group(0))
+#        if (str(nm_regex.group(0)) not in exclude_funs):
+#            exclude_funs.add(str(nm_regex.group(0)))
 
 for item in exclude_funs:
     if str(item) in tainted_total_funs:
@@ -128,9 +128,10 @@ total_write = "Summary: ["
 for item in tainted_total_funs:
     sum_iterator += 1
     if (sum_iterator == len(tainted_total_funs)):
-        total_write += "\""+item+"\""
+        #total_write += "\""+item+"\""
+        total_write += item
         break
-    total_write += "\""+item+"\""+ ","
+    total_write += item+","
 total_write += "]\n"
 out_file_open.write(total_write)
 

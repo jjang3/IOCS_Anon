@@ -7,9 +7,12 @@
 
 #include <iostream>
 #include <fstream>
-#include <set>
+//#include <set>
+#include <list>
 #include <stack>
 #include <string>
+#include <hash_set>
+#include <algorithm>
 
 #include "branch_pred.h"
 #include "libdft_api.h"
@@ -43,7 +46,8 @@ extern ins_desc_t ins_desc[XED_ICLASS_LAST];
 extern syscall_desc_t syscall_desc[SYSCALL_MAX];
 
 /* set of interesting descriptors (sockets) */
-static set<int> fdset;
+//set<int> fdset;
+std::list<int> fdset;
 
 /* log file path (auditing) */
 static KNOB<string> logpath(KNOB_MODE_WRITEONCE, "pintool", "l",
@@ -432,12 +436,12 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
                 return;
 	
 	/* taint-source */
-	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end()){
+	std::list<int>::iterator findIter = std::find(fdset.begin(), fdset.end(), ctx->arg[SYSCALL_ARG0]);
+	if (findIter != fdset.end()){
         	/* set the tag markings */
-            cerr << "Taint set read\n";
+            //cerr << "Taint set read\n";
 
-            printf("Taint set read\n");
-	        tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);}
+            tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);}
 	else
         	/* clear the tag markings */
 	        tagmap_clrn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret);
@@ -452,7 +456,8 @@ post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
 	/* iterators */
 	int i;
 	struct iovec *iov;
-	set<int>::iterator it;
+	//set<int>::iterator it;
+	list<int>::iterator it;
 
 	/* bytes copied in a iovec structure */
 	size_t iov_tot;
@@ -465,7 +470,9 @@ post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
 		return;
 	
 	/* get the descriptor */
-	it = fdset.find((int)ctx->arg[SYSCALL_ARG0]);
+	//it = fdset.find((int)ctx->arg[SYSCALL_ARG0]);
+	it = std::find(fdset.begin(), fdset.end(), ctx->arg[SYSCALL_ARG0]);
+
 
 	/* iterate the iovec structures */
 	for (i = 0; i < (int)ctx->arg[SYSCALL_ARG2] && tot > 0; i++) {
@@ -505,7 +512,7 @@ static void post_socket_hook(THREADID tid, syscall_ctx_t *ctx)
 	if (likely(ctx->arg[SYSCALL_ARG0] == PF_INET || ctx->arg[SYSCALL_ARG0] == PF_INET6))
 	{
         cerr << "fd add socketz\n";
-		fdset.insert((int)ctx->ret);
+		fdset.push_back((int)ctx->ret);
 		//printf("fdset insert\n");
 	}
 }
@@ -521,10 +528,19 @@ static void post_accept_hook(THREADID tid, syscall_ctx_t *ctx)
 	if (unlikely((long)ctx->ret < 0))
 				return;
   /* add the socket fd to the socketset */
-	if (likely(fdset.find(ctx->arg[SYSCALL_ARG0]) !=fdset.end())){
-         cerr << "fd add accept\n";
-		fdset.insert((int)ctx->ret);
-}}
+	std::list<int>::iterator findIter = std::find(fdset.begin(), fdset.end(), ctx->arg[SYSCALL_ARG0]);
+	if (likely(findIter != fdset.end())){
+		cerr << "fd add accept\n" ;
+		// 
+		cerr << (int)ctx->ret << " " << ctx->arg[SYSCALL_ARG0] << endl;
+
+		//if ((int)ctx->ret < 8) // Fix this bug later
+		fdset.push_back((int)ctx->ret);
+}
+
+
+}
+
 
 /*
  * recvfrom() syscall post hook(source)
@@ -538,7 +554,9 @@ static void post_recvfrom_hook(THREADID tid, syscall_ctx_t *ctx)
 		return;
 	
 	/* taint-source */	
-	if (fdset.find((int)ctx->arg[SYSCALL_ARG0]) != fdset.end())
+
+	std::list<int>::iterator findIter = std::find(fdset.begin(), fdset.end(), ctx->arg[SYSCALL_ARG0]);
+	if (findIter != fdset.end())
 	{
 		/* set the tag markings */
         printf("Taint set recvfrom\n");
@@ -577,7 +595,8 @@ static void post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 	/* iterators */
 	size_t i;
 	struct iovec *iov;
-	set<int>::iterator it;
+	//set<int>::iterator it;
+	list<int>::iterator it;
 	
 	/* total bytes received */
 	size_t tot;
@@ -586,7 +605,8 @@ static void post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 				return;
 			
 			/* get the descriptor */
-			it = fdset.find((int)ctx->arg[SYSCALL_ARG0]);
+			//it = fdset.find((int)ctx->arg[SYSCALL_ARG0]);
+			it =  std::find(fdset.begin(), fdset.end(), ctx->arg[SYSCALL_ARG0]);
 
 			/* extract the message header */
 			msg = (struct msghdr *)ctx->arg[SYSCALL_ARG1];
@@ -671,9 +691,11 @@ post_dup_hook(THREADID tid, syscall_ctx_t *ctx)
 	 * interesting, the returned handle is
 	 * also interesting
 	 */
-	if (likely(fdset.find((int)ctx->arg[SYSCALL_ARG0]) != fdset.end())){
+	 
+	std::list<int>::iterator findIter = std::find(fdset.begin(), fdset.end(), ctx->arg[SYSCALL_ARG0]);
+	if (likely(findIter != fdset.end())){
         cerr << "fd add dup\n";
-		fdset.insert((int)ctx->ret);}
+		fdset.push_back((int)ctx->ret);}
 }
 
 /*
@@ -687,7 +709,8 @@ static void
 post_close_hook(THREADID tid, syscall_ctx_t *ctx)
 {
 	/* iterator */
-	set<int>::iterator it;
+	//set<int>::iterator it;
+	std::list<int>::iterator it;
 
 	/* not successful; optimized branch */
 	if (unlikely((long)ctx->ret < 0))
@@ -698,7 +721,8 @@ post_close_hook(THREADID tid, syscall_ctx_t *ctx)
 	 * interesting, remove it from the
 	 * monitored set
 	 */
-	it = fdset.find((int)ctx->arg[SYSCALL_ARG0]);
+	//it = fdset.find((int)ctx->arg[SYSCALL_ARG0]);
+	it = std::find(fdset.begin(), fdset.end(), ctx->arg[SYSCALL_ARG0]);
 	if (likely(it != fdset.end()))
 		fdset.erase(it);
 }
@@ -724,7 +748,7 @@ post_open_hook(THREADID tid, syscall_ctx_t *ctx)
 	/* ignore dynamic shared libraries */
 	if (strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF) == NULL &&
 		strstr((char *)ctx->arg[SYSCALL_ARG0], DLIB_SUFF_ALT) == NULL)
-		fdset.insert((int)ctx->ret);
+		fdset.push_back((int)ctx->ret);
 }
 
 /* 
@@ -772,7 +796,6 @@ main(int argc, char **argv)
 	/* instrument ret */
 	(void)ins_set_post(&ins_desc[XED_ICLASS_RET_NEAR],
 			dta_instrument_ret);
-
 	/* 
 	 * install taint-sources
 	 *
@@ -793,11 +816,12 @@ main(int argc, char **argv)
 
 	/* socket(2), accept(2), recvfrom(2), recvmsg(2) */
 	(void)syscall_set_post(&syscall_desc[__NR_socket], post_socket_hook);
+
 	(void)syscall_set_post(&syscall_desc[__NR_accept] , post_accept_hook);
 	(void)syscall_set_post(&syscall_desc[__NR_accept4] , post_accept_hook);
 	(void)syscall_set_post(&syscall_desc[__NR_recvfrom] , post_recvfrom_hook);
 	(void)syscall_set_post(&syscall_desc[__NR_recvmsg] , post_recvmsg_hook);
-	
+
 
 	/* dup(2), dup2(2) */
 	(void)syscall_set_post(&syscall_desc[__NR_dup], post_dup_hook);
@@ -813,10 +837,9 @@ main(int argc, char **argv)
 		(void)syscall_set_post(&syscall_desc[__NR_creat],
 				post_open_hook);
 	}
-	
 	/* add stdin to the interesting descriptors set */
 	if (stdin_.Value() != 0)
-		fdset.insert(STDIN_FILENO);
+		fdset.push_back(STDIN_FILENO);
 
 	/* start Pin */
 	PIN_StartProgram();

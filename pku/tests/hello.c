@@ -2,14 +2,13 @@
 
 #define PAGESIZE 	4096
 
-void __attribute__((constructor)) init();
 // This line creates a custom section called "isolate_target", and then align this section with the pagesize
 // More information here: https://stackoverflow.com/questions/16552710/how-do-you-get-the-start-and-end-addresses-of-a-custom-elf-section
 //int main() __attribute__ ((section (".isolate_target")));
-int canary = 0; __attribute((section (".isolate_target")))
+int canary = 0;
 //void foo();
 //void bar() __attribute__ ((section (".isolate_target")));
-void bar();
+void init()  __attribute((section (".isolated_target")));
 // objdump -d hello_ex.out &> hello.objdump will dump isolated section
 
 /* The linker automatically creates these symbols for "my_custom_section". */

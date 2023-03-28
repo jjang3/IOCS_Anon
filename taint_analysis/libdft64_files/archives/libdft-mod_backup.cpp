@@ -689,7 +689,11 @@ static void post_accept_hook(THREADID tid, syscall_ctx_t *ctx)
 				return;
   /* add the socket fd to the socketset */
 	if (likely(fdset.find(ctx->arg[SYSCALL_ARG0]) !=fdset.end()))
-		fdset.insert((int)ctx->ret);
+		if (!((int)ctx->ret > 6))
+		{
+			fdset.insert((int)ctx->ret);
+		}
+		
 }
 
 /*

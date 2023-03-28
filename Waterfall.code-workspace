@@ -4,78 +4,68 @@
 			"path": "."
 		},
 		{
-			"path": "../Shroud_alias"
+			"path": "../Downloads/nginx-1.3.9"
 		},
 		{
-			"path": "../Shroud"
+			"path": "../e9patch"
+		},
+		{
+			"path": "../Downloads/Waterfall_test"
+		},
+		{
+			"path": "../binaryninja"
+		},
+		{
+			"path": "../Downloads/nginx-1.4.0"
+		},
+		{
+			"path": "../Downloads/redis-5.0.14"
+		},
+		{
+			"path": "../Downloads/gcc-plugins"
+		},
+		{
+			"path": "../Downloads/gcc-plugins/gcc-install"
+		},
+		{
+			"path": "../Downloads/min-dop"
+		},
+		{
+			"path": "../Downloads/lighttpd_CVE"
+		},
+		{
+			"path": "../Downloads/CVE-2022-30780-lighttpd-denial-of-service"
+		},
+		{
+			"path": "../Downloads/nginxpwn"
+		},
+		{
+			"path": "../Downloads/CVE-2013-2028-Exploit"
+		},
+		{
+			"path": "../Downloads/redis-rce"
+		},
+		{
+			"path": "../Downloads/RedisModules-ExecuteCommand"
+		},
+		{
+			"path": "../Downloads/redis-5.0.4"
+		},
+		{
+			"path": "../Downloads/lighttpd-cve"
+		},
+		{
+			"path": "../Downloads/sudo-1.8.31"
+		},
+		{
+			"path": "../Downloads/Sudo-HeapBased-Buffer-Overflow"
+		},
+		{
+			"path": "../Downloads/exploit-CVE-2015-3306"
+		},
+		{
+			"path": "../Downloads/proftpd-1.3.5"
 		}
 	],
-	"settings": {
-		"files.associations": {
-			"*.tcc": "cpp",
-			"iostream": "cpp",
-			"array": "cpp",
-			"deque": "cpp",
-			"list": "cpp",
-			"string": "cpp",
-			"unordered_map": "cpp",
-			"unordered_set": "cpp",
-			"vector": "cpp",
-			"string_view": "cpp",
-			"initializer_list": "cpp",
-			"regex": "cpp",
-			"cctype": "cpp",
-			"clocale": "cpp",
-			"cmath": "cpp",
-			"cstdarg": "cpp",
-			"cstddef": "cpp",
-			"cstdio": "cpp",
-			"cstdlib": "cpp",
-			"cstring": "cpp",
-			"ctime": "cpp",
-			"cwchar": "cpp",
-			"cwctype": "cpp",
-			"atomic": "cpp",
-			"bitset": "cpp",
-			"chrono": "cpp",
-			"condition_variable": "cpp",
-			"cstdint": "cpp",
-			"exception": "cpp",
-			"algorithm": "cpp",
-			"functional": "cpp",
-			"iterator": "cpp",
-			"map": "cpp",
-			"memory": "cpp",
-			"memory_resource": "cpp",
-			"numeric": "cpp",
-			"optional": "cpp",
-			"random": "cpp",
-			"ratio": "cpp",
-			"set": "cpp",
-			"system_error": "cpp",
-			"tuple": "cpp",
-			"type_traits": "cpp",
-			"utility": "cpp",
-			"fstream": "cpp",
-			"iomanip": "cpp",
-			"iosfwd": "cpp",
-			"istream": "cpp",
-			"limits": "cpp",
-			"mutex": "cpp",
-			"new": "cpp",
-			"ostream": "cpp",
-			"shared_mutex": "cpp",
-			"sstream": "cpp",
-			"stdexcept": "cpp",
-			"streambuf": "cpp",
-			"thread": "cpp",
-			"cfenv": "cpp",
-			"cinttypes": "cpp",
-			"typeinfo": "cpp",
-			"bit": "cpp",
-			"waterfall.h": "c",
-			"*.inc": "c",
-			"stdio.h": "c"
-		}
-	}
+	"settings": {}
 }

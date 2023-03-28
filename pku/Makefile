@@ -11,11 +11,7 @@ HEADERS 	= $(shell echo include/*.h)
 OBJECTS 	= $(SOURCES:.c=.o)
 
 # Patching-related
-INSTFLAGS	= -O1 -Wall -finstrument-functions
-EXC_DEFAU	= __bswap_16,pkey_free,pkey_mprotect,pkey_disable_access,pkey_all_access,wrpkru,pkey_set,pkey_alloc,init,
-EXCLUDE		= read,bind,setsockopt,memset,deregister_tm_clones,accept_and_add_new,abort,__libc_csu_fini,__do_global_dtors_aux,write,strcmp,_start,getnameinfo,exit,fflush,fcntl,main,perror,htons,epoll_create1,printf,socket_create_bind_local,_init,_fini,listen,epoll_ctl,close,register_tm_clones,_dl_relocate_static_pie,open,__errno_location,frame_dummy,socket,accept,strlen,epoll_wait,calloc,dynamically_unreachable,__libc_csu_init,make_socket_non_blocking,fprintf
-
-EXCFLAGS	= -finstrument-functions-exclude-function-list=$(EXC_DEFAU)$(EXCLUDE)
+INSTFLAGS	= -O1 -Wall -finstrument-functions -fplugin=/home/jaewon/Downloads/instrument-attribute-gcc-plugin/instrument_attribute.so -fplugin-arg-instrument_attribute-include-function-list=process_more_tainted_data
 LIBDIR 		= -L$(HOME)/Waterfall/pku/lib
 LIBS 		= -lpkuapi
 
@@ -29,13 +25,13 @@ $(TARGET): $(OBJECTS)
 	$(CC) $(FLAGS) $(CFLAGS) $(OBJECTS) -o $@ $(LDFLAGS)
 #-T inputs/linker_script.ld $(LIBDIR) $(LIBS)
 %.out : inputs/%.o
-	$(CC) $(CFLAGS) $(INSTFLAGS) -T inputs/linker_temp.ld $(LIBDIR) $< -o $@ $(LIBS)
+	$(CC) $(CFLAGS) $(INSTFLAGS) -T src/linker_script.ld $(LIBDIR) $< -o $@ $(LIBS)
 	@mkdir -p outputs
 	objdump -d $@ &> outputs/temp.objdump
 	mv $@ outputs
 
 inputs/%.o : inputs/%.c
-	$(CC) $(EXCFLAGS) $(CFLAGS) $(INSTFLAGS) -c $< -o $@ 
+	$(CC) $(CFLAGS) $(INSTFLAGS) -c $< -o $@ 
 
 clean:
 	rm -rf $(OBJECTS) lib outputs

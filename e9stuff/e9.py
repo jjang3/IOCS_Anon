@@ -36,12 +36,14 @@ in_file         = os.path.join(in_bin_dir, args.input+".out")
 out_file        = os.path.join(out_bin_dir, args.input+".out")
 temp_file       = os.path.join(patch_dir, "a.out")
 
+'''
 parse_taint_file = open(tainted_in_file, 'r')
 for line in parse_taint_file:
     taint_type_regex = re.search(r'(?<=Summary:\s\[).*(?=\])', line)
     if (taint_type_regex != None):
         functions = (taint_type_regex.group(0))
 fun_list = list(functions.split(","))
+'''
 
 print("Step: E9Patch")
 subprocess.call([e9patch, args.patch])

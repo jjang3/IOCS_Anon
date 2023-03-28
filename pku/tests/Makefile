@@ -11,7 +11,7 @@ LIBS 	= -lpkuapi
 all: %.out
 
 %.out : %.o
-	$(CC) $(CFLAGS) $(LIBDIR)  -T linker_script.ld  $< -o $@  $(LIBS)
+	$(CC) $(CFLAGS) $(LIBDIR)  -T linker_rodata.ld  $< -o $@  $(LIBS)
 
 %.o : %.c
 	$(CC) $(EXFLAGS) $(CFLAGS) -c $< -o $@ 

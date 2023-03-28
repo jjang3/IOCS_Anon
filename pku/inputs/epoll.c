@@ -26,9 +26,9 @@ extern const void *__text_end;
 //__attribute__ ((section (".isolate_data"))) int canary = 0; // Barrier variable
 //void __attribute__((constructor)) init();
 //int main()  __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".protected")));
-//int main();
-//void process_new_data() __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".untrusted")));
-//void process_more_tainted_data() __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".untrusted")));
+int main();
+void process_new_data() __attribute__ ((section (".isolated_target")));
+void process_more_tainted_data() __attribute__ ((section (".isolated_target")));
 //int canary = 0;
 /* The linker automatically creates these symbols for "my_custom_section". */
 /*
@@ -138,7 +138,7 @@ void accept_and_add_new()
 void process_more_tainted_data(char *str)
 {
 	printf("\033[0;31m%s: \033[0;32m%s\033[0m\n", __func__, str);
-	//printf("0x%hhx\n", *(int*)main);
+	printf("0x%hhx\n", *(int*)main);
 	return;
 }
 
@@ -171,6 +171,7 @@ void process_new_data(int fd)
 		//write(STDOUT_FILENO, buf, sizeof(buf)-1);
 
 		/* Process more tainted data. */
+		printf("Process more tainted data\n");
 		if (!strcmp(buf, "secret"))
 			process_more_tainted_data(buf);
 		else if (!strcmp(buf, "exit"))
