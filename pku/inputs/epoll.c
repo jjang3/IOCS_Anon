@@ -138,7 +138,8 @@ void accept_and_add_new()
 void process_more_tainted_data(char *str)
 {
 	printf("\033[0;31m%s: \033[0;32m%s\033[0m\n", __func__, str);
-	printf("0x%hhx\n", *(int*)main);
+	//printf("0x%hhx\n", *(int*)main);
+	//printf("Hello World\n");
 	return;
 }
 
@@ -171,7 +172,6 @@ void process_new_data(int fd)
 		//write(STDOUT_FILENO, buf, sizeof(buf)-1);
 
 		/* Process more tainted data. */
-		printf("Process more tainted data\n");
 		if (!strcmp(buf, "secret"))
 			process_more_tainted_data(buf);
 		else if (!strcmp(buf, "exit"))
@@ -186,9 +186,6 @@ void process_new_data(int fd)
 
 int main()
 {
-
-	printf("Text section ranging from %p - %p\n", &__text_start, &__text_end);
-	
 	struct epoll_event event, *events;
 
 	printf("sizeof epoll_event: %lu\n", sizeof(struct epoll_event));

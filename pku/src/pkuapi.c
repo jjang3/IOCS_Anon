@@ -1,9 +1,4 @@
 #include "../include/pkuapi.h"
-//#include "/home/jaewon/Waterfall/e9stuff/include/stdlib.c"
-
-
-//__attribute__((no_instrument_function))
-//void __cyg_profile_func_enter (void *this_fn, void *call_site){}
 
 int
 wrpkru(unsigned int pkru)
@@ -45,11 +40,10 @@ pkey_free(unsigned long pkey)
 
 void pkey_disable_access()
 {
-    //printf("Pkey disable\n");
     pkey_set(pkey, PKEY_DISABLE_ACCESS, 0);
+    //pkey_set(pkey, PKEY_DISABLE_WRITE, 0);
 }
 void pkey_all_access()
 {
-    //printf("Pkey enable\n");
     pkey_set(pkey, PKEY_ALL_ACCESS, 0);
 }
