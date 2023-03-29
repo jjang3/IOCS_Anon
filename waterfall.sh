@@ -11,7 +11,7 @@ RESULTS_DIR=$BASE_DIR/results
 RESULTS_INPUT_DIR=$RESULTS_DIR/$1
 TAINT_DIR=$BASE_DIR/taint_analysis
 TAINT_SCRIPTS_DIR=$TAINT_DIR/scripts
-LLVM_BUILD_DIR=$HOME/llvm-project-13/llvm-build
+LLVM_BUILD_DIR=$HOME/llvm-project-13/llvm-arm-build
 
 #echo $BASE_DIR $TESTING_DIR $TEST_INPUT_DIR $TEST_INPUT_SOURCE_FILE
 if [ ! -d "$RESULTS_DIR" ]; then

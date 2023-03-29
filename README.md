@@ -33,3 +33,9 @@ Repository for the Waterfall project
 7) `cmake .. && make -j4`, this will first build the `SVF` library, then `waterfall`.
 8) Insert an input file to `./inputs`
 9) `bash waterfall.sh <source code name> waterfall (e.g., `bash waterfall.sh vuln_srv waterfall`)
+
+--- 
+## LLVM build direction:
+```
+CC=gcc CXX=g++ cmake -DCMAKE_INSTALL_PREFIX=$HOME/llvm-project-13/llvm-arm-build -DLLVM_TARGETS_TO_BUILD="ARM;X86;AArch64" -DLLVM_ENABLE_PROJECTS="clang" -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" -DLLVM_ENABLE_ASSERTIONS=True -DCMAKE_BUILD_TYPE=Release -Wno-dev -G Ninja ../llvm
+```

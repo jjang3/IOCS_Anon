@@ -6,13 +6,13 @@ SECTIONS
             *(.text)
         __text_end = .;
     }
-    .fini : AT (__text_end) 
+    .fini : 
     {
         __fini_begin = .;
             *(.fini)
         __fini_end = .;
     } 
-    .isolated_target : AT (__fini_end)
+    .isolated_target : AT(__fini_end)
     {
         _start_isolated_target = .;
             *(.isolated_target)
