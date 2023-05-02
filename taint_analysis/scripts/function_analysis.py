@@ -27,6 +27,9 @@ nm_file         = os.path.join(in_folder, args.input+".nm")
 
 out_file_open   = open(out_file, "w")
 
+def test():
+    print(test)
+
 # ----- Start of binary ninja ----- #
 fun_class_set = set()
 
