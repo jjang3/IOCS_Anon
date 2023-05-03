@@ -25,7 +25,7 @@ def fun_analysis(input_name, binary_name):
     in_folder       = os.path.join(cwd, input_name)
     in_file         = os.path.join(in_folder, "dft.out")
     out_file        = os.path.join(in_folder, input_name+"_list.out")
-    nm_file         = os.path.join(in_folder, input_name+".nm")
+    #nm_file         = os.path.join(in_folder, input_name+".nm")
 
     out_file_open   = open(out_file, "w")
 
