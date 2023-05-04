@@ -61,9 +61,9 @@ void init(int argc, char **argv, char **envp)
         return;
 	}
     // Assign "All Access" permission to pkey (not designated to any memory locations yet)
-    if (pkey_set(pkey, PKEY_DISABLE_ACCESS, 0) == -1) {
+    if (pkey_set(pkey, PKEY_ALL_ACCESS, 0) == -1) {
         //perror("pkey_set()");
         return;
     }
-    fprintf(stderr, YELLOW "Initialization (incrementing pkey): %d\n" WHITE, pkey);
+    fprintf(stderr, YELLOW "Initializing pkey: %d\n" WHITE, pkey);
 }

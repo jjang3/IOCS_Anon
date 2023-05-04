@@ -12,3 +12,4 @@ scripts/*
 !tests/
 tests/*
 !tests/sources/
+.lst

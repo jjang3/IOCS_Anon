@@ -1,8 +1,9 @@
 # Library-related
 SHELL 		= /bin/zsh
 CC			= gcc
+DEBUGFLAGS	= -Wa,-ahlms=temp.lst
 FLAGS		= -std=gnu99
-CFLAGS		= -fPIC -g -Wall
+CFLAGS		= -fPIC -g -Wall $(DEBUGFLAGS)
 LDFLAGS 	= -shared
 
 TARGET  	= libpkuapi.so
@@ -27,8 +28,9 @@ $(TARGET): $(OBJECTS)
 %.out : inputs/%.o
 	$(CC) $(CFLAGS) $(INSTFLAGS) -T src/linker_script.ld $< -o $@
 	@mkdir -p outputs
-	objdump -d $@ &> outputs/temp.objdump
 	mv $@ outputs
+	mv temp.lst outputs/temp.lst
+	objdump -d outputs/$@ &> outputs/temp.objdump
 
 inputs/%.o : inputs/%.c
 	$(CC) $(CFLAGS) $(INSTFLAGS) -c $< -o $@ 

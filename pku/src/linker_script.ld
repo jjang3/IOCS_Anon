@@ -1,5 +1,5 @@
 SECTIONS
-{
+{  
     .text BLOCK(4096) : ALIGN(4096)
     {
         __text_start = .;
@@ -17,10 +17,5 @@ SECTIONS
         _start_isolated_target = .;
             *(.isolated_target)
         _end_isolated_target = .;
-    } 
-    .rodata :
-    {
-            *(.rodata)
-        __rodata_end = .;
     } 
 } INSERT BEFORE .eh_frame_hdr;
