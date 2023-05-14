@@ -28,7 +28,9 @@ TEST_ROOTS := test_mini
 
 # This defines the tools which will be run during the the tests, and were not already defined in
 # TEST_TOOL_ROOTS.
-TOOL_ROOTS := libdft-OR
+TOOL_ROOTS := libdft-default
+#libdft-default
+#libdft-OR
 #libdft-mod libdft-default
 
 # This defines the static analysis tools which will be run during the the tests. They should not

@@ -1,18 +1,14 @@
+
 #include <errno.h>
 #include <sys/socket.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <set>
 #include <unistd.h>
-
+#include <linux/net.h>
 #include <iostream>
-#include <fstream>
-//#include <set>
 #include <list>
-#include <stack>
-#include <string>
-#include <hash_set>
-#include <algorithm>
 
 #include "branch_pred.h"
 #include "libdft_api.h"
