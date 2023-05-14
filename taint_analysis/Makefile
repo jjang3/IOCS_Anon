@@ -2,17 +2,18 @@ ROOT_DIR=$(shell pwd)
 LIB_DIR=${ROOT_DIR}/lib
 LIBDFT_DIR=${ROOT_DIR}/libdft64
 SOURCE_DIR=${ROOT_DIR}/libdft64_files
-#PIN_BUILD=${ROOT_DIR}/pin-3.20_build
-PIN_BUILD=${ROOT_DIR}/pin-3.27_build
-PIN_VER=pin-3.27
+PIN_BUILD=${ROOT_DIR}/pin-3.20_build
+#PIN_BUILD=${ROOT_DIR}/pin-3.27_build
+PIN_VER=pin-3.20
+#PIN_VER=pin-3.27
 LIBDFT=libdft64
 
-#PIN=pin-3.20-98437-gf02b61307-gcc-linux
-PIN=pin-3.27-98718-gbeaa5d51e-gcc-linux
+PIN=pin-3.20-98437-gf02b61307-gcc-linux
+#PIN=pin-3.27-98718-gbeaa5d51e-gcc-linux
 PIN_DIR=${ROOT_DIR}/${PIN}
 
-#SRC="https://software.intel.com/sites/landingpage/pintool/downloads/pin-3.20-98437-gf02b61307-gcc-linux.tar.gz"
-SRC="https://software.intel.com/sites/landingpage/pintool/downloads/pin-3.27-98718-gbeaa5d51e-gcc-linux.tar.gz"
+SRC="https://software.intel.com/sites/landingpage/pintool/downloads/pin-3.20-98437-gf02b61307-gcc-linux.tar.gz"
+#SRC="https://software.intel.com/sites/landingpage/pintool/downloads/pin-3.27-98718-gbeaa5d51e-gcc-linux.tar.gz"
 
 export PIN_ROOT := ${PIN_BUILD}
 
@@ -51,8 +52,7 @@ update:
 		git submodule update
 		
 clean:
-		rm -rf ${PIN}
-		rm -rf ${PIN_BUILD}
+		rm -rf pin-3.2*
 		rm -rf ${LIB_DIR}
 		rm -rf ${LIBDFT_DIR}
 		rm ${PIN}.tar.gz*
