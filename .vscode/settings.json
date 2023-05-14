@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "*.ejs": "html",
+        "*.template": "c",
+        "*.ph": "cpp"
+    }
+}

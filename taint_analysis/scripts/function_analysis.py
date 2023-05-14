@@ -62,11 +62,11 @@ def fun_analysis(input_name, binary_name):
                 # print(addr.start, addr.end)
                 if taint_type == "source":
                     #tainted_sources[addr_int] = taint_fun
-                    #print(taint_type, "addr: ", addr_int)
+                    print(taint_type, "addr: ", addr_int)
                     tainted_srcs_addr.add(addr_int)
                 else:
                     #tainted_sinks[addr_int] = taint_fun
-                    #print(taint_type, "addr: ", addr_int)
+                    print(taint_type, "addr: ", addr_int)
                     tainted_sinks_addr.add(addr_int)
 
     tainted_srcs_funs   = set()
@@ -75,14 +75,15 @@ def fun_analysis(input_name, binary_name):
     exclude_funs        = set() # This is list of functions that will be excluded
 
     for fun_class in fun_class_set:
-        #print(fun_class.name)
         for addr in fun_class.addr_range:
+            print(fun_class.name + ": " + str(addr.start) + " - " + str(addr.end))
             for srcs_addr in tainted_srcs_addr:
                 if (srcs_addr > addr.start) and (srcs_addr < addr.end):
+                    print("added: " + str(srcs_addr))
                     tainted_srcs_funs.add(fun_class.name)
             for sinks_addr in tainted_sinks_addr:
-                #print(sinks_addr)
                 if (sinks_addr > addr.start) and (sinks_addr < addr.end):
+                    print("added: " + str(sinks_addr))
                     tainted_sinks_funs.add(fun_class.name)
         if (fun_class.name not in (tainted_sinks_funs or tainted_srcs_funs)):
             if ("sub_" not in fun_class.name):
@@ -113,14 +114,14 @@ def fun_analysis(input_name, binary_name):
     for item in tainted_srcs_funs:
         print("Source: ", item)
         src_write += item + " "
-    src_write += "}" + "\n"
+    src_write += "}" + "\n\n"
     out_file_open.write(src_write)
 
     sink_write = "Sinks: { " 
     for item in tainted_sinks_funs:
         print("Sink: ", item)
         sink_write += item + " "
-    sink_write += "}" + "\n"
+    sink_write += "}" + "\n\n"
     out_file_open.write(sink_write)
 
     sum_iterator = 0
@@ -132,7 +133,7 @@ def fun_analysis(input_name, binary_name):
             total_write += item
             break
         total_write += item+","
-    total_write += "]\n"
+    total_write += "]\n\n"
     out_file_open.write(total_write)
 
     exclude_write="Exclude: "
