@@ -2,6 +2,9 @@ build
 *.tar.gz
 results
 lib
+*.log
+*.so
+*.o
 userspace/bin/*
 pin-3.20_build
 pin-3.27_build
@@ -14,3 +17,4 @@ scripts/*
 tests/*
 !tests/sources/
 .lst
+tests

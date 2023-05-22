@@ -5,7 +5,8 @@ LIBDFT_DIR=$(pwd)/libdft64
 SOURCE_DIR=$(pwd)/libdft64_files
 RESULTS_DIR=$BASE_DIR/lib
 LIB_DIR=$LIBDFT_DIR/tools/obj-intel64
-PIN_VER=3.20
+#PIN_VER=3.20
+PIN_VER=3.27
 
 cp $SOURCE_DIR/makefile.rules $LIBDFT_DIR/tools/ 
 cp $SOURCE_DIR/libdft-OR.cpp $LIBDFT_DIR/tools/

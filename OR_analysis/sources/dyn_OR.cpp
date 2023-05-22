@@ -34,10 +34,80 @@ using std::cerr;
 using std::endl;
 using std::string;
 
-#define DBG_FLAG 1
+#define DBG_FLAG 0
 
 #include "dwarf.h"
 #include "libdwarf.h"
+
+uintptr_t offset_addr;
+
+std::map<uintptr_t, char*> ptrToGVName;
+
+/* ===================================================================== */
+// Analysis routines
+/* ===================================================================== */
+
+// analysis for memory read
+VOID RecMemRead(ADDRINT ip, ADDRINT addr)
+{
+    uintptr_t read_computed_addr;
+    read_computed_addr = addr-offset_addr;
+    auto read_it = ptrToGVName.find(read_computed_addr);
+    if (read_it != ptrToGVName.end()) {
+        printf("%p\n", (void*)read_computed_addr);
+        printf("Memory read: %p | Name: %s\n\n", (void*)read_computed_addr, ptrToGVName.find(read_computed_addr)->second);
+    }
+}
+
+// analysis for memory write
+VOID RecMemWrite(VOID* ip, ADDRINT addr)
+{
+    uintptr_t write_computed_addr;
+    write_computed_addr = addr-offset_addr;
+    auto write_it = ptrToGVName.find(write_computed_addr);
+    if (write_it != ptrToGVName.end()) {
+        printf("%p\n", (void*)write_computed_addr);
+        printf("Memory write: %p | Name: %s\n\n", (void*)write_computed_addr, ptrToGVName.find(write_computed_addr)->second);
+    }
+}
+
+/* ===================================================================== */
+// Instrumentation callbacks
+/* ===================================================================== */
+
+VOID instrument_instruction(INS ins, VOID *v)
+{
+    // must be valid and within bounds of the main executable.
+    #if 0
+    if(!INS_Valid(ins) || !main_executable_boundaries.is_in_bounds(INS_Address(ins))) {
+        return;
+    }
+    #endif
+    //printf("Instrument instruction\n");
+    const UINT32 mem_operands = INS_MemoryOperandCount(ins);
+
+    // Iterate over each memory operand of the instruction.
+    for (UINT32 memOp = 0; memOp < mem_operands; memOp++)
+    {
+        if (INS_MemoryOperandIsRead(ins, memOp))
+        {
+            INS_InsertPredicatedCall(
+                ins, IPOINT_BEFORE, reinterpret_cast<AFUNPTR>(RecMemRead),
+                IARG_INST_PTR,
+                IARG_MEMORYOP_EA, memOp,
+                IARG_END);
+        }
+
+        if (INS_MemoryOperandIsWritten(ins, memOp))
+        {
+            INS_InsertPredicatedCall(
+                ins, IPOINT_BEFORE, reinterpret_cast<AFUNPTR>(RecMemWrite),
+                IARG_INST_PTR,
+                IARG_MEMORYOP_EA, memOp,
+                IARG_END);
+        }
+    }
+}
 
 // The input file - the binary for which we are extracting the dwarf data
 KNOB< string > KnobBinary(KNOB_MODE_WRITEONCE, "pintool", "bin", "", "specify binary file name for dwarf parsing");
@@ -49,21 +119,32 @@ static const int maxRecursionLevel = 100;
 // According the documentation of libdWARF, isInfo should be TRUE for reading through .debug_info
 // and FALSE for reading through DWARF4 .debug_types. Experiments showed the result is actually the same in this test.
 static const Dwarf_Bool isInfo = TRUE;
-
 static std::ofstream outfile;
+
 
 VOID getMetadata(IMG img, void *v)
 {
 	// Global pointer (GP) of image, if a GP is used to address global data
-	ADDRINT imgGlobalPt			= IMG_Gp(img);
 	ADDRINT imgLoadOffset    	= IMG_LoadOffset(img);
+    #if DBG_FLAG
+	ADDRINT imgGlobalPt			= IMG_Gp(img);
 	ADDRINT imgLowAddr    		= IMG_LowAddress(img);
 	ADDRINT imgHighAddr   		= IMG_HighAddress(img);
 	ADDRINT imgStartAddr  		= IMG_StartAddress(img);
 	USIZE imgSizeMapping      	= IMG_SizeMapped(img);
+    #endif
 	bool isMainExecutable       = IMG_IsMainExecutable(img);
 	if (isMainExecutable == true)
 	{
+        offset_addr = (uintptr_t)imgLoadOffset;
+		#if DBG_FLAG
+		printf ("image_globalPointer = 0x%zx \n",imgGlobalPt);
+		printf ("image_loadOffset    = 0x%zx \n",imgLoadOffset);
+		printf ("image_lowAddress    = 0x%zx \n",imgLowAddr);
+		printf ("image_highAddress   = 0x%zx \n",imgHighAddr);
+		printf ("image_startAddress  = 0x%zx \n",imgStartAddr);
+		printf ("image_sizeMapped    = %lu \n",imgSizeMapping);
+		#endif
 		#if 1
 		for (SYM sym = IMG_RegsymHead(img); SYM_Valid(sym); sym = SYM_Next(sym))
 		{
@@ -71,22 +152,33 @@ VOID getMetadata(IMG img, void *v)
 			RTN rtn = RTN_FindByAddress(imgLoadOffset + SYM_Value(sym));
 			#if DBG_FLAG
 			const char* UndecoratedFuncName = PIN_UndecorateSymbolName(SYM_Name(sym), UNDECORATION_NAME_ONLY).c_str();
-			std::cerr << "[*] " << hex << "0x" << RTN_Address(rtn) << "\t" << undFuncName << endl;
+			std::cerr << "[*] " << hex << "0x" << (ADDRINT)RTN_Address(rtn)-offset_addr << "\t" << undFuncName << endl;
 			#endif
 			#if 1
 			if (RTN_Valid(rtn))
 			{	
 				RTN_Open(rtn);
 				// For each instruction of the routine
+                #if DBG_FLAG
 				for (INS ins = RTN_InsHead(rtn); INS_Valid(ins); ins = INS_Next(ins))
 				{
 					string *instString = new string(INS_Disassemble(ins));
-                    std::cerr << instString << "\n";
+                    std::cerr << instString->c_str() << "\n";
 				}
+                #endif
 				RTN_Close(rtn);
 			}
 			#endif
 		}
+        // cycle through all sections of the main executable.
+        for (SEC sec = IMG_SecHead(img); SEC_Valid(sec); sec = SEC_Next(sec))
+        {
+            // get boundaries of the '.data' section
+            if(SEC_Name(sec) == ".data") {
+                const auto sec_address = (SEC_Address(sec)-imgLoadOffset);   
+                printf("Data section boundaries: %p to %p\n", (void*)sec_address, (void*)(sec_address + SEC_Size(sec)));
+            }
+        }
 		#endif
 	}
 }
@@ -129,7 +221,7 @@ static Dwarf_Die GetLinkedDie(int attributeId, Dwarf_Die die, const Dwarf_Debug&
     Dwarf_Die ret_die       = NULL;
     Dwarf_Attribute attrib  = 0;
     Dwarf_Off attrib_offset = 0;
-
+    
     int res = dwarf_attr(die, attributeId, &attrib, &error);
     IsError("dwarf_attr", res, error, dbg);
     if (res == DW_DLV_OK)
@@ -160,7 +252,6 @@ static BOOL GetSubprogramName(int attributeId, char** name, Dwarf_Die die, const
     Dwarf_Die curr     = die;
     const int maxSteps = 3;
     *name              = NULL;
-
     for (int i = 0; i < maxSteps; i++)
     {
         int res = dwarf_die_text(curr, attributeId, name, &error);
@@ -180,6 +271,118 @@ static BOOL GetSubprogramName(int attributeId, char** name, Dwarf_Die die, const
     return TRUE;
 }
 
+/* Get the addr of the symbol we want */
+unsigned int get_symbol_addr(Dwarf_Debug dgb, Dwarf_Die the_die)
+{
+    Dwarf_Error err;
+    Dwarf_Attribute* attrs;
+    Dwarf_Addr lowpc, highpc;
+    Dwarf_Signed attrcount, i;
+    
+    if (dwarf_attrlist(the_die, &attrs, &attrcount, &err) != DW_DLV_OK)
+        exit(1);
+
+    for (i = 0; i < attrcount; ++i) {
+        Dwarf_Half attrcode;
+        if (dwarf_whatattr(attrs[i], &attrcode, &err) != DW_DLV_OK)
+            exit(1);
+
+        /* Take lowpc (function entry) */
+        if (attrcode == DW_AT_low_pc)
+            dwarf_formaddr(attrs[i], &lowpc, 0);
+        /* Take highpc just for fun!*/
+        else if (attrcode == DW_AT_high_pc)
+            dwarf_formaddr(attrs[i], &highpc, 0);
+    }
+
+    return lowpc;
+}
+int
+get_address_size_and_max(Dwarf_Debug dbg,
+    Dwarf_Half * size,
+    Dwarf_Addr * max,
+    Dwarf_Error *aerr)
+{
+    int dres = 0;
+    Dwarf_Half lsize = 4;
+    /* Get address size and largest representable address */
+    dres = dwarf_get_address_size(dbg,&lsize,aerr);
+    if (dres != DW_DLV_OK) {
+        return dres;
+    }
+    if (max) {
+        *max = (lsize == 8 ) ? 0xffffffffffffffffULL : 0xffffffff;
+    }
+    if (size) {
+        *size = lsize;
+    }
+    return DW_DLV_OK;
+}
+/* 
+ * Obtain the address of DIE
+ */
+
+static int get_form_values(Dwarf_Debug dbg,
+	Dwarf_Attribute attrib,
+	Dwarf_Half *theform, Dwarf_Half *directform,
+	Dwarf_Error *err)
+{
+	int res = 0;
+
+	res = dwarf_whatform(attrib, theform, err);
+	if (res != DW_DLV_OK) {
+		return res;
+	}
+	res = dwarf_whatform_direct(attrib, directform, err);
+	return res;
+}
+
+void *get_die_addr(Dwarf_Die die, Dwarf_Debug dbg)
+{
+	Dwarf_Error err = 0;;
+	Dwarf_Attribute *attrs;
+	Dwarf_Signed attrcount, i;
+
+	if (!die)
+		return 0;
+
+	if (dwarf_attrlist(die, &attrs, &attrcount, &err) != DW_DLV_OK)
+		return NULL;
+
+	for (i = 0; i < attrcount; ++i) {
+		Dwarf_Half attrcode;
+		if (dwarf_whatattr(attrs[i], &attrcode, &err) != DW_DLV_OK)
+			break;
+
+		if (attrcode != DW_AT_location)
+			continue;
+
+		Dwarf_Half theform = 0;
+		Dwarf_Half directform = 0;
+
+		if (get_form_values(dbg, attrs[i], &theform, &directform, &err))
+			break;
+
+		if (theform == DW_FORM_exprloc) {
+			Dwarf_Unsigned blen;
+			Dwarf_Ptr bdata;
+			if (dwarf_formexprloc(attrs[i], &blen, &bdata, &err))
+				break;
+
+			uint8_t op = *((uint8_t *)bdata);
+			if (op == DW_OP_addr) {
+				uint8_t *data_addr = ((uint8_t *)bdata) + 1;
+				uint64_t addr = *((uint64_t *)data_addr);
+
+				return (void *)addr;
+
+			}
+		}
+
+	}
+	return 0;
+}
+
 /*
  * Print subprograms in a format expected by the comparison script.
  */
@@ -188,7 +391,7 @@ static BOOL PrintDie(Dwarf_Die die, const Dwarf_Debug& dbg)
     Dwarf_Error error;
     Dwarf_Half tag = 0;
     int res;
-    std::cerr << "PrintDie\n";
+    //std::cerr << "PrintDie\n";
     // Tag
     res = dwarf_tag(die, &tag, &error);
     if (IsError("dwarf_tag", res, error, dbg)) return FALSE;
@@ -201,6 +404,7 @@ static BOOL PrintDie(Dwarf_Die die, const Dwarf_Debug& dbg)
 
     // Skip all tags except DW_TAG_subprogram and DW_TAG_inlined_subroutine
     BOOL inlined = FALSE;
+    BOOL variable = FALSE;
     switch (tag)
     {
         case DW_TAG_subprogram:
@@ -210,14 +414,17 @@ static BOOL PrintDie(Dwarf_Die die, const Dwarf_Debug& dbg)
             inlined = TRUE;
             break;
 
+        case DW_TAG_variable:
+            variable = TRUE;
+            break;
+
         default:
             return TRUE;
     }
-
     // Name (DW_AT_name)
     char* shortName = NULL;
     GetSubprogramName(DW_AT_name, &shortName, die, dbg);
-
+    
     // Mangled name (DW_AT_linkage_name / DW_AT_MIPS_linkage_name)
     char* mangledName = NULL;
     if (!GetSubprogramName(DW_AT_linkage_name, &mangledName, die, dbg))
@@ -232,7 +439,6 @@ static BOOL PrintDie(Dwarf_Die die, const Dwarf_Debug& dbg)
     {
         mangledName = shortName;
     }
-
     // low PC
     Dwarf_Addr lowPC = 0;
     res              = dwarf_lowpc(die, &lowPC, &error);
@@ -266,11 +472,24 @@ static BOOL PrintDie(Dwarf_Die die, const Dwarf_Debug& dbg)
         default:
             ASSERT(FALSE, "Illegal form class " + hexstr(formClass) + "\n");
     }
-
+    
+    #if 1
     if (inlined | (lowPC && highPC))
     {
         outfile << std::hex << lowPC << " | " << highPC << " | " << mangledName << " | " << shortName << " | "
                 << (inlined ? "inline=YES" : "inline=NO") << std::endl;
+    }
+    #endif
+    /* Given we found a variable, need to do two things: 
+        1) Note whether it is global or local; and 2) get the address of where these variables are located in runtime.
+    */
+    if (variable == true)
+    {
+        uintptr_t dwarf_addr = (uintptr_t)get_die_addr(die, dbg);
+        if (!dwarf_addr)
+            return -1;
+        printf("Variable name: %s\t|\tAddress: %p\n", mangledName, (void*)dwarf_addr);
+        ptrToGVName.insert(std::pair<uintptr_t, char*>(dwarf_addr, mangledName));
     }
     return TRUE;
 }
@@ -281,7 +500,7 @@ static BOOL PrintDie(Dwarf_Die die, const Dwarf_Debug& dbg)
  */
 static BOOL TraverseDwarfTree(Dwarf_Die root, const Dwarf_Debug& dbg, int& recursionLevel)
 {
-    exit(1);
+    //exit(1);
     if (recursionLevel > maxRecursionLevel) // This is just a precaution in case the DWARF tree is invalid or has loops
     {
         std::cerr << "Recursion level exceeds " << std::dec << maxRecursionLevel << " DWARF may be invalid" << std::endl;
@@ -289,7 +508,7 @@ static BOOL TraverseDwarfTree(Dwarf_Die root, const Dwarf_Debug& dbg, int& recur
     }
     else
     {
-        std::cerr << "TraverseDwarfTree\n";
+        // std::cerr << "TraverseDwarfTree\n";
     }
 
     Dwarf_Error error;
@@ -375,7 +594,7 @@ static BOOL IterateOnCompilationUnits(const Dwarf_Debug& dbg)
                                      &headerCuType,       // dw_header_cu_type
                                      &error               // dw_error
         );
-        std::cerr << "Iterate\n";
+        //std::cerr << "Iterate\n";
         if (IsError("dwarf_next_cu_header_d", res, error, dbg)) return FALSE;
         if (res == DW_DLV_NO_ENTRY) // no more compilation units, we're done
         {
@@ -397,17 +616,14 @@ static BOOL IterateOnCompilationUnits(const Dwarf_Debug& dbg)
             return FALSE;
         }
         ASSERTX(res == DW_DLV_OK);
-        std::cerr << "Right before recusion\n";
+        //std::cerr << "Right before recursion\n";
         int recursionLevel = 0;
         if (!TraverseDwarfTree(die, dbg, recursionLevel))
         {
             std::cerr << "Failed\n";
             return FALSE;
         }
-        else
-        {
-            std::cerr << "Hello\n";
-        }
+        printf("\n");
     }
 
         
@@ -433,10 +649,9 @@ static BOOL PrintDwarfSubprograms(const char* binary)
 
     if (IsError("dwarf_init_path", res, error, dbg)) return FALSE;
 
-    std::cerr << "Passed 1\n";
+    //std::cerr << "Passed 1\n";
     BOOL succeeded = IterateOnCompilationUnits(dbg);
-    //bool succeeded = false;
-    std::cerr << "Passed 2\n";
+    //std::cerr << "Passed 2\n";
     res = dwarf_finish(dbg);
     if (IsError("dwarf_finish", res, error, dbg)) return FALSE;
     return succeeded;
@@ -445,14 +660,18 @@ static BOOL PrintDwarfSubprograms(const char* binary)
 int main(int argc, char* argv[])
 {
 	/* initialize symbol processing */
-	//PIN_InitSymbols();
+	PIN_InitSymbols();
 
     if (PIN_Init(argc, argv))
     {
         return Usage();
     }
-    printf("%s\n", argv[8]);
-	//IMG_AddInstrumentFunction(getMetadata, 0);
+    // Register Instruction to be called to instrument instructions
+    INS_AddInstrumentFunction(instrument_instruction, nullptr);
+
+    printf("Input file: %s\n\n", argv[8]);
+	IMG_AddInstrumentFunction(getMetadata, 0);
+
 
     outfile.open(KnobOutputFile.Value().c_str());
     if (!outfile.is_open())
@@ -468,12 +687,8 @@ int main(int argc, char* argv[])
     {
         PIN_ExitProcess(1);
     }
-    else 
-    {
-        std::cerr << "Success\n";
-    }
-    
+
 	/* start Pin */
-	//PIN_StartProgram();
+	PIN_StartProgram();
     return 0;
 }
