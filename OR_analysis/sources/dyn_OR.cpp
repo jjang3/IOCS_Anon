@@ -35,13 +35,14 @@ using std::endl;
 using std::string;
 
 #define DBG_FLAG 0
+#define ACT_FLAG 1
 
 #include "dwarf.h"
 #include "libdwarf.h"
 
 uintptr_t offset_addr;
 
-std::map<uintptr_t, char*> ptrToGVName;
+std::map<uintptr_t, string> ptrToGVName;
 
 /* ===================================================================== */
 // Analysis routines
@@ -54,8 +55,13 @@ VOID RecMemRead(ADDRINT ip, ADDRINT addr)
     read_computed_addr = addr-offset_addr;
     auto read_it = ptrToGVName.find(read_computed_addr);
     if (read_it != ptrToGVName.end()) {
-        printf("%p\n", (void*)read_computed_addr);
-        printf("Memory read: %p | Name: %s\n\n", (void*)read_computed_addr, ptrToGVName.find(read_computed_addr)->second);
+        #if DBG_FLAG
+        //printf("%ld\n", read_computed_addr);
+        printf("Memory read: %p | Name: %s\n\n", (void*)read_computed_addr, ptrToGVName.find(read_computed_addr)->second.c_str());
+        #endif
+        #if ACT_FLAG
+
+        #endif
     }
 }
 
@@ -66,8 +72,13 @@ VOID RecMemWrite(VOID* ip, ADDRINT addr)
     write_computed_addr = addr-offset_addr;
     auto write_it = ptrToGVName.find(write_computed_addr);
     if (write_it != ptrToGVName.end()) {
-        printf("%p\n", (void*)write_computed_addr);
-        printf("Memory write: %p | Name: %s\n\n", (void*)write_computed_addr, ptrToGVName.find(write_computed_addr)->second);
+        #if DBG_FLAG
+        //printf("%ld\n", write_computed_addr);
+        printf("Memory write: %p | Name: %s\n\n", (void*)write_computed_addr, ptrToGVName.find(write_computed_addr)->second.c_str());
+        #endif
+        #if ACT_FLAG
+
+        #endif
     }
 }
 
@@ -473,7 +484,7 @@ static BOOL PrintDie(Dwarf_Die die, const Dwarf_Debug& dbg)
             ASSERT(FALSE, "Illegal form class " + hexstr(formClass) + "\n");
     }
     
-    #if 1
+    #if ACT_FLAG
     if (inlined | (lowPC && highPC))
     {
         outfile << std::hex << lowPC << " | " << highPC << " | " << mangledName << " | " << shortName << " | "
@@ -483,13 +494,17 @@ static BOOL PrintDie(Dwarf_Die die, const Dwarf_Debug& dbg)
     /* Given we found a variable, need to do two things: 
         1) Note whether it is global or local; and 2) get the address of where these variables are located in runtime.
     */
+    string stringName(shortName);
     if (variable == true)
     {
         uintptr_t dwarf_addr = (uintptr_t)get_die_addr(die, dbg);
         if (!dwarf_addr)
             return -1;
-        printf("Variable name: %s\t|\tAddress: %p\n", mangledName, (void*)dwarf_addr);
-        ptrToGVName.insert(std::pair<uintptr_t, char*>(dwarf_addr, mangledName));
+        
+        #if DBG_FLAG
+        printf("Variable name: %s\t|\tAddress: %ld\n", stringName.c_str(), dwarf_addr);
+        #endif
+        ptrToGVName.insert(std::pair<uintptr_t, string>(dwarf_addr, stringName));
     }
     return TRUE;
 }
@@ -623,6 +638,15 @@ static BOOL IterateOnCompilationUnits(const Dwarf_Debug& dbg)
             std::cerr << "Failed\n";
             return FALSE;
         }
+        #if DBG_FLAG
+        for (auto const& x : ptrToGVName)
+        {
+            std::cerr << x.first  // string (key)
+                    << ': ' 
+                    << x.second.c_str() // string's value 
+                    << std::endl;
+        }
+        #endif
         printf("\n");
     }
 
@@ -666,12 +690,12 @@ int main(int argc, char* argv[])
     {
         return Usage();
     }
-    // Register Instruction to be called to instrument instructions
+    IMG_AddInstrumentFunction(getMetadata, 0);
     INS_AddInstrumentFunction(instrument_instruction, nullptr);
 
     printf("Input file: %s\n\n", argv[8]);
-	IMG_AddInstrumentFunction(getMetadata, 0);
-
+    // Register Instruction to be called to instrument instructions
+	
 
     outfile.open(KnobOutputFile.Value().c_str());
     if (!outfile.is_open())
