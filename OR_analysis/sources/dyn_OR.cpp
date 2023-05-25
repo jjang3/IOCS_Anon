@@ -34,7 +34,7 @@ using std::cerr;
 using std::endl;
 using std::string;
 
-#define DBG_FLAG 0
+#define DBG_FLAG 1
 #define ACT_FLAG 1
 
 #include "dwarf.h"
@@ -43,6 +43,17 @@ using std::string;
 uintptr_t offset_addr;
 
 std::map<uintptr_t, string> ptrToGVName;
+
+/* ===================================================================== */
+/* Names of malloc and free */
+/* ===================================================================== */
+#if defined(TARGET_MAC)
+#define MALLOC "_malloc"
+#define FREE "_free"
+#else
+#define MALLOC "malloc"
+#define FREE "free"
+#endif
 
 /* ===================================================================== */
 // Analysis routines
@@ -57,7 +68,7 @@ VOID RecMemRead(ADDRINT ip, ADDRINT addr)
     if (read_it != ptrToGVName.end()) {
         #if DBG_FLAG
         //printf("%ld\n", read_computed_addr);
-        printf("Memory read: %p | Name: %s\n\n", (void*)read_computed_addr, ptrToGVName.find(read_computed_addr)->second.c_str());
+        printf("\tread: %p | Name: %s\n", (void*)read_computed_addr, ptrToGVName.find(read_computed_addr)->second.c_str());
         #endif
         #if ACT_FLAG
 
@@ -74,7 +85,7 @@ VOID RecMemWrite(VOID* ip, ADDRINT addr)
     if (write_it != ptrToGVName.end()) {
         #if DBG_FLAG
         //printf("%ld\n", write_computed_addr);
-        printf("Memory write: %p | Name: %s\n\n", (void*)write_computed_addr, ptrToGVName.find(write_computed_addr)->second.c_str());
+        printf("\twrite: %p | Name: %s\n", (void*)write_computed_addr, ptrToGVName.find(write_computed_addr)->second.c_str());
         #endif
         #if ACT_FLAG
 
@@ -86,7 +97,7 @@ VOID RecMemWrite(VOID* ip, ADDRINT addr)
 // Instrumentation callbacks
 /* ===================================================================== */
 
-VOID instrument_instruction(INS ins, VOID *v)
+VOID instruInst(INS ins, VOID *v)
 {
     // must be valid and within bounds of the main executable.
     #if 0
@@ -120,6 +131,59 @@ VOID instrument_instruction(INS ins, VOID *v)
     }
 }
 
+
+std::string intrinFunList[]={
+    "_init", ".plt", ".plt.got", "_start", "deregister_tm_clones", "register_tm_clones",
+    "__do_global_dtors_aux", "frame_dummy", "__libc_csu_init", "__libc_csu_fini", "_fini"};
+
+const char* StripPath(const char* path)
+{
+    const char* file = strrchr(path, '/');
+    if (file)
+        return file + 1;
+    else
+        return path;
+}
+
+// Pin calls this function every time a new rtn is executed
+VOID routInst(RTN rtn, VOID* v)
+{
+    // The RTN goes away when the image is unloaded, so save it now
+    // because we need it in the fini
+    auto rtnName    = RTN_Name(rtn);
+    auto rtnAddr    = RTN_Address(rtn);
+    auto rtnImage   = IMG_Name(SEC_Img(RTN_Sec(rtn)));
+    const auto libStr = std::string(".so.");
+    const auto vdsoStr = std::string("[vdso]");
+    const auto pltStr = std::string("@plt");
+
+    RTN_Open(rtn);
+    #if DBG_FLAG
+    //printf("%ld\n", read_computed_addr);
+    
+    if (rtnImage.find(libStr) == string::npos) {
+        if (rtnImage.find(vdsoStr) == string::npos)
+            if (rtnName.find(pltStr) == string::npos) {
+                if (std::find(std::begin(intrinFunList), std::end(intrinFunList), rtnName) == std::end(intrinFunList))
+                {
+                    printf("%p Routine: %s | Image: %s\n", (void*)rtnAddr, rtnName.c_str(), StripPath(rtnImage.c_str()));
+                }
+            }
+                
+    } 
+       
+    #endif
+    RTN_Close(rtn);
+}
+
+ 
+VOID Arg1Before(CHAR* name, ADDRINT size) { 
+    //TraceFile << name << "(" << size << ")" << endl; 
+    #if DBG_FLAG
+    printf("\tDyn object found\n");
+    #endif
+}
+
 // The input file - the binary for which we are extracting the dwarf data
 KNOB< string > KnobBinary(KNOB_MODE_WRITEONCE, "pintool", "bin", "", "specify binary file name for dwarf parsing");
 // The output file - where to dump the subroutines list
@@ -131,6 +195,30 @@ static const int maxRecursionLevel = 100;
 // and FALSE for reading through DWARF4 .debug_types. Experiments showed the result is actually the same in this test.
 static const Dwarf_Bool isInfo = TRUE;
 static std::ofstream outfile;
+
+void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
+{
+	PIN_LockClient();
+	RTN callRtn = RTN_FindByAddress(callrtn_addr);
+	if (RTN_Valid(callRtn))
+	{
+		auto rtnName = RTN_Name(callRtn);
+        const auto pltStr = std::string("@plt");
+		
+		//cerr << routineName << endl;
+
+		//	return;
+		RTN_Open(callRtn);
+        if (std::find(std::begin(intrinFunList), std::end(intrinFunList), rtnName) == std::end(intrinFunList)) {      
+            #if DBG_FLAG
+            if (rtnName.find(pltStr) == string::npos)
+                cerr << hex << "\tCall " << RTN_Name(callRtn) << endl;
+            #endif
+        }
+		RTN_Close(callRtn);
+	}
+	PIN_UnlockClient();
+}
 
 
 VOID getMetadata(IMG img, void *v)
@@ -157,6 +245,27 @@ VOID getMetadata(IMG img, void *v)
 		printf ("image_sizeMapped    = %lu \n",imgSizeMapping);
 		#endif
 		#if 1
+        //  Find the malloc() function.
+        RTN mallocRtn = RTN_FindByName(img, MALLOC);
+        if (RTN_Valid(mallocRtn))
+        {
+            RTN_Open(mallocRtn);
+            // Instrument malloc() to print the input argument value and the return value.
+            RTN_InsertCall(mallocRtn, IPOINT_BEFORE, (AFUNPTR)Arg1Before, IARG_ADDRINT, MALLOC, IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
+                        IARG_END);
+            RTN_Close(mallocRtn);
+        }
+    
+        // Find the free() function.
+        RTN freeRtn = RTN_FindByName(img, FREE);
+        if (RTN_Valid(freeRtn))
+        {
+            RTN_Open(freeRtn);
+            // Instrument free() to print the input argument value.
+            RTN_InsertCall(freeRtn, IPOINT_BEFORE, (AFUNPTR)Arg1Before, IARG_ADDRINT, FREE, IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
+                        IARG_END);
+            RTN_Close(freeRtn);
+        }
 		for (SYM sym = IMG_RegsymHead(img); SYM_Valid(sym); sym = SYM_Next(sym))
 		{
 			string undFuncName = PIN_UndecorateSymbolName(SYM_Name(sym), UNDECORATION_NAME_ONLY);
@@ -175,11 +284,17 @@ VOID getMetadata(IMG img, void *v)
 				{
 					string *instString = new string(INS_Disassemble(ins));
                     std::cerr << instString->c_str() << "\n";
+                    if (INS_IsDirectCall(ins))
+					{
+						INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)callUnwinding, IARG_BRANCH_TARGET_ADDR, IARG_PTR, instString->c_str(), IARG_INST_PTR, IARG_END);
+					}
 				}
                 #endif
 				RTN_Close(rtn);
 			}
 			#endif
+
+            
 		}
         // cycle through all sections of the main executable.
         for (SEC sec = IMG_SecHead(img); SEC_Valid(sec); sec = SEC_Next(sec))
@@ -194,6 +309,7 @@ VOID getMetadata(IMG img, void *v)
 	}
 }
 
+#pragma region DWARF_Related // start of pragma region
 /*
  * Return TRUE if the retval passed is an error, and print the error. Return FALSE otherwise.
  */
@@ -642,7 +758,7 @@ static BOOL IterateOnCompilationUnits(const Dwarf_Debug& dbg)
         for (auto const& x : ptrToGVName)
         {
             std::cerr << x.first  // string (key)
-                    << ': ' 
+                    << ": " 
                     << x.second.c_str() // string's value 
                     << std::endl;
         }
@@ -681,6 +797,8 @@ static BOOL PrintDwarfSubprograms(const char* binary)
     return succeeded;
 }
 
+#pragma endregion DWARF_Related
+
 int main(int argc, char* argv[])
 {
 	/* initialize symbol processing */
@@ -691,7 +809,8 @@ int main(int argc, char* argv[])
         return Usage();
     }
     IMG_AddInstrumentFunction(getMetadata, 0);
-    INS_AddInstrumentFunction(instrument_instruction, nullptr);
+    RTN_AddInstrumentFunction(routInst, 0);
+    INS_AddInstrumentFunction(instruInst, nullptr);
 
     printf("Input file: %s\n\n", argv[8]);
     // Register Instruction to be called to instrument instructions
