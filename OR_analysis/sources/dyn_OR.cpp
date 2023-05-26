@@ -34,7 +34,7 @@ using std::cerr;
 using std::endl;
 using std::string;
 
-#define DBG_FLAG 1
+#define DBG_FLAG 0
 #define ACT_FLAG 1
 
 #include "dwarf.h"
@@ -43,6 +43,8 @@ using std::string;
 uintptr_t offset_addr;
 
 std::map<uintptr_t, string> ptrToGVName;
+std::map<std::string, std::stack<std::string>> routineToInsts;
+
 
 /* ===================================================================== */
 /* Names of malloc and free */
@@ -54,6 +56,9 @@ std::map<uintptr_t, string> ptrToGVName;
 #define MALLOC "malloc"
 #define FREE "free"
 #endif
+
+std::stack<std::string> routineStack;
+std::string currRoutine;
 
 /* ===================================================================== */
 // Analysis routines
@@ -67,11 +72,12 @@ VOID RecMemRead(ADDRINT ip, ADDRINT addr)
     auto read_it = ptrToGVName.find(read_computed_addr);
     if (read_it != ptrToGVName.end()) {
         #if DBG_FLAG
-        //printf("%ld\n", read_computed_addr);
         printf("\tread: %p | Name: %s\n", (void*)read_computed_addr, ptrToGVName.find(read_computed_addr)->second.c_str());
         #endif
         #if ACT_FLAG
-
+        auto gvName = ptrToGVName.find(read_computed_addr)->second;
+        std::string privStr = "Read " + gvName + "\n";
+        routineToInsts.find(currRoutine)->second.push(privStr);
         #endif
     }
 }
@@ -84,11 +90,12 @@ VOID RecMemWrite(VOID* ip, ADDRINT addr)
     auto write_it = ptrToGVName.find(write_computed_addr);
     if (write_it != ptrToGVName.end()) {
         #if DBG_FLAG
-        //printf("%ld\n", write_computed_addr);
         printf("\twrite: %p | Name: %s\n", (void*)write_computed_addr, ptrToGVName.find(write_computed_addr)->second.c_str());
         #endif
         #if ACT_FLAG
-
+        auto gvName = ptrToGVName.find(write_computed_addr)->second;
+        std::string privStr = "Write " + gvName + "\n";
+        routineToInsts.find(currRoutine)->second.push(privStr);
         #endif
     }
 }
@@ -96,7 +103,6 @@ VOID RecMemWrite(VOID* ip, ADDRINT addr)
 /* ===================================================================== */
 // Instrumentation callbacks
 /* ===================================================================== */
-
 VOID instruInst(INS ins, VOID *v)
 {
     // must be valid and within bounds of the main executable.
@@ -133,8 +139,8 @@ VOID instruInst(INS ins, VOID *v)
 
 
 std::string intrinFunList[]={
-    "_init", ".plt", ".plt.got", "_start", "deregister_tm_clones", "register_tm_clones",
-    "__do_global_dtors_aux", "frame_dummy", "__libc_csu_init", "__libc_csu_fini", "_fini"};
+    "_init", ".plt", ".plt.got", "_start", "deregister_tm_clones", "register_tm_clones", "_dl_fini",
+    "__do_global_dtors_aux", "frame_dummy", "__libc_csu_init", "__libc_csu_fini", "__libc_start_main", "_fini"};
 
 const char* StripPath(const char* path)
 {
@@ -150,23 +156,28 @@ VOID routInst(RTN rtn, VOID* v)
 {
     // The RTN goes away when the image is unloaded, so save it now
     // because we need it in the fini
-    auto rtnName    = RTN_Name(rtn);
+    #if DBG_FLAG
     auto rtnAddr    = RTN_Address(rtn);
+    #endif
+    auto rtnName    = RTN_Name(rtn);
     auto rtnImage   = IMG_Name(SEC_Img(RTN_Sec(rtn)));
     const auto libStr = std::string(".so.");
     const auto vdsoStr = std::string("[vdso]");
     const auto pltStr = std::string("@plt");
 
     RTN_Open(rtn);
-    #if DBG_FLAG
-    //printf("%ld\n", read_computed_addr);
-    
+    #if ACT_FLAG
     if (rtnImage.find(libStr) == string::npos) {
         if (rtnImage.find(vdsoStr) == string::npos)
             if (rtnName.find(pltStr) == string::npos) {
+                routineStack=stack<std::string>();
                 if (std::find(std::begin(intrinFunList), std::end(intrinFunList), rtnName) == std::end(intrinFunList))
                 {
+                    currRoutine = rtnName;
+                    #if DBG_FLAG
                     printf("%p Routine: %s | Image: %s\n", (void*)rtnAddr, rtnName.c_str(), StripPath(rtnImage.c_str()));
+                    #endif
+                    routineToInsts.insert(std::pair<std::string,std::stack<std::string>>(currRoutine, routineStack));
                 }
             }
                 
@@ -178,9 +189,13 @@ VOID routInst(RTN rtn, VOID* v)
 
  
 VOID Arg1Before(CHAR* name, ADDRINT size) { 
-    //TraceFile << name << "(" << size << ")" << endl; 
     #if DBG_FLAG
-    printf("\tDyn object found\n");
+    printf("\tDyn object found | Curr routine: %s\n", currRoutine.c_str());
+    routineStack.push("Dyn object\n");
+    #endif
+    #if ACT_FLAG
+    std::string privStr = "Dyn object\n";
+    routineToInsts.find(currRoutine)->second.push(privStr);
     #endif
 }
 
@@ -204,21 +219,48 @@ void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 	{
 		auto rtnName = RTN_Name(callRtn);
         const auto pltStr = std::string("@plt");
-		
-		//cerr << routineName << endl;
-
-		//	return;
 		RTN_Open(callRtn);
         if (std::find(std::begin(intrinFunList), std::end(intrinFunList), rtnName) == std::end(intrinFunList)) {      
-            #if DBG_FLAG
             if (rtnName.find(pltStr) == string::npos)
-                cerr << hex << "\tCall " << RTN_Name(callRtn) << endl;
-            #endif
+            {
+                #if DBG_FLAG
+                cerr << hex << "\tCall " << RTN_Name(callRtn) << " Curr routine: " << currRoutine << endl;
+                #endif
+                #if ACT_FLAG
+                std::string privStr = "Call " + rtnName + "\n";
+                routineToInsts.find(currRoutine)->second.push(privStr);
+                #endif
+            }
         }
 		RTN_Close(callRtn);
 	}
 	PIN_UnlockClient();
 }
+
+VOID Taken(const CONTEXT* ctxt)
+{
+
+	PIN_LockClient();
+    ADDRINT TakenIP = (ADDRINT)PIN_GetContextReg(ctxt, REG_INST_PTR);
+    //baOutFile << "Taken: IP = " << hex << TakenIP << dec << endl;
+
+	RTN takenRtn = RTN_FindByAddress(TakenIP);
+	if (RTN_Valid(takenRtn))
+	{
+        auto rtnName = RTN_Name(takenRtn);
+        if (std::find(std::begin(intrinFunList), std::end(intrinFunList), rtnName) == std::end(intrinFunList)) {   
+            #if DBG_FLAG   
+            printf("\tReturn %s Curr routine: %s\n", rtnName.c_str(), currRoutine.c_str());
+            #endif
+            #if ACT_FLAG
+            std::string privStr = "Return " + rtnName + "\n";
+            routineToInsts.find(currRoutine)->second.push(privStr);
+            #endif
+        }
+    }
+    PIN_UnlockClient();
+}
+
 
 
 VOID getMetadata(IMG img, void *v)
@@ -279,15 +321,24 @@ VOID getMetadata(IMG img, void *v)
 			{	
 				RTN_Open(rtn);
 				// For each instruction of the routine
-                #if DBG_FLAG
+                #if ACT_FLAG
 				for (INS ins = RTN_InsHead(rtn); INS_Valid(ins); ins = INS_Next(ins))
 				{
 					string *instString = new string(INS_Disassemble(ins));
+                    #if DBG_FLAG
                     std::cerr << instString->c_str() << "\n";
+                    #endif
                     if (INS_IsDirectCall(ins))
 					{
 						INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)callUnwinding, IARG_BRANCH_TARGET_ADDR, IARG_PTR, instString->c_str(), IARG_INST_PTR, IARG_END);
 					}
+                    if (INS_IsRet(ins))
+                    {
+                        // instrument each return instruction.
+                        // IPOINT_TAKEN_BRANCH always occurs last.
+                        //INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)Before, IARG_CONTEXT, IARG_END);
+                        INS_InsertCall(ins, IPOINT_TAKEN_BRANCH, (AFUNPTR)Taken, IARG_CONTEXT, IARG_END);
+                    }
 				}
                 #endif
 				RTN_Close(rtn);
@@ -799,6 +850,22 @@ static BOOL PrintDwarfSubprograms(const char* binary)
 
 #pragma endregion DWARF_Related
 
+ 
+VOID Fini(INT32 code, VOID* v) { 
+    outfile.close();
+
+    for (auto i : routineToInsts) {   // auto keyword 
+		cout << i.first << ": " << endl;
+        while (!i.second.empty())
+        {
+            cout << "\t" << i.second.top();
+            i.second.pop();
+        }
+        cout << endl;
+    }
+}
+ 
+
 int main(int argc, char* argv[])
 {
 	/* initialize symbol processing */
@@ -809,8 +876,9 @@ int main(int argc, char* argv[])
         return Usage();
     }
     IMG_AddInstrumentFunction(getMetadata, 0);
-    RTN_AddInstrumentFunction(routInst, 0);
     INS_AddInstrumentFunction(instruInst, nullptr);
+
+    RTN_AddInstrumentFunction(routInst, 0);
 
     printf("Input file: %s\n\n", argv[8]);
     // Register Instruction to be called to instrument instructions
@@ -824,14 +892,15 @@ int main(int argc, char* argv[])
     }
     BOOL succeeded = PrintDwarfSubprograms(argv[8]);
 
-    outfile.close();
 
     if (!succeeded)
     {
         PIN_ExitProcess(1);
     }
 
+    PIN_AddFiniFunction(Fini, 0);
 	/* start Pin */
 	PIN_StartProgram();
+
     return 0;
 }
