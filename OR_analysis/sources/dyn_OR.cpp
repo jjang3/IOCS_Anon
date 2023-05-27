@@ -514,7 +514,14 @@ static int get_form_values(Dwarf_Debug dbg,
 	res = dwarf_whatform_direct(attrib, directform, err);
 	return res;
 }
+int dwarf_names_print_on_error = 1;
 
+const char * get_TAG_name(unsigned int val_in,int printonerr)
+{
+   const char *v = 0;
+   int res = dwarf_get_TAG_name(val_in,&v);
+   return v;
+}
 void *get_die_addr(Dwarf_Die die, Dwarf_Debug dbg)
 {
 	Dwarf_Error err = 0;;
@@ -531,6 +538,27 @@ void *get_die_addr(Dwarf_Die die, Dwarf_Debug dbg)
 		Dwarf_Half attrcode;
 		if (dwarf_whatattr(attrs[i], &attrcode, &err) != DW_DLV_OK)
 			break;
+
+        if (attrcode == DW_AT_type)
+        {
+            Dwarf_Off offset;
+            dwarf_attr(die,attrcode,attrs,NULL);
+            dwarf_global_formref(*attrs,&offset,NULL);
+            dwarf_offdie_b(dbg,offset,1,&die,NULL);
+            printf("%llx\n", offset);
+            int res = 0;
+            Dwarf_Half tag = 0;
+            res = dwarf_tag(die, &tag, &err);
+            if (res != DW_DLV_OK) {
+                printf("No tag\n");
+            }
+            #if DBG_FLAG
+            const char *tagname = get_TAG_name(tag,dwarf_names_print_on_error);
+            #endif
+            if (tag == DW_TAG_pointer_type)
+                printf("Pointer found!\n");
+        }
+
 
 		if (attrcode != DW_AT_location)
 			continue;
@@ -549,11 +577,10 @@ void *get_die_addr(Dwarf_Die die, Dwarf_Debug dbg)
 
 			uint8_t op = *((uint8_t *)bdata);
 			if (op == DW_OP_addr) {
+                printf("Found global\n");
 				uint8_t *data_addr = ((uint8_t *)bdata) + 1;
 				uint64_t addr = *((uint64_t *)data_addr);
-
 				return (void *)addr;
-
 			}
 		}
 
@@ -665,12 +692,13 @@ static BOOL PrintDie(Dwarf_Die die, const Dwarf_Debug& dbg)
     if (variable == true)
     {
         uintptr_t dwarf_addr = (uintptr_t)get_die_addr(die, dbg);
+        
+        #if 1
+        printf("Variable name: %s\t|\tAddress: %ld\n", stringName.c_str(), dwarf_addr);
+        #endif
         if (!dwarf_addr)
             return -1;
         
-        #if DBG_FLAG
-        printf("Variable name: %s\t|\tAddress: %ld\n", stringName.c_str(), dwarf_addr);
-        #endif
         ptrToGVName.insert(std::pair<uintptr_t, string>(dwarf_addr, stringName));
     }
     return TRUE;
