@@ -189,9 +189,9 @@ VOID routInst(RTN rtn, VOID* v)
 
  
 VOID Arg1Before(CHAR* name, ADDRINT size) { 
-    #if DBG_FLAG
+    #if 1
     printf("\tDyn object found | Curr routine: %s\n", currRoutine.c_str());
-    routineStack.push("Dyn object\n");
+    //routineStack.push("Dyn object\n");
     #endif
     #if ACT_FLAG
     std::string privStr = "Dyn object\n";
@@ -236,6 +236,15 @@ void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 	}
 	PIN_UnlockClient();
 }
+
+
+ 
+VOID Before(CONTEXT* ctxt)
+{
+    ADDRINT BeforeIP = (ADDRINT)PIN_GetContextReg(ctxt, REG_INST_PTR);
+    cerr << "Before: IP = " << hex << BeforeIP-offset_addr << dec << endl;
+}
+ 
 
 VOID Taken(const CONTEXT* ctxt)
 {
@@ -293,6 +302,7 @@ VOID getMetadata(IMG img, void *v)
         {
             RTN_Open(mallocRtn);
             // Instrument malloc() to print the input argument value and the return value.
+
             RTN_InsertCall(mallocRtn, IPOINT_BEFORE, (AFUNPTR)Arg1Before, IARG_ADDRINT, MALLOC, IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
                         IARG_END);
             RTN_Close(mallocRtn);
@@ -332,11 +342,14 @@ VOID getMetadata(IMG img, void *v)
 					{
 						INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)callUnwinding, IARG_BRANCH_TARGET_ADDR, IARG_PTR, instString->c_str(), IARG_INST_PTR, IARG_END);
 					}
+                    if (INS_IsCall(ins))
+                    {
+                        INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)Before, IARG_CONTEXT, IARG_END);
+                    }
                     if (INS_IsRet(ins))
                     {
                         // instrument each return instruction.
                         // IPOINT_TAKEN_BRANCH always occurs last.
-                        //INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)Before, IARG_CONTEXT, IARG_END);
                         INS_InsertCall(ins, IPOINT_TAKEN_BRANCH, (AFUNPTR)Taken, IARG_CONTEXT, IARG_END);
                     }
 				}
@@ -361,144 +374,6 @@ VOID getMetadata(IMG img, void *v)
 }
 
 #pragma region DWARF_Related // start of pragma region
-/*
- * Return TRUE if the retval passed is an error, and print the error. Return FALSE otherwise.
- */
-static BOOL IsError(const char* call_name, int retval, Dwarf_Error& error, const Dwarf_Debug& dbg)
-{
-    if (retval == DW_DLV_ERROR)
-    {
-        std::cerr << call_name << "() failed ";
-        Dwarf_Unsigned dw_errno = dwarf_errno(error);
-        char* dw_errmsg         = dwarf_errmsg(error);
-        std::cerr << "; errno " << std::dec << dw_errno << " (" << dw_errmsg << ")" << std::endl;
-        dwarf_dealloc_error(dbg, error);
-        error = NULL;
-        return TRUE;
-    }
-    return FALSE;
-}
-
-INT32 Usage()
-{
-    std::cerr << "This tool parses the DWARF of the given file." << std::endl;
-    std::cerr << KNOB_BASE::StringKnobSummary() << std::endl;
-    return -1;
-}
-
-/*
- * Move to another node in the DWARF tree through one of the node's attributes.
- * In some cases an attribute is a link to another node in the tree.
- * For example, DW_AT_specification.
- * This function will follow the link and return the linked die.
- * In case of failure the function will return NULL.
- */
-static Dwarf_Die GetLinkedDie(int attributeId, Dwarf_Die die, const Dwarf_Debug& dbg)
-{
-    Dwarf_Error error;
-    Dwarf_Die ret_die       = NULL;
-    Dwarf_Attribute attrib  = 0;
-    Dwarf_Off attrib_offset = 0;
-    
-    int res = dwarf_attr(die, attributeId, &attrib, &error);
-    IsError("dwarf_attr", res, error, dbg);
-    if (res == DW_DLV_OK)
-    {
-        res = dwarf_global_formref(attrib, &attrib_offset, &error);
-        IsError("dwarf_global_formref", res, error, dbg);
-        if (res == DW_DLV_OK)
-        {
-            res = dwarf_offdie_b(dbg, attrib_offset, isInfo, &ret_die, &error);
-            IsError("dwarf_offdie_b", res, error, dbg);
-        }
-        dwarf_dealloc(dbg, attrib, DW_DLA_ATTR);
-    }
-    return ret_die;
-}
-
-/*
- * Read the name (short or mangled) of a subprogram from a DWARF node.
- * In some cases the name (DW_AT_name/DW_AT_linkage_name/DW_AT_MIPS_linkage_name)
- * will appear as part of the original die, and in other cases we will need to
- * travel through additional nodes to get the name. 
- * The function returns TRUE always because it is possible for a valid node not to have a mangled name for example.
- * However if a name is not found then the name argument will get a NULL value.
- */
-static BOOL GetSubprogramName(int attributeId, char** name, Dwarf_Die die, const Dwarf_Debug& dbg)
-{
-    Dwarf_Error error;
-    Dwarf_Die curr     = die;
-    const int maxSteps = 3;
-    *name              = NULL;
-    for (int i = 0; i < maxSteps; i++)
-    {
-        int res = dwarf_die_text(curr, attributeId, name, &error);
-        IsError("dwarf_die_text", res, error, dbg);
-        if (res == DW_DLV_OK)
-        {
-            return TRUE;
-        }
-        Dwarf_Die next = GetLinkedDie(DW_AT_abstract_origin, curr, dbg);
-        if (next == NULL)
-        {
-            next = GetLinkedDie(DW_AT_specification, curr, dbg);
-        }
-        if (next == NULL) break;
-        curr = next;
-    }
-    return TRUE;
-}
-
-/* Get the addr of the symbol we want */
-unsigned int get_symbol_addr(Dwarf_Debug dgb, Dwarf_Die the_die)
-{
-    Dwarf_Error err;
-    Dwarf_Attribute* attrs;
-    Dwarf_Addr lowpc, highpc;
-    Dwarf_Signed attrcount, i;
-    
-    if (dwarf_attrlist(the_die, &attrs, &attrcount, &err) != DW_DLV_OK)
-        exit(1);
-
-    for (i = 0; i < attrcount; ++i) {
-        Dwarf_Half attrcode;
-        if (dwarf_whatattr(attrs[i], &attrcode, &err) != DW_DLV_OK)
-            exit(1);
-
-        /* Take lowpc (function entry) */
-        if (attrcode == DW_AT_low_pc)
-            dwarf_formaddr(attrs[i], &lowpc, 0);
-        /* Take highpc just for fun!*/
-        else if (attrcode == DW_AT_high_pc)
-            dwarf_formaddr(attrs[i], &highpc, 0);
-    }
-
-    return lowpc;
-}
-int
-get_address_size_and_max(Dwarf_Debug dbg,
-    Dwarf_Half * size,
-    Dwarf_Addr * max,
-    Dwarf_Error *aerr)
-{
-    int dres = 0;
-    Dwarf_Half lsize = 4;
-    /* Get address size and largest representable address */
-    dres = dwarf_get_address_size(dbg,&lsize,aerr);
-    if (dres != DW_DLV_OK) {
-        return dres;
-    }
-    if (max) {
-        *max = (lsize == 8 ) ? 0xffffffffffffffffULL : 0xffffffff;
-    }
-    if (size) {
-        *size = lsize;
-    }
-    return DW_DLV_OK;
-}
-/* 
- * Obtain the address of DIE
- */
 
 static int get_form_values(Dwarf_Debug dbg,
 	Dwarf_Attribute attrib,
@@ -514,109 +389,268 @@ static int get_form_values(Dwarf_Debug dbg,
 	res = dwarf_whatform_direct(attrib, directform, err);
 	return res;
 }
-int dwarf_names_print_on_error = 1;
 
-const char * get_TAG_name(unsigned int val_in,int printonerr)
+/*
+ * Return TRUE if the retval passed is an error, and print the error. Return FALSE otherwise.
+ */
+static BOOL foundErr(const char* call_name, int retval, Dwarf_Error& error, const Dwarf_Debug& dbg)
 {
-   const char *v = 0;
-   int res = dwarf_get_TAG_name(val_in,&v);
-   return v;
+    if (retval == DW_DLV_ERROR)
+    {
+        std::cerr << call_name << "() failed ";
+        Dwarf_Unsigned dw_errno = dwarf_errno(error);
+        char* dw_errmsg         = dwarf_errmsg(error);
+        std::cerr << "; errno " << std::dec << dw_errno << " (" << dw_errmsg << ")" << std::endl;
+        dwarf_dealloc_error(dbg, error);
+        error = NULL;
+        return TRUE;
+    }
+    return FALSE;
 }
-void *get_die_addr(Dwarf_Die die, Dwarf_Debug dbg)
+
+/*
+ * Move to another node in the DWARF tree through one of the node's attributes.
+ * In some cases an attribute is a link to another node in the tree.
+ * For example, DW_AT_specification.
+ * This function will follow the link and return the linked die.
+ * In case of failure the function will return NULL.
+ */
+static Dwarf_Die getlinkedDIE(int attributeId, Dwarf_Die die, const Dwarf_Debug& dbg)
 {
-	Dwarf_Error err = 0;;
-	Dwarf_Attribute *attrs;
-	Dwarf_Signed attrcount, i;
-
-	if (!die)
-		return 0;
-
-	if (dwarf_attrlist(die, &attrs, &attrcount, &err) != DW_DLV_OK)
-		return NULL;
-
-	for (i = 0; i < attrcount; ++i) {
-		Dwarf_Half attrcode;
-		if (dwarf_whatattr(attrs[i], &attrcode, &err) != DW_DLV_OK)
-			break;
-
-        if (attrcode == DW_AT_type)
+    Dwarf_Error error;
+    Dwarf_Die ret_die       = NULL;
+    Dwarf_Attribute attrib  = 0;
+    Dwarf_Off attrib_offset = 0;
+    
+    int res = dwarf_attr(die, attributeId, &attrib, &error);
+    foundErr("dwarf_attr", res, error, dbg);
+    if (res == DW_DLV_OK)
+    {
+        res = dwarf_global_formref(attrib, &attrib_offset, &error);
+        foundErr("dwarf_global_formref", res, error, dbg);
+        if (res == DW_DLV_OK)
         {
-            Dwarf_Off offset;
-            dwarf_attr(die,attrcode,attrs,NULL);
-            dwarf_global_formref(*attrs,&offset,NULL);
-            dwarf_offdie_b(dbg,offset,1,&die,NULL);
-            printf("%llx\n", offset);
-            int res = 0;
-            Dwarf_Half tag = 0;
-            res = dwarf_tag(die, &tag, &err);
-            if (res != DW_DLV_OK) {
-                printf("No tag\n");
-            }
-            #if DBG_FLAG
-            const char *tagname = get_TAG_name(tag,dwarf_names_print_on_error);
-            #endif
-            if (tag == DW_TAG_pointer_type)
-                printf("Pointer found!\n");
+            res = dwarf_offdie_b(dbg, attrib_offset, isInfo, &ret_die, &error);
+            foundErr("dwarf_offdie_b", res, error, dbg);
         }
+        dwarf_dealloc(dbg, attrib, DW_DLA_ATTR);
+    }
+    return ret_die;
+}
 
+/*
+ * Read the name (short or mangled) of a subprogram from a DWARF node.
+ * In some cases the name (DW_AT_name/DW_AT_linkage_name/DW_AT_MIPS_linkage_name)
+ * will appear as part of the original die, and in other cases we will need to
+ * travel through additional nodes to get the name. 
+ * The function returns TRUE always because it is possible for a valid node not to have a mangled name for example.
+ * However if a name is not found then the name argument will get a NULL value.
+ */
+static BOOL getSubprogName(int attributeId, char** name, Dwarf_Die die, const Dwarf_Debug& dbg)
+{
+    Dwarf_Error error;
+    Dwarf_Die curr     = die;
+    const int maxSteps = 3;
+    *name              = NULL;
+    for (int i = 0; i < maxSteps; i++)
+    {
+        int res = dwarf_die_text(curr, attributeId, name, &error);
+        foundErr("dwarf_die_text", res, error, dbg);
+        if (res == DW_DLV_OK)
+        {
+            return TRUE;
+        }
+        Dwarf_Die next = getlinkedDIE(DW_AT_abstract_origin, curr, dbg);
+        if (next == NULL)
+        {
+            next = getlinkedDIE(DW_AT_specification, curr, dbg);
+        }
+        if (next == NULL) break;
+        curr = next;
+    }
+    return TRUE;
+}
 
-		if (attrcode != DW_AT_location)
-			continue;
+static Dwarf_Unsigned getLocInformation(Dwarf_Attribute *attrs, int i, Dwarf_Error *error, uint8_t op)
+{
+    Dwarf_Unsigned lcount = 0;
+    Dwarf_Loc_Head_c loclist_head = 0;
+    int lres = 0;
+    int res = 0;
+    lres = dwarf_get_loclist_c(attrs[i],&loclist_head,
+        &lcount,error);
+        if (lres == DW_DLV_OK) {
+        Dwarf_Unsigned j = 0;
+        /*  Before any return remember to call
+        dwarf_loc_head_c_dealloc(loclist_head); */
+        for (j = 0; j < lcount; ++j) {
+            Dwarf_Small loclist_lkind = 0;
+            Dwarf_Small lle_value = 0;
+            Dwarf_Unsigned rawval1 = 0;
+            Dwarf_Unsigned rawval2 = 0;
+            Dwarf_Bool debug_addr_unavailable = FALSE;
+            Dwarf_Addr lopc = 0;
+            Dwarf_Addr hipc = 0;
+            Dwarf_Unsigned loclist_expr_op_count = 0;
+            Dwarf_Locdesc_c locdesc_entry = 0;
+            Dwarf_Unsigned expression_offset = 0;
+            Dwarf_Unsigned locdesc_offset = 0;
+            res = dwarf_get_locdesc_entry_d(loclist_head,
+            j,
+            &lle_value,
+            &rawval1,&rawval2,
+            &debug_addr_unavailable,
+            &lopc,&hipc,
+            &loclist_expr_op_count,
+            &locdesc_entry,
+            &loclist_lkind,
+            &expression_offset,
+            &locdesc_offset,
+            error);
+            if (lres == DW_DLV_OK) {
+                Dwarf_Unsigned j = 0;
+                int opres = 0;
+                Dwarf_Small op = 0;
 
-		Dwarf_Half theform = 0;
-		Dwarf_Half directform = 0;
+                for (j = 0; j < loclist_expr_op_count; ++j) {
+                    Dwarf_Unsigned opd1 = 0;
+                    Dwarf_Unsigned opd2 = 0;
+                    Dwarf_Unsigned opd3 = 0;
+                    Dwarf_Unsigned offsetforbranch = 0;
 
-		if (get_form_values(dbg, attrs[i], &theform, &directform, &err))
-			break;
+                    opres = dwarf_get_location_op_value_c(
+                        locdesc_entry, j,&op,
+                        &opd1,&opd2,&opd3,
+                        &offsetforbranch,
+                        error);
+                    if (opres == DW_DLV_OK) {
+                        /*  Do something with the operators.
+                            Usually you want to use opd1,2,3
+                            as appropriate. Calculations
+                            involving base addresses etc
+                            have already been incorporated
+                            in opd1,2,3.  */
+                        if (op == DW_OP_addr) {
+                            printf("\tGlobal addr: %llx\n", opd1);
+                            return opd1;
+                        }
+                        else if (op == DW_OP_fbreg){
+                            printf("\tLocal offset: %lld\n", opd1);
+                            return opd1;
+                        }
+                    } else {
+                        dwarf_dealloc_loc_head_c(loclist_head);
+                        /*Something is wrong. */
+                        return opres;
+                    }
+                }
+            }
+        }
+    }
+    return TRUE;  
+}
 
-		if (theform == DW_FORM_exprloc) {
-			Dwarf_Unsigned blen;
-			Dwarf_Ptr bdata;
-			if (dwarf_formexprloc(attrs[i], &blen, &bdata, &err))
-				break;
-
-			uint8_t op = *((uint8_t *)bdata);
-			if (op == DW_OP_addr) {
-                printf("Found global\n");
-				uint8_t *data_addr = ((uint8_t *)bdata) + 1;
-				uint64_t addr = *((uint64_t *)data_addr);
-				return (void *)addr;
-			}
-		}
-
-	}
-	return 0;
+static BOOL getDIEAttrs(Dwarf_Die input_die, Dwarf_Error *error, Dwarf_Debug dbg, string strName)
+{
+    Dwarf_Attribute *attrs;
+    Dwarf_Signed attrcount, i;
+    Dwarf_Off offset = 0;
+    Dwarf_Half tag = 0;
+    Dwarf_Half theform = 0;
+    Dwarf_Half directform = 0;
+    Dwarf_Unsigned blen;
+    Dwarf_Ptr bdata;
+    Dwarf_Unsigned locAddr;
+    int res = 0;
+    const char *attrname = 0;
+    const char *tagname = 0;
+    /* Grab the DIEs attributes for display */
+    if (dwarf_attrlist(input_die, &attrs, &attrcount, error) != DW_DLV_OK)
+        return FALSE;
+    for (i = 0; i < attrcount; ++i) {
+        Dwarf_Half attrcode;
+        if (dwarf_whatattr(attrs[i], &attrcode, error) != DW_DLV_OK)
+            break;
+        dwarf_get_AT_name(attrcode,&attrname);
+        #if 1
+        printf("Attribute[%ld], value %u name %s\n",
+            (long int)i,attrcode,attrname);
+        #endif
+    
+        switch (attrcode) {
+            case DW_AT_frame_base:
+                res = dwarf_tag(input_die, &tag, error);
+                if (res != DW_DLV_OK) {
+                    printf("No tag\n");
+                }
+                dwarf_get_FRAME_name(tag, &tagname);
+                printf("\tFrame Tag: %s\n", tagname);
+                break;
+            case DW_AT_type:
+                dwarf_attr(input_die,attrcode,attrs,NULL);
+                dwarf_global_formref(*attrs,&offset,NULL);
+                dwarf_offdie_b(dbg,offset,1,&input_die,NULL);
+                res = dwarf_tag(input_die, &tag, error);
+                if (res != DW_DLV_OK) {
+                    printf("No tag\n");
+                }
+                dwarf_get_TAG_name(tag, &tagname);
+                printf("\tType Tag: %s\n", tagname);
+                break;
+            case DW_AT_location:
+                if (get_form_values(dbg, attrs[i], &theform, &directform, error))
+                    break;
+                dwarf_get_FORM_name(theform, &tagname);
+                printf("\tForm Tag: %s\n", tagname);
+                if (theform == DW_FORM_exprloc) {
+                    if (dwarf_formexprloc(attrs[i], &blen, &bdata, error))
+                        break;
+                    uint8_t op = *((uint8_t *)bdata);
+                    if (op == DW_OP_addr) {
+                        printf("\tFound global\n");
+                        locAddr = getLocInformation(attrs, i, error, op);
+                        ptrToGVName.insert(std::pair<uintptr_t, string>((uintptr_t)locAddr, strName));
+                    }
+                    else if (op == DW_OP_fbreg) {
+                        printf("\tFound local\n");
+                        locAddr = getLocInformation(attrs, i, error, op);
+                        ptrToGVName.insert(std::pair<uintptr_t, string>((uintptr_t)locAddr, strName));
+			    	}
+                }
+                break;
+            default:
+                continue;
+        }
+    }
+    return TRUE;
 }
 
 /*
  * Print subprograms in a format expected by the comparison script.
  */
-static BOOL PrintDie(Dwarf_Die die, const Dwarf_Debug& dbg)
+static BOOL printDIE(Dwarf_Die die, const Dwarf_Debug& dbg)
 {
     Dwarf_Error error;
     Dwarf_Half tag = 0;
     int res;
-    //std::cerr << "PrintDie\n";
-    // Tag
     res = dwarf_tag(die, &tag, &error);
-    if (IsError("dwarf_tag", res, error, dbg)) return FALSE;
+    if (foundErr("dwarf_tag", res, error, dbg)) 
+        return FALSE;
     if (res == DW_DLV_NO_ENTRY)
     {
         std::cerr << "Dwarf_Die doesn't have a TAG value" << std::endl;
         return FALSE;
     }
     ASSERTX(res == DW_DLV_OK);
-
-    // Skip all tags except DW_TAG_subprogram and DW_TAG_inlined_subroutine
-    BOOL inlined = FALSE;
+    const char *tagname;
+    dwarf_get_TAG_name(tag, &tagname);
+    // Skip all tags except DW_TAG_subprogram and DW_TAG_variable (to get global info)
+    BOOL subprog = FALSE;
     BOOL variable = FALSE;
     switch (tag)
     {
         case DW_TAG_subprogram:
-            break;
-
-        case DW_TAG_inlined_subroutine:
-            inlined = TRUE;
+            subprog = TRUE;
             break;
 
         case DW_TAG_variable:
@@ -626,80 +660,30 @@ static BOOL PrintDie(Dwarf_Die die, const Dwarf_Debug& dbg)
         default:
             return TRUE;
     }
-    // Name (DW_AT_name)
     char* shortName = NULL;
-    GetSubprogramName(DW_AT_name, &shortName, die, dbg);
-    
-    // Mangled name (DW_AT_linkage_name / DW_AT_MIPS_linkage_name)
+    getSubprogName(DW_AT_name, &shortName, die, dbg);
     char* mangledName = NULL;
-    if (!GetSubprogramName(DW_AT_linkage_name, &mangledName, die, dbg))
-    {
-        GetSubprogramName(DW_AT_MIPS_linkage_name, &mangledName, die, dbg);
+    if (subprog == true) {
+        printf("Tag: %s\n", tagname);
+        if (!getSubprogName(DW_AT_linkage_name, &mangledName, die, dbg))
+        {
+            getSubprogName(DW_AT_MIPS_linkage_name, &mangledName, die, dbg);
+        }
+        if ((shortName == NULL) && (mangledName == NULL))
+        {
+            return TRUE;
+        }
+        if (mangledName == NULL)
+        {
+            mangledName = shortName;
+        }
+        printf("Subprogram: %s\n", mangledName);
+        getDIEAttrs(die, &error, dbg, shortName);
     }
-    if ((shortName == NULL) && (mangledName == NULL))
-    {
-        return TRUE;
-    }
-    if (mangledName == NULL)
-    {
-        mangledName = shortName;
-    }
-    // low PC
-    Dwarf_Addr lowPC = 0;
-    res              = dwarf_lowpc(die, &lowPC, &error);
-    if (IsError("dwarf_lowpc", res, error, dbg)) return FALSE;
-
-    // High PC
-    Dwarf_Addr highPC               = 0;
-    Dwarf_Half form                 = 0;
-    enum Dwarf_Form_Class formClass = DW_FORM_CLASS_UNKNOWN;
-    res                             = dwarf_highpc_b(die,        // dw_die
-                         &highPC,    // dw_return_addr
-                         &form,      // dw_return_form
-                         &formClass, // dw_return_class
-                         &error      // dw_error
-    );
-    if (IsError("dwarf_highpc_b", res, error, dbg)) return FALSE;
-
-    switch (formClass)
-    {
-        case DW_FORM_CLASS_CONSTANT: // The value is an offset
-            highPC = lowPC + highPC - 1;
-            break;
-
-        case DW_FORM_CLASS_ADDRESS: // The value is the address past the last instruction
-            highPC--;
-            break;
-
-        case DW_FORM_CLASS_UNKNOWN:
-            break;
-
-        default:
-            ASSERT(FALSE, "Illegal form class " + hexstr(formClass) + "\n");
-    }
-    
-    #if ACT_FLAG
-    if (inlined | (lowPC && highPC))
-    {
-        outfile << std::hex << lowPC << " | " << highPC << " | " << mangledName << " | " << shortName << " | "
-                << (inlined ? "inline=YES" : "inline=NO") << std::endl;
-    }
-    #endif
-    /* Given we found a variable, need to do two things: 
-        1) Note whether it is global or local; and 2) get the address of where these variables are located in runtime.
-    */
-    string stringName(shortName);
-    if (variable == true)
-    {
-        uintptr_t dwarf_addr = (uintptr_t)get_die_addr(die, dbg);
-        
-        #if 1
-        printf("Variable name: %s\t|\tAddress: %ld\n", stringName.c_str(), dwarf_addr);
-        #endif
-        if (!dwarf_addr)
-            return -1;
-        
-        ptrToGVName.insert(std::pair<uintptr_t, string>(dwarf_addr, stringName));
+    else if (variable == true) {
+        string stringName(shortName);
+        printf("Tag: %s\n", tagname);
+        getDIEAttrs(die, &error, dbg, shortName);
     }
     return TRUE;
 }
@@ -708,33 +692,28 @@ static BOOL PrintDie(Dwarf_Die die, const Dwarf_Debug& dbg)
  * Traverse the tree and print its nodes.
  * The function will print the node passed as root, and then call this function for each of its children.
  */
-static BOOL TraverseDwarfTree(Dwarf_Die root, const Dwarf_Debug& dbg, int& recursionLevel)
+static BOOL traverseDWARFTree(Dwarf_Die root, const Dwarf_Debug& dbg, int& recursionLevel)
 {
-    //exit(1);
     if (recursionLevel > maxRecursionLevel) // This is just a precaution in case the DWARF tree is invalid or has loops
     {
         std::cerr << "Recursion level exceeds " << std::dec << maxRecursionLevel << " DWARF may be invalid" << std::endl;
         return TRUE;
     }
-    else
-    {
-        // std::cerr << "TraverseDwarfTree\n";
-    }
 
     Dwarf_Error error;
     std::vector< Dwarf_Die > children;
     int res;
-    #if 1
+
     // Print current node
-    if (!PrintDie(root, dbg))
+    if (!printDIE(root, dbg))
     {
         return FALSE;
     }
-    #endif
     // Create list of children for current node
     Dwarf_Die child = NULL;
     res             = dwarf_child(root, &child, &error);
-    if (IsError("dwarf_child", res, error, dbg)) return FALSE;
+    if (foundErr("dwarf_child", res, error, dbg)) 
+        return FALSE;
     if (res == DW_DLV_OK)
     {
         children.push_back(child);
@@ -744,7 +723,8 @@ static BOOL TraverseDwarfTree(Dwarf_Die root, const Dwarf_Debug& dbg, int& recur
         while (TRUE)
         {
             res = dwarf_siblingof_b(dbg, curr, isInfo, &sibling, &error);
-            if (IsError("dwarf_siblingof_b", res, error, dbg)) return FALSE;
+            if (foundErr("dwarf_siblingof_b", res, error, dbg)) 
+                return FALSE;
             if (res == DW_DLV_NO_ENTRY)
             {
                 break;
@@ -761,7 +741,7 @@ static BOOL TraverseDwarfTree(Dwarf_Die root, const Dwarf_Debug& dbg, int& recur
     recursionLevel++;
     for (size_t i = 0; i < children.size(); i++)
     {
-        if (!TraverseDwarfTree(children[i], dbg, recursionLevel))
+        if (!traverseDWARFTree(children[i], dbg, recursionLevel))
         {
             return FALSE;
         }
@@ -773,9 +753,9 @@ static BOOL TraverseDwarfTree(Dwarf_Die root, const Dwarf_Debug& dbg, int& recur
 /*
  * Iterate on the compilation units and for each one print the subprograms in it.
  */
-static BOOL IterateOnCompilationUnits(const Dwarf_Debug& dbg)
+static BOOL iterateCU(const Dwarf_Debug& dbg)
 {
-    while (TRUE)
+while (TRUE)
     {
         Dwarf_Unsigned cuHeaderLen;
         Dwarf_Half versionStamp;
@@ -804,8 +784,9 @@ static BOOL IterateOnCompilationUnits(const Dwarf_Debug& dbg)
                                      &headerCuType,       // dw_header_cu_type
                                      &error               // dw_error
         );
-        //std::cerr << "Iterate\n";
-        if (IsError("dwarf_next_cu_header_d", res, error, dbg)) return FALSE;
+
+        if (foundErr("dwarf_next_cu_header_d", res, error, dbg)) 
+            return FALSE;
         if (res == DW_DLV_NO_ENTRY) // no more compilation units, we're done
         {
             return TRUE;
@@ -819,20 +800,23 @@ static BOOL IterateOnCompilationUnits(const Dwarf_Debug& dbg)
                                 &error  // dw_error
         );
 
-        if (IsError("dwarf_siblingof_b", res, error, dbg)) return FALSE;
+        if (foundErr("dwarf_siblingof_b", res, error, dbg)) 
+            return FALSE;
+
         if (res == DW_DLV_NO_ENTRY) // this is not expected, it's an error
         {
             std::cerr << "Error: no die for compilation unit" << std::endl;
             return FALSE;
         }
         ASSERTX(res == DW_DLV_OK);
-        //std::cerr << "Right before recursion\n";
         int recursionLevel = 0;
-        if (!TraverseDwarfTree(die, dbg, recursionLevel))
+        #if 1
+        if (!traverseDWARFTree(die, dbg, recursionLevel))
         {
             std::cerr << "Failed\n";
             return FALSE;
         }
+        #endif
         #if DBG_FLAG
         for (auto const& x : ptrToGVName)
         {
@@ -844,14 +828,11 @@ static BOOL IterateOnCompilationUnits(const Dwarf_Debug& dbg)
         #endif
         printf("\n");
     }
-
-        
 }
-
 /*
  * Print the subporograms in 'binary'
  */
-static BOOL PrintDwarfSubprograms(const char* binary)
+static BOOL initDWARF(const char* binary)
 {
     Dwarf_Debug dbg = NULL;
     Dwarf_Error error;
@@ -866,17 +847,25 @@ static BOOL PrintDwarfSubprograms(const char* binary)
                               &error              // dw_error
     );
 
-    if (IsError("dwarf_init_path", res, error, dbg)) return FALSE;
+    if (foundErr("dwarf_init_path", res, error, dbg)) 
+        return FALSE;
 
-    //std::cerr << "Passed 1\n";
-    BOOL succeeded = IterateOnCompilationUnits(dbg);
-    //std::cerr << "Passed 2\n";
+    BOOL succeeded = iterateCU(dbg);
     res = dwarf_finish(dbg);
-    if (IsError("dwarf_finish", res, error, dbg)) return FALSE;
+    if (foundErr("dwarf_finish", res, error, dbg)) 
+        return FALSE;
+
     return succeeded;
 }
 
 #pragma endregion DWARF_Related
+
+INT32 Usage()
+{
+    std::cerr << "This tool gathers the metadata for Overprivilege Ratio (OR)." << std::endl;
+    std::cerr << KNOB_BASE::StringKnobSummary() << std::endl;
+    return -1;
+}
 
  
 VOID Fini(INT32 code, VOID* v) { 
@@ -918,9 +907,7 @@ int main(int argc, char* argv[])
         std::cout << "Could not open " << KnobOutputFile.Value() << std::endl;
         exit(1);
     }
-    BOOL succeeded = PrintDwarfSubprograms(argv[8]);
-
-
+    BOOL succeeded = initDWARF(argv[8]);
     if (!succeeded)
     {
         PIN_ExitProcess(1);
