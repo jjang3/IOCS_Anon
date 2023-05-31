@@ -324,12 +324,26 @@ VOID Before(CONTEXT* ctxt)
 {
 	PIN_LockClient();
     ADDRINT BeforeIP = (ADDRINT)PIN_GetContextReg(ctxt, REG_INST_PTR);
-
-    INT32 column = 0, line = 0;
-    std::string filename = "??";
-    PIN_GetSourceLocation(BeforeIP, &column, &line, &filename);
-    // printf("line: %d\n", line);
-    // cerr << "Before: IP = " << hex << BeforeIP-offset_addr << dec << endl;
+    RTN takenRtn = RTN_FindByAddress(BeforeIP);
+	if (RTN_Valid(takenRtn))
+	{
+        auto rtnName = RTN_Name(takenRtn);
+        if (std::find(std::begin(intrinFunList), std::end(intrinFunList), rtnName) == std::end(intrinFunList)) {   
+            if (rtnName.c_str() != currRoutine.c_str()){
+                #if 0
+                printf("\tReturn %s Curr routine: %s\n", rtnName.c_str(), currRoutine.c_str());
+                #endif
+                std::string privStr = "Return " + currRoutine + "\n";
+                #if 0
+                if (stackFind(routineToInsts.find(currRoutine)->second, privStr)) 
+                    printf("Exists\n");
+                else
+                    routineToInsts.find(currRoutine)->second.push(privStr);
+                #endif
+                //routineToInsts.find(routineStack.top())->second.insert(privStr);
+            }
+        }
+    }
     PIN_UnlockClient();
 }
  
@@ -346,17 +360,18 @@ VOID Taken(const CONTEXT* ctxt)
 	{
         auto rtnName = RTN_Name(takenRtn);
         if (std::find(std::begin(intrinFunList), std::end(intrinFunList), rtnName) == std::end(intrinFunList)) {   
-            #if DBG_FLAG   
-            printf("\tReturn %s Curr routine: %s\n", rtnName.c_str(), currRoutine.c_str());
+            #if 1   
+            printf("\tReturn %s Curr routine: %s\n", currRoutine.c_str(), rtnName.c_str());
             #endif
-            std::string privStr = "Return " + rtnName + "\n";
+            std::string privStr = "Return " +  rtnName + "\n";
             #if 0
             if (stackFind(routineToInsts.find(currRoutine)->second, privStr)) 
                 printf("Exists\n");
             else
                 routineToInsts.find(currRoutine)->second.push(privStr);
             #endif
-            routineToInsts.find(routineStack.top())->second.insert(privStr);
+            //routineToInsts.find(routineStack.top())->second.insert(privStr);
+            routineToInsts.find(currRoutine.c_str())->second.insert(privStr);
         }
     }
     PIN_UnlockClient();
@@ -440,12 +455,13 @@ VOID getMetadata(IMG img, void *v)
 					}
                     if (INS_IsCall(ins))
                     {
-                        INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)Before, IARG_CONTEXT, IARG_END);
+                        
                     }
                     if (INS_IsRet(ins))
                     {
                         // instrument each return instruction.
                         // IPOINT_TAKEN_BRANCH always occurs last.
+                        INS_InsertCall(ins, IPOINT_TAKEN_BRANCH, (AFUNPTR)Before, IARG_CONTEXT, IARG_END);
                         INS_InsertCall(ins, IPOINT_TAKEN_BRANCH, (AFUNPTR)Taken, IARG_CONTEXT, IARG_END);
                     }
 
