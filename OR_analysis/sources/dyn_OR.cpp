@@ -37,6 +37,11 @@ using std::string;
 #define DBG_FLAG 0
 #define ACT_FLAG 1
 
+#define DW_PR_DUx "llx"
+#define DW_PR_DSx "llx"
+#define DW_PR_DUu "llu"
+#define DW_PR_DSd "lld"
+
 #include "dwarf.h"
 #include "libdwarf.h"
 
@@ -190,6 +195,7 @@ VOID routInst(RTN rtn, VOID* v)
  
 VOID Arg1Before(CHAR* name, ADDRINT size) { 
     #if 1
+
     printf("\tDyn object found | Curr routine: %s\n", currRoutine.c_str());
     //routineStack.push("Dyn object\n");
     #endif
@@ -241,8 +247,15 @@ void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
  
 VOID Before(CONTEXT* ctxt)
 {
+	PIN_LockClient();
     ADDRINT BeforeIP = (ADDRINT)PIN_GetContextReg(ctxt, REG_INST_PTR);
+
+    INT32 column = 0, line = 0;
+    std::string filename = "??";
+    PIN_GetSourceLocation(BeforeIP, &column, &line, &filename);
+    printf("line: %d\n", line);
     cerr << "Before: IP = " << hex << BeforeIP-offset_addr << dec << endl;
+    PIN_UnlockClient();
 }
  
 
@@ -375,6 +388,7 @@ VOID getMetadata(IMG img, void *v)
 
 #pragma region DWARF_Related // start of pragma region
 
+
 static int get_form_values(Dwarf_Debug dbg,
 	Dwarf_Attribute attrib,
 	Dwarf_Half *theform, Dwarf_Half *directform,
@@ -470,8 +484,31 @@ static BOOL getSubprogName(int attributeId, char** name, Dwarf_Die die, const Dw
     }
     return TRUE;
 }
+#if 0
+static BOOL getCIEInfo(Dwarf_Error *error, Dwarf_Debug dbg)
+{
+    Dwarf_Cie *cie_data = 0;
+    Dwarf_Signed cie_count = 0;
+    Dwarf_Fde *fde_data = 0;
+    Dwarf_Signed fde_count = 0;
+    int fres = 0;
 
-static Dwarf_Unsigned getLocInformation(Dwarf_Attribute *attrs, int i, Dwarf_Error *error, uint8_t op)
+    fres = dwarf_get_fde_list(dbg,&cie_data,&cie_count,
+        &fde_data,&fde_count,error);
+    if (fres != DW_DLV_OK) {
+        return fres;
+    }
+    else {
+        printf("Success\n");
+    }
+    /*  Do something with the lists*/
+    dwarf_dealloc_fde_cie_list(dbg, cie_data, cie_count,
+        fde_data,fde_count);
+    return fres;
+}
+#endif
+static Dwarf_Unsigned getLocInformation(Dwarf_Attribute *attrs, int i, Dwarf_Error *error, 
+    uint8_t op, Dwarf_Debug dbg)
 {
     Dwarf_Unsigned lcount = 0;
     Dwarf_Loc_Head_c loclist_head = 0;
@@ -534,8 +571,12 @@ static Dwarf_Unsigned getLocInformation(Dwarf_Attribute *attrs, int i, Dwarf_Err
                             printf("\tGlobal addr: %llx\n", opd1);
                             return opd1;
                         }
-                        else if (op == DW_OP_fbreg){
+                        else if (op == DW_OP_fbreg) {
                             printf("\tLocal offset: %lld\n", opd1);
+                            return opd1;
+                        }
+                        else if (op == DW_OP_call_frame_cfa) {
+                            printf("\tFrame offset: %lld\n", opd1);
                             return opd1;
                         }
                     } else {
@@ -549,6 +590,7 @@ static Dwarf_Unsigned getLocInformation(Dwarf_Attribute *attrs, int i, Dwarf_Err
     }
     return TRUE;  
 }
+
 
 static BOOL getDIEAttrs(Dwarf_Die input_die, Dwarf_Error *error, Dwarf_Debug dbg, string strName)
 {
@@ -578,13 +620,33 @@ static BOOL getDIEAttrs(Dwarf_Die input_die, Dwarf_Error *error, Dwarf_Debug dbg
         #endif
     
         switch (attrcode) {
+            case DW_AT_decl_line:
+                //dwarf_formudata(attrs[i], &offset, 0);
+                //printf("\tLine Number: %lld\n", offset);
+                break;
             case DW_AT_frame_base:
                 res = dwarf_tag(input_die, &tag, error);
                 if (res != DW_DLV_OK) {
                     printf("No tag\n");
                 }
                 dwarf_get_FRAME_name(tag, &tagname);
-                printf("\tFrame Tag: %s\n", tagname);
+                printf("\tFrame Reg: %s\n", tagname);
+                if (get_form_values(dbg, attrs[i], &theform, &directform, error))
+                    break;
+                if (theform == DW_FORM_exprloc) {
+                    if (dwarf_formexprloc(attrs[i], &blen, &bdata, error))
+                        break;
+                    uint8_t op = *((uint8_t *)bdata);
+                    dwarf_get_OP_name(op, &tagname);
+                    printf("OP name: %s", tagname);
+                    #if 1
+                    if (op == DW_OP_call_frame_cfa) {
+                        printf("\tFound frame\n");
+                        locAddr = getLocInformation(attrs, i, error, op, dbg);
+                        
+                    }
+                    #endif
+                }
                 break;
             case DW_AT_type:
                 dwarf_attr(input_die,attrcode,attrs,NULL);
@@ -608,12 +670,12 @@ static BOOL getDIEAttrs(Dwarf_Die input_die, Dwarf_Error *error, Dwarf_Debug dbg
                     uint8_t op = *((uint8_t *)bdata);
                     if (op == DW_OP_addr) {
                         printf("\tFound global\n");
-                        locAddr = getLocInformation(attrs, i, error, op);
+                        locAddr = getLocInformation(attrs, i, error, op, dbg);
                         ptrToGVName.insert(std::pair<uintptr_t, string>((uintptr_t)locAddr, strName));
                     }
                     else if (op == DW_OP_fbreg) {
                         printf("\tFound local\n");
-                        locAddr = getLocInformation(attrs, i, error, op);
+                        locAddr = getLocInformation(attrs, i, error, op, dbg);
                         ptrToGVName.insert(std::pair<uintptr_t, string>((uintptr_t)locAddr, strName));
 			    	}
                 }
@@ -623,6 +685,48 @@ static BOOL getDIEAttrs(Dwarf_Die input_die, Dwarf_Error *error, Dwarf_Debug dbg
         }
     }
     return TRUE;
+}
+
+/* Simply shows the instructions at hand for this fde. */
+static void
+print_cie_instrs(Dwarf_Cie cie,Dwarf_Error *error)
+{
+    int res = DW_DLV_ERROR;
+    Dwarf_Unsigned bytes_in_cie = 0;
+    Dwarf_Small version = 0;
+    char *augmentation = 0;
+    Dwarf_Unsigned code_alignment_factor = 0;
+    Dwarf_Signed data_alignment_factor = 0;
+    Dwarf_Half   return_address_register_rule = 0;
+    Dwarf_Small   *instrp = 0;
+    Dwarf_Unsigned instr_len = 0;
+    Dwarf_Half offset_size = 0;
+
+    res = dwarf_get_cie_info_b(cie,&bytes_in_cie,
+        &version, &augmentation, &code_alignment_factor,
+        &data_alignment_factor, &return_address_register_rule,
+        &instrp,&instr_len,&offset_size,error);
+    if (res != DW_DLV_OK) {
+        printf("Unable to get cie info!\n");
+        exit(1);
+    }
+}
+
+/* Dumping a dwarf-expression as a byte stream. */
+static void
+dump_block(char *prefix, Dwarf_Small *data, Dwarf_Unsigned len)
+{
+    Dwarf_Small *end_data = data + len;
+    Dwarf_Small *cur = data;
+    int i = 0;
+
+    printf("%s", prefix);
+    for (; cur < end_data; ++cur, ++i) {
+        if (i > 0 && i % 4 == 0)
+            printf(" ");
+        printf("%02x", 0xff & *cur);
+
+    }
 }
 
 /*
@@ -660,6 +764,13 @@ static BOOL printDIE(Dwarf_Die die, const Dwarf_Debug& dbg)
         default:
             return TRUE;
     }
+
+    // low PC
+    Dwarf_Addr lowPC = 0;
+    res              = dwarf_lowpc(die, &lowPC, &error);
+    if (foundErr("dwarf_lowpc", res, error, dbg)) 
+        return FALSE;
+
     char* shortName = NULL;
     getSubprogName(DW_AT_name, &shortName, die, dbg);
     char* mangledName = NULL;
@@ -682,7 +793,7 @@ static BOOL printDIE(Dwarf_Die die, const Dwarf_Debug& dbg)
     }
     else if (variable == true) {
         string stringName(shortName);
-        printf("Tag: %s\n", tagname);
+        printf("Variable name: %s\n", stringName.c_str());
         getDIEAttrs(die, &error, dbg, shortName);
     }
     return TRUE;
@@ -829,6 +940,366 @@ while (TRUE)
         printf("\n");
     }
 }
+
+static void
+print_fde_instrs(Dwarf_Debug dbg,
+    Dwarf_Fde fde, Dwarf_Error *error)
+{
+    int res;
+    Dwarf_Addr lowpc = 0;
+    Dwarf_Unsigned func_length = 0;
+    Dwarf_Small * fde_bytes;
+    Dwarf_Unsigned fde_byte_length = 0;
+    Dwarf_Off cie_offset = 0;
+    Dwarf_Signed cie_index = 0;
+    Dwarf_Off fde_offset = 0;
+    Dwarf_Addr arbitrary_addr = 0;
+    Dwarf_Addr actual_pc = 0;
+    Dwarf_Regtable3 tab3;
+    int oldrulecount = 0;
+    Dwarf_Small  *outinstrs = 0;
+    Dwarf_Unsigned instrslen = 0;
+    Dwarf_Cie cie = 0;
+
+    res = dwarf_get_cie_of_fde(fde,&cie,error);
+    if (res != DW_DLV_OK) {
+        printf("Error getting cie from fde\n");
+        exit(1);
+    }
+    res = dwarf_get_fde_range(fde,&lowpc,&func_length,&fde_bytes,
+        &fde_byte_length,&cie_offset,&cie_index,&fde_offset,error);
+    if (res != DW_DLV_OK) {
+        printf("Error reading frame data fde index\n");
+        exit(1);
+    }
+    res = dwarf_get_fde_instr_bytes(fde,&outinstrs,&instrslen,error);
+    if (res != DW_DLV_OK) {
+        printf("dwarf_get_fde_instr_bytes failed!\n");
+        exit(1);
+    }
+    arbitrary_addr = lowpc + (func_length/2);
+
+    printf("function low pc 0x%" DW_PR_DUx
+        "  and length 0x%" DW_PR_DUx
+        "  and midpoint addr we choose 0x%" DW_PR_DUx
+        "\n",
+        lowpc,func_length,arbitrary_addr);
+    {
+        #if 1
+        Dwarf_Frame_Instr_Head frame_instr_head = 0;
+        Dwarf_Unsigned frame_instr_count = 0;
+        res = dwarf_expand_frame_instructions(cie,
+            outinstrs,instrslen,
+            &frame_instr_head,
+            &frame_instr_count,
+            error);
+        if (res != DW_DLV_OK) {
+            printf("dwarf_expand_frame_instructions failed!\n");
+            exit(1);
+        }
+        for (Dwarf_Unsigned i = 0; i < frame_instr_count; ++i) {
+            Dwarf_Unsigned  instr_offset_in_instrs = 0;
+            Dwarf_Small     cfa_operation          = 0;
+            const char     *fields     = 0;
+            Dwarf_Unsigned  u0 = 0;
+            Dwarf_Unsigned  u1 = 0;
+            Dwarf_Signed    s0 = 0;
+            Dwarf_Signed    s1 = 0;
+            Dwarf_Unsigned  code_alignment_factor = 0;
+            Dwarf_Signed    data_alignment_factor = 0;
+            Dwarf_Block     expression_block;
+            const char *    op_name = 0;
+
+            memset(&expression_block,0,sizeof(expression_block));
+            res = dwarf_get_frame_instruction(frame_instr_head,i,
+                &instr_offset_in_instrs,&cfa_operation,
+                &fields,&u0,&u1,
+                &s0,&s1,
+                &code_alignment_factor,
+                &data_alignment_factor,
+                &expression_block,error);
+            if (res == DW_DLV_ERROR) {
+                dwarf_dealloc_frame_instr_head(frame_instr_head);
+                exit(1);
+            }
+            if (res == DW_DLV_OK) {
+                res = dwarf_get_CFA_name(cfa_operation,
+                    &op_name);
+                if (res != DW_DLV_OK) {
+                    op_name = "unknown op";
+                }
+                /*  Do something with the various data
+                    as guided by the fields_description. */
+                if (cfa_operation != DW_CFA_nop)
+                {
+                    //printf("Description: %s\n", fields);
+                    printf("[%2" DW_PR_DUu "]  %" DW_PR_DUu " %s ",i,
+                        instr_offset_in_instrs,op_name);
+                    switch(fields[0]) {
+                        case 'u': {
+                        if (!fields[1]) {
+                            printf("%" DW_PR_DUu "\n",u0);
+                        }
+                        if (fields[1] == 'c') {
+                            Dwarf_Unsigned final =
+                                u0*code_alignment_factor;
+                            printf("%" DW_PR_DUu ,final);
+                            printf("\n");
+                        }
+                    }
+                    break;
+                    case 'r': {
+                        if (!fields[1]) {
+                            printf("r%" DW_PR_DUu "\n",u0);
+                            break;
+                        }
+                        if (fields[1] == 'u') {
+                            if (!fields[2]) {
+                                printf("%" DW_PR_DUu ,u1);
+                                printf("\n");
+                                break;
+                            }
+                            if (fields[2] == 'd') {
+                                Dwarf_Signed final =
+                                    (Dwarf_Signed)u0 *
+                                    data_alignment_factor;
+                                printf("%" DW_PR_DUu ,final);
+                                printf("\n");
+                            }
+                        }
+                        if (fields[1] == 'r') {
+                            printf("r%" DW_PR_DUu "\n",u0);
+                            printf(" ");
+                            printf("r%" DW_PR_DUu "\n",u1);
+                            printf("\n");
+                        }
+                        if (fields[1] == 's') {
+                            if (fields[2] == 'd') {
+                                Dwarf_Signed final = s1 * data_alignment_factor;
+                                printf("r%" DW_PR_DUu "\n",u0);
+                                printf("%" DW_PR_DSd , final);
+                                printf("\n");
+                            }
+                        }
+                        if (fields[1] == 'b') {
+                            /* rb */
+                            printf("r%" DW_PR_DUu "\n",u0);
+                            printf("%" DW_PR_DUu  ,u0);
+                            printf(" expr block len %" DW_PR_DUu "\n",
+                                expression_block.bl_len);
+                            printf("\n");
+
+                        }
+                    }
+                    break;
+                    case 's': {
+                        if (fields[1] == 'd') {
+                            Dwarf_Signed final = s0*data_alignment_factor;
+
+                            printf(" %" DW_PR_DSd ,final);
+                            printf("\n");
+                        }
+                    }
+                    break;
+                    case 'b': {
+                        if (!fields[1]) {
+                            printf(" expr block len %" DW_PR_DUu "\n",
+                                expression_block.bl_len);
+                            printf("\n");
+                        }
+                    }
+                    break;
+                    case 0:
+                        printf("\n");
+                    break;
+                    default:
+                        printf("UNKNOWN FIELD 0x%x\n",fields[0]);
+                    }
+                }
+            }
+        }
+        dwarf_dealloc_frame_instr_head(frame_instr_head);
+        #endif
+    }
+    #if 0
+    printf("function low pc 0x%" DW_PR_DUx
+        "  and length 0x%" DW_PR_DUx
+        "  and midpoint addr we choose 0x%" DW_PR_DUx
+        "\n",
+        lowpc,func_length,arbitrary_addr);
+    
+    /*  1 is arbitrary. We are winding up getting the
+        rule count here while leaving things unchanged. */
+    oldrulecount = dwarf_set_frame_rule_table_size(dbg,1);
+    dwarf_set_frame_rule_table_size(dbg,oldrulecount);
+
+    tab3.rt3_reg_table_size = oldrulecount;
+    tab3.rt3_rules = (struct Dwarf_Regtable_Entry3_s *) malloc(
+        sizeof(struct Dwarf_Regtable_Entry3_s)* oldrulecount);
+    if (!tab3.rt3_rules) {
+        printf("Unable to malloc for %d rules\n",oldrulecount);
+        exit(1);
+    }
+
+    res = dwarf_get_fde_info_for_all_regs3(fde,arbitrary_addr ,
+        &tab3,&actual_pc,error);
+    printf("function actual addr of row 0x%" DW_PR_DUx "\n",
+        actual_pc);
+
+    if (res != DW_DLV_OK) {
+        printf("dwarf_get_fde_info_for_all_regs3 failed!\n");
+        exit(1);
+    }
+
+    res = dwarf_get_fde_instr_bytes(fde,&outinstrs,&instrslen,error);
+    if (res != DW_DLV_OK) {
+        printf("dwarf_get_fde_instr_bytes failed!\n");
+        exit(1);
+    }
+    res = dwarf_get_cie_of_fde(fde,&cie,error);
+    if (res != DW_DLV_OK) {
+        printf("Error getting cie from fde\n");
+        exit(1);
+    }
+    {
+        Dwarf_Frame_Instr_Head frame_instr_head = 0;
+        Dwarf_Unsigned frame_instr_count = 0;
+        res = dwarf_expand_frame_instructions(cie,
+            outinstrs,instrslen,
+            &frame_instr_head,
+            &frame_instr_count,
+            error);
+        if (res != DW_DLV_OK) {
+            printf("dwarf_expand_frame_instructions failed!\n");
+            exit(1);
+        }
+        //printf("Frame op count: %" DW_PR_DUu "\n",frame_instr_count);
+        //print_frame_instrs(dbg,frame_instr_head, frame_instr_count, error);
+        for (Dwarf_Unsigned i = 0; i < frame_instr_count; ++i) {
+            Dwarf_Unsigned  instr_offset_in_instrs = 0;
+            Dwarf_Small     cfa_operation          = 0;
+            const char     *fields     = 0;
+            Dwarf_Unsigned  u0 = 0;
+            Dwarf_Unsigned  u1 = 0;
+            Dwarf_Signed    s0 = 0;
+            Dwarf_Signed    s1 = 0;
+            Dwarf_Unsigned  code_alignment_factor = 0;
+            Dwarf_Signed    data_alignment_factor = 0;
+            Dwarf_Block     expression_block;
+            const char *    op_name = 0;
+
+            memset(&expression_block,0,sizeof(expression_block));
+            res = dwarf_get_frame_instruction(frame_instr_head,i,
+            &instr_offset_in_instrs,&cfa_operation,
+            &fields,&u0,&u1,
+            &s0,&s1,
+            &code_alignment_factor,
+            &data_alignment_factor,
+            &expression_block,error);
+            if (res == DW_DLV_ERROR) {
+                dwarf_dealloc_frame_instr_head(frame_instr_head);
+                exit(1);
+            }
+            if (res == DW_DLV_OK) {
+                res = dwarf_get_CFA_name(cfa_operation,
+                    &op_name);
+                if (res != DW_DLV_OK) {
+                    op_name = "unknown op";
+                }
+                /*  Do something with the various data
+                    as guided by the fields_description. */
+            if (cfa_operation != DW_CFA_nop)
+            {
+                printf("[%2" DW_PR_DUu "]  %" DW_PR_DUu " %s ",i,
+            instr_offset_in_instrs,op_name);
+                switch(fields[0]) {
+                case 'u': {
+                    if (!fields[1]) {
+                        printf("%" DW_PR_DUu "\n",u0);
+                    }
+                    if (fields[1] == 'c') {
+                        Dwarf_Unsigned final =
+                            u0*code_alignment_factor;
+                        printf("%" DW_PR_DUu ,final);
+                        printf("\n");
+                    }
+                }
+                break;
+                case 'r': {
+                    if (!fields[1]) {
+                        printf("r%" DW_PR_DUu "\n",u0);
+                        break;
+                    }
+                    if (fields[1] == 'u') {
+                        if (!fields[2]) {
+                            printf("%" DW_PR_DUu ,u1);
+                            printf("\n");
+                            break;
+                        }
+                        if (fields[2] == 'd') {
+                            Dwarf_Signed final =
+                                (Dwarf_Signed)u0 *
+                                data_alignment_factor;
+                            printf("%" DW_PR_DUu ,final);
+                            printf("\n");
+                        }
+                    }
+                    if (fields[1] == 'r') {
+                        printf("r%" DW_PR_DUu "\n",u0);
+                        printf(" ");
+                        printf("r%" DW_PR_DUu "\n",u1);
+                        printf("\n");
+                    }
+                    if (fields[1] == 's') {
+                        if (fields[2] == 'd') {
+                            Dwarf_Signed final = s1 * data_alignment_factor;
+                            printf("r%" DW_PR_DUu "\n",u0);
+                            printf("%" DW_PR_DSd , final);
+                            printf("\n");
+                        }
+                    }
+                    if (fields[1] == 'b') {
+                        /* rb */
+                        printf("r%" DW_PR_DUu "\n",u0);
+                        printf("%" DW_PR_DUu  ,u0);
+                        printf(" expr block len %" DW_PR_DUu "\n",
+                            expression_block.bl_len);
+                        printf("\n");
+
+                    }
+                }
+                break;
+                case 's': {
+                    if (fields[1] == 'd') {
+                        Dwarf_Signed final = s0*data_alignment_factor;
+
+                        printf(" %" DW_PR_DSd ,final);
+                        printf("\n");
+                    }
+                }
+                break;
+                case 'b': {
+                    if (!fields[1]) {
+                        printf(" expr block len %" DW_PR_DUu "\n",
+                            expression_block.bl_len);
+                        printf("\n");
+                    }
+                }
+                break;
+                case 0:
+                    printf("\n");
+                break;
+                default:
+                    printf("UNKNOWN FIELD 0x%x\n",fields[0]);
+                }
+            }
+            }
+        }
+        dwarf_dealloc_frame_instr_head(frame_instr_head);
+    }
+    free(tab3.rt3_rules);
+    #endif
+}
 /*
  * Print the subporograms in 'binary'
  */
@@ -850,6 +1321,35 @@ static BOOL initDWARF(const char* binary)
     if (foundErr("dwarf_init_path", res, error, dbg)) 
         return FALSE;
 
+    // Initialize frame base at the initalization
+    Dwarf_Cie *cie_data = 0;
+    Dwarf_Signed cie_count = 0;
+    Dwarf_Fde *fde_data = 0;
+    Dwarf_Signed fde_count = 0;
+    int fres = 0;
+    fres = dwarf_get_fde_list_eh(dbg,&cie_data,&cie_count,
+        &fde_data,&fde_count,&error);
+    #if 1
+
+    if (fres == DW_DLV_OK) {
+        Dwarf_Fde myfde = 0;
+        for (Dwarf_Signed fdenum = 0; fdenum < fde_count; ++fdenum) {
+            Dwarf_Cie cie = 0;
+
+            res = dwarf_get_cie_of_fde(fde_data[fdenum],&cie,&error);
+            if (res != DW_DLV_OK) {
+                printf("Error accessing cie of fdenum %" DW_PR_DSd " to get its cie\n",fdenum);
+                exit(1);
+            }
+            printf("Print cie of fde %" DW_PR_DSd "\n",fdenum);
+            //print_cie_instrs(cie,&error);
+            #if 1
+            print_fde_instrs(dbg,fde_data[fdenum],&error);
+            //printf("Frame op count: %" DW_PR_DUu "\n",frame_instr_count);
+            #endif
+        }
+    }
+    #endif
     BOOL succeeded = iterateCU(dbg);
     res = dwarf_finish(dbg);
     if (foundErr("dwarf_finish", res, error, dbg)) 

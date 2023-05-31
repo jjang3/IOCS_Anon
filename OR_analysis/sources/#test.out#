@@ -1,0 +1,116 @@
+Input file: ../tests/tracedprog2
+
+Tag: DW_TAG_subprogram
+Subprogram: main
+Attribute[0], value 63 name DW_AT_external
+Attribute[1], value 3 name DW_AT_name
+Attribute[2], value 58 name DW_AT_decl_file
+Attribute[3], value 59 name DW_AT_decl_line
+Attribute[4], value 57 name DW_AT_decl_column
+Attribute[5], value 73 name DW_AT_type
+	Type Tag: DW_TAG_base_type
+Attribute[6], value 17 name DW_AT_low_pc
+Attribute[7], value 18 name DW_AT_high_pc
+Attribute[8], value 64 name DW_AT_frame_base
+	Frame Reg: DW_FRAME_FREG4
+OP name: DW_OP_call_frame_cfa	Found frame
+	Frame offset: 0
+	Print cie of fde 0
+function low pc 0x1020  and length 0x20  and midpoint addr we choose 0x1030
+	Print cie of fde 1
+function low pc 0x1040  and length 0x8  and midpoint addr we choose 0x1044
+	Print cie of fde 2
+function low pc 0x1050  and length 0x2b  and midpoint addr we choose 0x1065
+	Print cie of fde 3
+function low pc 0x1135  and length 0x43  and midpoint addr we choose 0x1156
+	Print cie of fde 4
+function low pc 0x1178  and length 0x15  and midpoint addr we choose 0x1182
+	Print cie of fde 5
+function low pc 0x1190  and length 0x5d  and midpoint addr we choose 0x11be
+	Print cie of fde 6
+function low pc 0x11f0  and length 0x1  and midpoint addr we choose 0x11f0
+
+Attribute[9], value 8470 name DW_AT_GNU_all_tail_call_sites
+Tag: DW_TAG_subprogram
+Subprogram: do_stuff
+Attribute[0], value 63 name DW_AT_external
+Attribute[1], value 3 name DW_AT_name
+Attribute[2], value 58 name DW_AT_decl_file
+Attribute[3], value 59 name DW_AT_decl_line
+Attribute[4], value 57 name DW_AT_decl_column
+Attribute[5], value 39 name DW_AT_prototyped
+Attribute[6], value 17 name DW_AT_low_pc
+Attribute[7], value 18 name DW_AT_high_pc
+Attribute[8], value 64 name DW_AT_frame_base
+	Frame Reg: DW_FRAME_FREG14
+OP name: DW_OP_call_frame_cfa	Found frame
+	Frame offset: 0
+	Print cie of fde 0
+function low pc 0x1020  and length 0x20  and midpoint addr we choose 0x1030
+	Print cie of fde 1
+function low pc 0x1040  and length 0x8  and midpoint addr we choose 0x1044
+	Print cie of fde 2
+function low pc 0x1050  and length 0x2b  and midpoint addr we choose 0x1065
+	Print cie of fde 3
+function low pc 0x1135  and length 0x43  and midpoint addr we choose 0x1156
+	Print cie of fde 4
+function low pc 0x1178  and length 0x15  and midpoint addr we choose 0x1182
+	Print cie of fde 5
+function low pc 0x1190  and length 0x5d  and midpoint addr we choose 0x11be
+	Print cie of fde 6
+function low pc 0x11f0  and length 0x1  and midpoint addr we choose 0x11f0
+Attribute[9], value 8470 name DW_AT_GNU_all_tail_call_sites
+Variable name: my_local
+Attribute[0], value 3 name DW_AT_name
+Attribute[1], value 58 name DW_AT_decl_file
+Attribute[2], value 59 name DW_AT_decl_line
+Attribute[3], value 57 name DW_AT_decl_column
+Attribute[4], value 73 name DW_AT_type
+	Type Tag: DW_TAG_base_type
+Attribute[5], value 2 name DW_AT_location
+	Form Tag: DW_FORM_exprloc
+	Found local
+	Local offset: -24
+Variable name: i
+Attribute[0], value 3 name DW_AT_name
+Attribute[1], value 58 name DW_AT_decl_file
+Attribute[2], value 59 name DW_AT_decl_line
+Attribute[3], value 57 name DW_AT_decl_column
+Attribute[4], value 73 name DW_AT_type
+	Type Tag: DW_TAG_base_type
+Attribute[5], value 2 name DW_AT_location
+	Form Tag: DW_FORM_exprloc
+	Found local
+	Local offset: -20
+
+Data section boundaries: 0x4020 to 0x4030
+line: 0
+Before: IP = 1074
+line: 0
+Before: IP = 11b8
+line: 0
+Before: IP = 11d1
+line: 16
+Before: IP = 1181
+line: 10
+Before: IP = 1163
+line: 10
+Before: IP = 1163
+line: 10
+Before: IP = 1163
+line: 10
+Before: IP = 1163
+line: 0
+Before: IP = 110e
+line: 0
+Before: IP = 1113
+i = 0
+i = 1
+i = 2
+i = 3
+do_stuff: 
+
+main: 
+	Return main
+	Call do_stuff
+
