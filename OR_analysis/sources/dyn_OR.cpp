@@ -70,6 +70,8 @@ std::stack<std::string> routineStack;
 std::set<std::string> routineSet;
 std::string currRoutine;
 
+
+#pragma region PIN_Related // start of pragma region
 /* ===================================================================== */
 // Helper functions/arrays
 /* ===================================================================== */
@@ -224,7 +226,7 @@ VOID routInst(RTN rtn, VOID* v)
 }
 
  
-VOID Arg1Before(CHAR* name, ADDRINT size) { 
+VOID DynObjCheck(CHAR* name, ADDRINT size) { 
     #if 1
     printf("\tDyn object found | Curr routine: %s\n", currRoutine.c_str());
     //routineStack.push("Dyn object\n");
@@ -245,7 +247,9 @@ VOID RoutineCheck(CHAR* name) {
     if (std::find(std::begin(intrinFunList), std::end(intrinFunList), nameStr) == std::end(intrinFunList)) {      
         if (nameStr.find(pltStr) == string::npos)
         {
+            #if DBG_FLAG
             printf("Routine check: %s\n", nameStr.c_str());
+            #endif
             currRoutine = nameStr;
             routineStack.push(nameStr);
         }
@@ -266,7 +270,9 @@ VOID RoutineClear(CHAR* name) {
         {
             if (routineStack.size() != 1)
             {
+                #if DBG_FLAG
                 printf("Routine clear %s\n", nameStr.c_str());
+                #endif
                 routineStack.pop();
                 routineSet.clear();
             }
@@ -288,7 +294,7 @@ static const int maxRecursionLevel = 100;
 static const Dwarf_Bool isInfo = TRUE;
 static std::ofstream outfile;
 
-void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
+void callUnwinding(ADDRINT callrtn_addr, char *dis)
 {
 	PIN_LockClient();
 	RTN callRtn = RTN_FindByAddress(callrtn_addr);
@@ -300,16 +306,10 @@ void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
         if (std::find(std::begin(intrinFunList), std::end(intrinFunList), rtnName) == std::end(intrinFunList)) {      
             if (rtnName.find(pltStr) == string::npos)
             {
-                #if 1
+                #if DBG_FLAG
                 cerr << hex << "\tCall " << RTN_Name(callRtn) << " Curr routine: " << routineStack.top() << endl;
                 #endif
                 std::string privStr = "Call " + rtnName + "\n";
-                #if 0
-                if (stackFind(routineToInsts.find(currRoutine)->second, privStr)) 
-                    printf("Exists\n");
-                else
-                    routineToInsts.find(currRoutine)->second.push(privStr);
-                #endif
                 routineToInsts.find(routineStack.top())->second.insert(privStr);
             }
         }
@@ -317,60 +317,22 @@ void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 	}
 	PIN_UnlockClient();
 }
-
-
  
-VOID Before(CONTEXT* ctxt)
-{
-	PIN_LockClient();
-    ADDRINT BeforeIP = (ADDRINT)PIN_GetContextReg(ctxt, REG_INST_PTR);
-    RTN takenRtn = RTN_FindByAddress(BeforeIP);
-	if (RTN_Valid(takenRtn))
-	{
-        auto rtnName = RTN_Name(takenRtn);
-        if (std::find(std::begin(intrinFunList), std::end(intrinFunList), rtnName) == std::end(intrinFunList)) {   
-            if (rtnName.c_str() != currRoutine.c_str()){
-                #if 0
-                printf("\tReturn %s Curr routine: %s\n", rtnName.c_str(), currRoutine.c_str());
-                #endif
-                std::string privStr = "Return " + currRoutine + "\n";
-                #if 0
-                if (stackFind(routineToInsts.find(currRoutine)->second, privStr)) 
-                    printf("Exists\n");
-                else
-                    routineToInsts.find(currRoutine)->second.push(privStr);
-                #endif
-                //routineToInsts.find(routineStack.top())->second.insert(privStr);
-            }
-        }
-    }
-    PIN_UnlockClient();
-}
- 
-
 VOID Taken(const CONTEXT* ctxt)
 {
 
 	PIN_LockClient();
     ADDRINT TakenIP = (ADDRINT)PIN_GetContextReg(ctxt, REG_INST_PTR);
-    //baOutFile << "Taken: IP = " << hex << TakenIP << dec << endl;
 
 	RTN takenRtn = RTN_FindByAddress(TakenIP);
 	if (RTN_Valid(takenRtn))
 	{
         auto rtnName = RTN_Name(takenRtn);
         if (std::find(std::begin(intrinFunList), std::end(intrinFunList), rtnName) == std::end(intrinFunList)) {   
-            #if 1   
+            #if DBG_FLAG
             printf("\tReturn %s Curr routine: %s\n", currRoutine.c_str(), rtnName.c_str());
             #endif
             std::string privStr = "Return " +  rtnName + "\n";
-            #if 0
-            if (stackFind(routineToInsts.find(currRoutine)->second, privStr)) 
-                printf("Exists\n");
-            else
-                routineToInsts.find(currRoutine)->second.push(privStr);
-            #endif
-            //routineToInsts.find(routineStack.top())->second.insert(privStr);
             routineToInsts.find(currRoutine.c_str())->second.insert(privStr);
         }
     }
@@ -409,7 +371,7 @@ VOID getMetadata(IMG img, void *v)
             RTN_Open(mallocRtn);
             // Instrument malloc() to print the input argument value and the return value.
 
-            RTN_InsertCall(mallocRtn, IPOINT_BEFORE, (AFUNPTR)Arg1Before, IARG_ADDRINT, MALLOC, IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
+            RTN_InsertCall(mallocRtn, IPOINT_BEFORE, (AFUNPTR)DynObjCheck, IARG_ADDRINT, MALLOC, IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
                         IARG_END);
             RTN_Close(mallocRtn);
         }
@@ -420,7 +382,7 @@ VOID getMetadata(IMG img, void *v)
         {
             RTN_Open(freeRtn);
             // Instrument free() to print the input argument value.
-            RTN_InsertCall(freeRtn, IPOINT_BEFORE, (AFUNPTR)Arg1Before, IARG_ADDRINT, FREE, IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
+            RTN_InsertCall(freeRtn, IPOINT_BEFORE, (AFUNPTR)DynObjCheck, IARG_ADDRINT, FREE, IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
                         IARG_END);
             RTN_Close(freeRtn);
         }
@@ -441,30 +403,27 @@ VOID getMetadata(IMG img, void *v)
                 #if ACT_FLAG
 				for (INS ins = RTN_InsHead(rtn); INS_Valid(ins); ins = INS_Next(ins))
 				{
-                    if (ins == RTN_InsHead(rtn))
+                    // Entry point instrumentation to push currRoutine
+                    if (ins == RTN_InsHead(rtn)) 
                     {
                         INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)RoutineCheck,  IARG_ADDRINT, RTN_Name(rtn).c_str(), IARG_END);
                     }
-					string *instString = new string(INS_Disassemble(ins));
                     #if DBG_FLAG
+					string *instString = new string(INS_Disassemble(ins));
                     std::cerr << instString->c_str() << "\n";
                     #endif
                     if (INS_IsDirectCall(ins))
 					{
-						INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)callUnwinding, IARG_BRANCH_TARGET_ADDR, IARG_PTR, instString->c_str(), IARG_INST_PTR, IARG_END);
+                        // To capture direct function calls
+						INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)callUnwinding, IARG_BRANCH_TARGET_ADDR, IARG_PTR, IARG_INST_PTR, IARG_END);
 					}
-                    if (INS_IsCall(ins))
-                    {
-                        
-                    }
                     if (INS_IsRet(ins))
                     {
                         // instrument each return instruction.
                         // IPOINT_TAKEN_BRANCH always occurs last.
-                        INS_InsertCall(ins, IPOINT_TAKEN_BRANCH, (AFUNPTR)Before, IARG_CONTEXT, IARG_END);
                         INS_InsertCall(ins, IPOINT_TAKEN_BRANCH, (AFUNPTR)Taken, IARG_CONTEXT, IARG_END);
                     }
-
+                    // Exit point instrumentation to pop currRoutine
                     if (ins == RTN_InsTail(rtn))
                     {
                         INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)RoutineClear,  IARG_ADDRINT, RTN_Name(rtn).c_str(), IARG_END);
@@ -489,6 +448,8 @@ VOID getMetadata(IMG img, void *v)
 		#endif
 	}
 }
+
+#pragma endregion PIN_Related
 
 #pragma region DWARF_Related // start of pragma region
 
