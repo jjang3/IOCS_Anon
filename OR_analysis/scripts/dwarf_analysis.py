@@ -25,15 +25,21 @@ from elftools.dwarf.descriptions import (describe_CFI_instructions,
     set_global_machine_arch)
 from elftools.dwarf.enums import DW_EH_encoding_flags
 
-def create_mem_inst_token(input):
+def create_mem_inst_token(frame_base, variable_offset):
+    frame_regex = re.search(r'(?<=(rbp|rsp))(.*)', frame_base[1])
+    reg = frame_regex.group(1)
+    base = int(frame_regex.group(2))
+    offset = base + variable_offset[1]
+    #print(reg, offset)
     inst = ""
-    inst += "mov dword [" + input + "], 0x*"
-    print(inst)
+    inst += "mov dword [" + str(reg) + hex(offset) + "], 0x*"
+    #print(inst)
     return inst
 
 bninja_fun_insts = dict() # dictionary for binary ninja analysis
 dwarf_frame_bases = dict() # dictionary for DWARF analysis which contains addr_range, expr per fun.
 dwarf_var_info = dict() # dictionary for DWARF analysis which contains variable information per fun.
+
 def process_file(filename):
     with open_view(filename) as bv:                
         arch = Architecture['x86_64']
@@ -43,10 +49,12 @@ def process_file(filename):
             fun_name = ""
             for bb in fun:
                 inst_list = list()
-                for inst in bb.get_disassembly_text():
+                inst_to_addr = tuple()
+                for dis_inst in bb.get_disassembly_text():
+                    print(dis_inst.address, dis_inst)
                     parsed_inst = "" # This is needed in order to avoid adding annotation
                     annot = False
-                    for token in inst.tokens:
+                    for token in dis_inst.tokens:
                         #print(token.text, token.type)
                         #print("Annot: ", annot)
                         if token.type == InstructionTextTokenType.AnnotationToken:
@@ -55,28 +63,24 @@ def process_file(filename):
                             annot = False
                         elif (annot == True):
                             continue
-
                         if (annot == False):
                             parsed_inst += token.text
                     parsed_inst = ' '.join(parsed_inst.split())
                     #print(parsed_inst)
+                    inst_to_addr = (parsed_inst, dis_inst.address)
                     regex = re.search(r'(.*)(?=:)', parsed_inst)
                     if regex:
                         #print(inst)
                         fun_name = regex.group(0)
                     else:
-                        inst_list.append(parsed_inst)
+                        inst_list.append(inst_to_addr)
                     #print("Parsed: ", parsed_inst)
                 #for parsed_i in inst_list:
                 #    print(parsed_i)
                 bninja_fun_insts[fun_name] = inst_list
-            print("\n")
-
+            #print("\n")
+    #exit()
     
-    for item in bninja_fun_insts:
-        print("Fun: ", item)
-        for inst in bninja_fun_insts[item]:
-            print("\tInst: " , inst)
 
     print('Processing file:', filename)
     with open(filename, 'rb') as f:
@@ -177,7 +181,7 @@ def process_file(filename):
                                 if op_fbreg_regex:
                                     #print('      %s\n' % (variable_loc))
                                     print("\tLocation:", hex(int(op_fbreg_regex.group(0))), varname)
-                                    var_to_loc = (varname, hex(int(op_fbreg_regex.group(0))))
+                                    var_to_loc = (varname, (int(op_fbreg_regex.group(0))))
                                     tuple_exists = True
                                 elif op_addr_regex:
                                     print("\tLocation:", op_addr_regex.group(0), varname)
@@ -197,10 +201,10 @@ def process_file(filename):
         
         
         var_list = {}
-        var_list.setdefault("global", [])
+        var_list.setdefault("global (addr is in hex)", [])
         for item in global_var_to_locs:
             #print(item)
-            var_list.setdefault("global", []).append(item)
+            var_list.setdefault("global (addr is in hex)", []).append(item)
         
         fun_name = ""
         for item in local_var_to_locs:
@@ -211,19 +215,48 @@ def process_file(filename):
             else:
                 #print(fun_name, item)
                 var_list.setdefault(fun_name, []).append(item)
-                
-        for item in var_list:
-            print(item, var_list[item])
-        
-        for item in dwarf_frame_bases:
-            print(item)
-            for addr_range in dwarf_frame_bases[item]:
-                print("\t",addr_range)
-        
-        for item in dwarf_var_info:
-            print(item)
-            for var_info in dwarf_var_info[funname]:
-                print("\t", var_info)
+    
+    # ------- Both binary ninja + dwarf analysis complted ------- #                                        
+    """
+    for item in dwarf_frame_bases:
+        print(item)
+        for addr_range in dwarf_frame_bases[item]:
+            print("\t",addr_range)
+    print("\n")
+    for item in var_list:
+        print(item)
+        for var_info in var_list[item]:
+            print("\t", var_info)
+    """ 
+    # for (fun_index, fun) in enumerate(bv.functions):
+    index = 0
+    for bninja_item in bninja_fun_insts:
+        for dwarf_item in dwarf_frame_bases:
+            if (bninja_item == dwarf_item):
+                print("Fun: ", bninja_item)
+                last_element = len(dwarf_frame_bases)
+                # Skip prologue frame bases
+                result_inst = ""
+                for (addr_index, addr_range) in enumerate(dwarf_frame_bases[dwarf_item]): 
+                    if ((addr_index != 0) and (addr_index != 1) and (addr_index != (last_element-1))):
+                        print("\tAddr range: ",addr_range)
+                        for var_item in var_list:
+                            if (bninja_item == var_item):
+                                for var_info in var_list[var_item]:
+                                    result_inst = create_mem_inst_token(addr_range, var_info)
+                                    #print("Result inst: ", result_inst)
+                                    for inst in bninja_fun_insts[dwarf_item]:
+                                        if (result_inst != ""):
+                                            result_offset_regex = re.search(r'(?<=mov dword\s\[)(.*)(?=\],\s0x)',result_inst)
+                                            bninja_offset_regex = re.search(r'(?<=mov dword\s\[)(.*)(?=\],\s0x)',inst[0])
+                                            if result_offset_regex and bninja_offset_regex:
+                                                if result_offset_regex.group(0) == bninja_offset_regex.group(0):
+                                                    #print([inst[0]])
+                                                    print("\tFound variable at Addr: ", hex(inst[1]), inst[0])
+                                                    print("\t\tVariable:", var_info)
+                                            #else:
+                                                #print(inst[0])
+                                            
                         
 
 def show_loclist(loclist, dwarfinfo, indent, cu_offset, entryaddr, funname):
@@ -237,7 +270,6 @@ def show_loclist(loclist, dwarfinfo, indent, cu_offset, entryaddr, funname):
     for loc_entity in loclist:
         index += 1
         if isinstance(loc_entity, LocationEntry):
-            
             parse_expr = describe_DWARF_expr(loc_entity.loc_expr, dwarfinfo.structs, cu_offset)
             #regex = re.search(r'(?<=DW_OP_[a-z,A-Z,0-9]....\s)(?=\((.*)\))|(?<=:\s([0-99]))', parse_expr)
             offset_diff = loc_entity.end_offset - loc_entity.begin_offset    
