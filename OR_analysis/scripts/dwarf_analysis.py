@@ -25,6 +25,15 @@ from elftools.dwarf.descriptions import (describe_CFI_instructions,
     set_global_machine_arch)
 from elftools.dwarf.enums import DW_EH_encoding_flags
 
+def check_addr_range(entry, end, actual):
+    entry_int = int(entry, 16)
+    end_int = int(end, 16)
+    actual_int = int(actual)
+    if (entry_int <= actual_int and actual_int <= end_int):
+        return True
+    else:
+        return False
+
 def create_mem_inst_token(frame_base, variable_offset):
     frame_regex = re.search(r'(?<=(rbp|rsp))(.*)', frame_base[1])
     reg = frame_regex.group(1)
@@ -36,9 +45,10 @@ def create_mem_inst_token(frame_base, variable_offset):
     #print(inst)
     return inst
 
-bninja_fun_insts = dict() # dictionary for binary ninja analysis
-dwarf_frame_bases = dict() # dictionary for DWARF analysis which contains addr_range, expr per fun.
-dwarf_var_info = dict() # dictionary for DWARF analysis which contains variable information per fun.
+bninja_fun_insts = dict()   # dictionary for binary ninja analysis
+dwarf_frame_bases = dict()  # dictionary for DWARF analysis which contains addr_range, expr per fun.
+dwarf_var_info = dict()     # dictionary for DWARF analysis which contains variable information per fun.
+pin_instru_list = dict()    # dictionary for addr - variable per fun.
 
 def process_file(filename):
     with open_view(filename) as bv:                
@@ -237,28 +247,57 @@ def process_file(filename):
                 last_element = len(dwarf_frame_bases)
                 # Skip prologue frame bases
                 result_inst = ""
+                fun_var_list = list()
                 for (addr_index, addr_range) in enumerate(dwarf_frame_bases[dwarf_item]): 
                     if ((addr_index != 0) and (addr_index != 1) and (addr_index != (last_element-1))):
                         print("\tAddr range: ",addr_range)
-                        for var_item in var_list:
-                            if (bninja_item == var_item):
-                                for var_info in var_list[var_item]:
-                                    result_inst = create_mem_inst_token(addr_range, var_info)
-                                    #print("Result inst: ", result_inst)
-                                    for inst in bninja_fun_insts[dwarf_item]:
-                                        if (result_inst != ""):
-                                            result_offset_regex = re.search(r'(?<=mov dword\s\[)(.*)(?=\],\s0x)',result_inst)
-                                            bninja_offset_regex = re.search(r'(?<=mov dword\s\[)(.*)(?=\],\s0x)',inst[0])
-                                            if result_offset_regex and bninja_offset_regex:
-                                                if result_offset_regex.group(0) == bninja_offset_regex.group(0):
-                                                    #print([inst[0]])
-                                                    print("\tFound variable at Addr: ", hex(inst[1]), inst[0])
-                                                    print("\t\tVariable:", var_info)
-                                            #else:
-                                                #print(inst[0])
-                                            
-                        
+                        range_regex = re.search(r'(.*)(?=-)-(?<=-)(.*)', addr_range[0])
+                        if range_regex:
+                            print(range_regex.group(1), range_regex.group(2))
+                            for var_item in var_list:
+                                if (bninja_item == var_item):
+                                    for var_info in var_list[var_item]:
+                                        result_inst = create_mem_inst_token(addr_range, var_info)
+                                        #print("Result inst: ", result_inst)
+                                        for inst in bninja_fun_insts[dwarf_item]:
+                                            if (result_inst != ""):
+                                                result_offset_regex = re.search(r'(?<=mov dword\s\[)(.*)(?=\],\s0x)',result_inst)
+                                                bninja_offset_regex = re.search(r'(?<=mov dword\s\[)(.*)(?=\],\s0x)',inst[0])
+                                                if result_offset_regex and bninja_offset_regex:
+                                                    if result_offset_regex.group(0) == bninja_offset_regex.group(0):
+                                                        if check_addr_range(range_regex.group(1), range_regex.group(2), inst[1]):
+                                                            print("Within range")
+                                                            print("\tFound variable at Addr: ", hex(inst[1]), inst[0])
+                                                            print("\t\tVariable:", var_info[0])
+                                                            fun_var_list.append((hex(inst[1]), var_info[0]))
+                                                            
+                
+                pin_instru_list[bninja_item] = fun_var_list
+                
 
+    cwd             = os.path.dirname(__file__)
+    parent          = os.path.dirname(cwd)
+    out_file        = os.path.join(cwd, "local_OR.out")
+    #nm_file         = os.path.join(in_folder, input_name+".nm")
+
+    out_file_open   = open(out_file, "w")
+    local_write = ""
+    for item in pin_instru_list:
+        local_write += item + ":\n"
+        iterator = 0
+        for var in pin_instru_list[item]:
+            iterator += 1
+            #if (iterator == len(pin_instru_list[item])):
+                #local_write += "" + var[0] + "," + var[1] + "" + "\n"
+                
+                #break
+            local_write += "" + var[0] + "," + var[1] + "\n"
+    local_write += "last_fun_completed:"
+    out_file_open.write(local_write)
+    out_file_open.close()
+    
+    
+    
 def show_loclist(loclist, dwarfinfo, indent, cu_offset, entryaddr, funname):
     """ Display a location list nicely, decoding the DWARF expressions
         contained within.
