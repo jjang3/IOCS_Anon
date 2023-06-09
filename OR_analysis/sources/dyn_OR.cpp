@@ -85,6 +85,10 @@ std::string currRoutine;
 // Create a map of three (string, int) pairs
 std::map<std::string, std::set<std::map<int, std::string>>> patchLocalMap;
 
+std::set<std::map<UINT64, std::string>> pinVarSet;
+std::map<UINT64, std::string> localFunVarSet;
+std::map<std::string, std::set<std::map<UINT64, std::string>>> pinVarMap;
+
 #pragma region PIN_Related // start of pragma region
 /* ===================================================================== */
 // Helper functions/arrays
@@ -126,7 +130,7 @@ VOID RecMemRead(ADDRINT ip, ADDRINT addr)
     read_computed_addr = addr-offset_addr;
     auto read_it = ptrToGVName.find(read_computed_addr);
     if (read_it != ptrToGVName.end()) {
-        #if DBG_FLAG
+        #if 1
         printf("\tread: %p | Name: %s\n", (void*)read_computed_addr, ptrToGVName.find(read_computed_addr)->second.c_str());
         #endif
         auto gvName = ptrToGVName.find(read_computed_addr)->second;
@@ -139,6 +143,22 @@ VOID RecMemRead(ADDRINT ip, ADDRINT addr)
         #endif
         routineToInsts.find(routineStack.top())->second.insert(privStr);
     }
+    else
+    {
+       
+        #if 1
+        map<uintptr_t,string>::iterator i = localFunVarSet.find((uintptr_t)addr);
+
+        if (i == localFunVarSet.end()) { /* Not found */ }
+        else {         
+            printf("\t%p read: %p name: %s\n", (void*)(ip-offset_addr),(void*)addr, i->second.c_str());
+            
+        /* Found, i->first is f, i->second is ++-- */ 
+        }
+
+
+        #endif
+    }
 }
 
 // analysis for memory write
@@ -148,7 +168,7 @@ VOID RecMemWrite(VOID* ip, ADDRINT addr)
     write_computed_addr = addr-offset_addr;
     auto write_it = ptrToGVName.find(write_computed_addr);
     if (write_it != ptrToGVName.end()) {
-        #if DBG_FLAG
+        #if 1
         printf("\twrite: %p | Name: %s\n", (void*)write_computed_addr, ptrToGVName.find(write_computed_addr)->second.c_str());
         #endif
         auto gvName = ptrToGVName.find(write_computed_addr)->second;
@@ -160,6 +180,20 @@ VOID RecMemWrite(VOID* ip, ADDRINT addr)
             routineToInsts.find(currRoutine)->second.push(privStr);
         #endif
         routineToInsts.find(routineStack.top())->second.insert(privStr);
+    }
+    else
+    {
+        #if 1
+        map<uintptr_t,string>::iterator i = localFunVarSet.find((uintptr_t)addr);
+
+        if (i == localFunVarSet.end()) { /* Not found */ }
+        else {         
+            printf("\t%p write: %p name: %s\n", (void*)(ip-offset_addr), (void*)addr, i->second.c_str());
+        /* Found, i->first is f, i->second is ++-- */ 
+        }
+
+
+        #endif
     }
 }
 
@@ -176,12 +210,14 @@ VOID instruInst(INS ins, VOID *v)
     #endif
     //printf("Instrument instruction\n");
     const UINT32 mem_operands = INS_MemoryOperandCount(ins);
-
+    //printf("Instrumenting instructions\n");
     // Iterate over each memory operand of the instruction.
     for (UINT32 memOp = 0; memOp < mem_operands; memOp++)
     {
         if (INS_MemoryOperandIsRead(ins, memOp))
         {
+            //printf("Instrumenting: ");
+            //cerr << INS_Disassemble(ins) << endl;
             INS_InsertPredicatedCall(
                 ins, IPOINT_BEFORE, reinterpret_cast<AFUNPTR>(RecMemRead),
                 IARG_INST_PTR,
@@ -191,6 +227,8 @@ VOID instruInst(INS ins, VOID *v)
 
         if (INS_MemoryOperandIsWritten(ins, memOp))
         {
+            //printf("Instrumenting: ");
+            //cerr << INS_Disassemble(ins) << endl;
             INS_InsertPredicatedCall(
                 ins, IPOINT_BEFORE, reinterpret_cast<AFUNPTR>(RecMemWrite),
                 IARG_INST_PTR,
@@ -256,6 +294,7 @@ VOID DynObjCheck(CHAR* name, ADDRINT size) {
 VOID RoutineCheck(CHAR* name) { 
     #if 1
     //printf("%s\n", name);
+    pinVarSet.clear();
     const auto pltStr = std::string("@plt");
     const auto nameStr = std::string(name);
     if (std::find(std::begin(intrinFunList), std::end(intrinFunList), nameStr) == std::end(intrinFunList)) {      
@@ -276,7 +315,6 @@ VOID RoutineCheck(CHAR* name) {
 
 VOID RoutineClear(CHAR* name) { 
     #if 1
-
     const auto pltStr = std::string("@plt");
     const auto nameStr = std::string(name);
     if (std::find(std::begin(intrinFunList), std::end(intrinFunList), nameStr) == std::end(intrinFunList)) {      
@@ -289,6 +327,7 @@ VOID RoutineClear(CHAR* name) {
                 #endif
                 routineStack.pop();
                 routineSet.clear();
+                localFunVarSet.clear();
             }
         }
     }
@@ -353,6 +392,38 @@ VOID Taken(const CONTEXT* ctxt)
     PIN_UnlockClient();
 }
 
+// Stores the effective memory operand address of the current instruction.
+UINT64 _currentMemoryOperandAddress;
+
+// [Callback] Stores the memory operand address of the current instruction.
+VOID StoreInstructionMemoryOperandAddress(UINT64 effectiveAddress, CHAR* name, VOID* ip)
+{
+    
+	PIN_LockClient();
+	RTN currentRTN = RTN_FindByAddress((ADDRINT)ip);
+    const auto nameStr = std::string(name);
+    auto it = patchLocalMap.find(nameStr);
+    if(it != patchLocalMap.end()) {
+        //cout << "Found\n";
+        //printf("Address: %ld\n", address);
+        //cout << it->first << "\n";
+        for (auto var_map : it->second) {
+            //cout << "j: " << j. << "\n";
+            for (auto info : var_map) {
+                if (info.first == (uintptr_t)ip-offset_addr) {
+                    cout << "Fun: " << RTN_Name(currentRTN) << " Var: " << info.second << "\n";
+                    localFunVarSet.insert(std::pair<UINT64, std::string>(effectiveAddress, info.second));
+                }
+            }
+        }
+    }
+    //cerr << "Ins addr: " << hex << "0x" << (ip-offset_addr) << "\n";
+    
+    //printf("%s\n", name);
+    cerr << "Memory address: " << hex << "0x" << effectiveAddress << "\n";
+	_currentMemoryOperandAddress = effectiveAddress;
+    PIN_UnlockClient();
+}
 
 VOID getMetadata(IMG img, void *v)
 {
@@ -417,23 +488,27 @@ VOID getMetadata(IMG img, void *v)
                 #if ACT_FLAG
 				for (INS ins = RTN_InsHead(rtn); INS_Valid(ins); ins = INS_Next(ins))
 				{
-                    auto it = patchLocalMap.find(undFuncName);
-                    if(it != patchLocalMap.end()) {
-                        //cout << "Found\n";
-                        auto address = (ADDRINT)INS_Address(ins)-offset_addr;
-                        //printf("Address: %ld\n", address);
-                        //cout << it->first << "\n";
-                        for (auto var_map : it->second) {
-                            //cout << "j: " << j. << "\n";
-                            for (auto info : var_map) {
-                                //cout << "Var: " << info.second << "\tAddr: " << info.first << "\n";
-                                if (info.first == address) {
-                                    printf("Found patching target inst\n");
+                    if (INS_IsMov(ins) && INS_IsMemoryWrite(ins)) {
+                        auto it = patchLocalMap.find(undFuncName);
+                        if(it != patchLocalMap.end()) {
+                            //cout << "Found\n";
+                            auto address = (ADDRINT)INS_Address(ins)-offset_addr;
+                            //printf("Address: %ld\n", address);
+                            //cout << it->first << "\n";
+                            for (auto var_map : it->second) {
+                                //cout << "j: " << j. << "\n";
+                                for (auto info : var_map) {
+                                    cout << "Var: " << info.second << "\tAddr: " << info.first << "\n";
+                                    if (info.first == address) {
+                                        printf("Found patching target inst\n");
+                                        INS_InsertPredicatedCall(ins, IPOINT_BEFORE, (AFUNPTR)StoreInstructionMemoryOperandAddress, 
+                                            IARG_MEMORYWRITE_EA, IARG_ADDRINT, RTN_Name(rtn).c_str(), IARG_INST_PTR,
+                                            IARG_END);
+                                    }
                                 }
                             }
                         }
                     }
-
                     std::cerr << "\t- " << hex << "0x" << (ADDRINT)INS_Address(ins)-offset_addr << " " << INS_Disassemble(ins) << "\n";
                     // Entry point instrumentation to push currRoutine
                     if (ins == RTN_InsHead(rtn)) 
