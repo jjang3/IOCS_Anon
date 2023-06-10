@@ -61,7 +61,7 @@ def process_file(filename):
                 inst_list = list()
                 inst_to_addr = tuple()
                 for dis_inst in bb.get_disassembly_text():
-                    print(dis_inst.address, dis_inst)
+                    #print(dis_inst.address, dis_inst)
                     parsed_inst = "" # This is needed in order to avoid adding annotation
                     annot = False
                     for token in dis_inst.tokens:
@@ -194,8 +194,8 @@ def process_file(filename):
                                     var_to_loc = (varname, (int(op_fbreg_regex.group(0))))
                                     tuple_exists = True
                                 elif op_addr_regex:
-                                    print("\tLocation:", op_addr_regex.group(0), varname)
-                                    var_to_loc = (varname, op_addr_regex.group(0))
+                                    print("\tLocation:", ("0x"+op_addr_regex.group(0)), varname)
+                                    var_to_loc = (varname,  ("0x"+op_addr_regex.group(0)))
                                     tuple_exists = True
                
                         # LocationEntry (need to parse this properly)
@@ -211,10 +211,10 @@ def process_file(filename):
         
         
         var_list = {}
-        var_list.setdefault("global (addr is in hex)", [])
+        var_list.setdefault("global", [])
         for item in global_var_to_locs:
             #print(item)
-            var_list.setdefault("global (addr is in hex)", []).append(item)
+            var_list.setdefault("global", []).append(item)
         
         fun_name = ""
         for item in local_var_to_locs:
@@ -232,12 +232,13 @@ def process_file(filename):
         print(item)
         for addr_range in dwarf_frame_bases[item]:
             print("\t",addr_range)
-    print("\n")
+    print("\n")    
     for item in var_list:
         print(item)
         for var_info in var_list[item]:
             print("\t", var_info)
     """ 
+
     # for (fun_index, fun) in enumerate(bv.functions):
     index = 0
     for bninja_item in bninja_fun_insts:
@@ -270,10 +271,17 @@ def process_file(filename):
                                                             print("\tFound variable at Addr: ", hex(inst[1]), inst[0])
                                                             print("\t\tVariable:", var_info[0])
                                                             fun_var_list.append((hex(inst[1]), var_info[0]))
-                                                            
-                
                 pin_instru_list[bninja_item] = fun_var_list
                 
+
+    global_var_list = list()
+    for var_item in var_list:
+        if ("global" == var_item):
+            for var_info in var_list[var_item]:
+                print("Found global", var_info)
+                global_var_list.append((var_info[1], var_info[0]))
+        pin_instru_list["global"] = global_var_list
+
 
     cwd             = os.path.dirname(__file__)
     parent          = os.path.dirname(cwd)
@@ -281,18 +289,28 @@ def process_file(filename):
     #nm_file         = os.path.join(in_folder, input_name+".nm")
 
     out_file_open   = open(out_file, "w")
+    
+    global_write = ""
+    for item in pin_instru_list:
+        if (item == "global"):
+            global_write += item + ":\n"
+            for var in pin_instru_list[item]:
+                global_write += "" + var[0] + "," + var[1] + "\n"
+    global_write += "global_completed:\n"
     local_write = ""
     for item in pin_instru_list:
-        local_write += item + ":\n"
-        iterator = 0
-        for var in pin_instru_list[item]:
-            iterator += 1
-            #if (iterator == len(pin_instru_list[item])):
-                #local_write += "" + var[0] + "," + var[1] + "" + "\n"
-                
-                #break
-            local_write += "" + var[0] + "," + var[1] + "\n"
+        if (item != "global"):
+            local_write += item + ":\n"
+            iterator = 0
+            for var in pin_instru_list[item]:
+                iterator += 1
+                #if (iterator == len(pin_instru_list[item])):
+                    #local_write += "" + var[0] + "," + var[1] + "" + "\n"
+                    
+                    #break
+                local_write += "" + var[0] + "," + var[1] + "\n"
     local_write += "last_fun_completed:"
+    out_file_open.write(global_write)
     out_file_open.write(local_write)
     out_file_open.close()
     
