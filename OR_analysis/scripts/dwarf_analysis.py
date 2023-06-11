@@ -25,6 +25,13 @@ from elftools.dwarf.descriptions import (describe_CFI_instructions,
     set_global_machine_arch)
 from elftools.dwarf.enums import DW_EH_encoding_flags
 
+def is_hex(s):
+    try:
+        int(s, 16)
+        return True
+    except ValueError:
+        return False
+    
 def check_addr_range(entry, end, actual):
     entry_int = int(entry, 16)
     end_int = int(end, 16)
@@ -38,8 +45,11 @@ def create_mem_inst_token(frame_base, variable_offset):
     frame_regex = re.search(r'(?<=(rbp|rsp))(.*)', frame_base[1])
     reg = frame_regex.group(1)
     base = int(frame_regex.group(2))
+    print(variable_offset[1])
     offset = base + variable_offset[1]
-    #print(reg, offset)
+    
+    print(reg, offset)
+    
     inst = ""
     inst += "mov dword [" + str(reg) + hex(offset) + "], 0x*"
     #print(inst)
@@ -57,8 +67,9 @@ def process_file(filename):
         print("Number of functions: ", len(bv.functions))
         for fun in bv.functions:
             fun_name = ""
+            print(fun.name)
+            inst_list = list()
             for bb in fun:
-                inst_list = list()
                 inst_to_addr = tuple()
                 for dis_inst in bb.get_disassembly_text():
                     #print(dis_inst.address, dis_inst)
@@ -76,7 +87,7 @@ def process_file(filename):
                         if (annot == False):
                             parsed_inst += token.text
                     parsed_inst = ' '.join(parsed_inst.split())
-                    #print(parsed_inst)
+                    #print("Parsed:", parsed_inst)
                     inst_to_addr = (parsed_inst, dis_inst.address)
                     regex = re.search(r'(.*)(?=:)', parsed_inst)
                     if regex:
@@ -85,9 +96,10 @@ def process_file(filename):
                     else:
                         inst_list.append(inst_to_addr)
                     #print("Parsed: ", parsed_inst)
-                #for parsed_i in inst_list:
-                #    print(parsed_i)
-                bninja_fun_insts[fun_name] = inst_list
+                for parsed_i in inst_list:
+                    print(parsed_i)
+            print("Inserting inst_list")
+            bninja_fun_insts[fun_name] = inst_list
             #print("\n")
     #exit()
     
@@ -190,11 +202,11 @@ def process_file(filename):
                                 op_addr_regex = re.search(r'(?<=DW_OP_addr:\s)(.*)(?=\))', variable_loc)
                                 if op_fbreg_regex:
                                     #print('      %s\n' % (variable_loc))
-                                    print("\tLocation:", hex(int(op_fbreg_regex.group(0))), varname)
+                                    print("\tFBreg Location:", hex(int(op_fbreg_regex.group(0))), varname)
                                     var_to_loc = (varname, (int(op_fbreg_regex.group(0))))
                                     tuple_exists = True
                                 elif op_addr_regex:
-                                    print("\tLocation:", ("0x"+op_addr_regex.group(0)), varname)
+                                    print("\tOP Addr Location:", ("0x"+op_addr_regex.group(0)), varname)
                                     var_to_loc = (varname,  ("0x"+op_addr_regex.group(0)))
                                     tuple_exists = True
                
@@ -239,6 +251,13 @@ def process_file(filename):
             print("\t", var_info)
     """ 
 
+
+    for bninja_item in bninja_fun_insts:
+        print("Fun: ", bninja_item)
+        for item in bninja_fun_insts[bninja_item]:
+            print(item)
+
+    #exit()
     # for (fun_index, fun) in enumerate(bv.functions):
     index = 0
     for bninja_item in bninja_fun_insts:
@@ -258,19 +277,24 @@ def process_file(filename):
                             for var_item in var_list:
                                 if (bninja_item == var_item):
                                     for var_info in var_list[var_item]:
-                                        result_inst = create_mem_inst_token(addr_range, var_info)
-                                        #print("Result inst: ", result_inst)
-                                        for inst in bninja_fun_insts[dwarf_item]:
-                                            if (result_inst != ""):
-                                                result_offset_regex = re.search(r'(?<=mov dword\s\[)(.*)(?=\],\s0x)',result_inst)
-                                                bninja_offset_regex = re.search(r'(?<=mov dword\s\[)(.*)(?=\],\s0x)',inst[0])
-                                                if result_offset_regex and bninja_offset_regex:
-                                                    if result_offset_regex.group(0) == bninja_offset_regex.group(0):
-                                                        if check_addr_range(range_regex.group(1), range_regex.group(2), inst[1]):
-                                                            print("Within range")
-                                                            print("\tFound variable at Addr: ", hex(inst[1]), inst[0])
-                                                            print("\t\tVariable:", var_info[0])
-                                                            fun_var_list.append((hex(inst[1]), var_info[0]))
+                                        #print("Var info: ", var_info[1]))
+                                        if (all(c in 'xX' + string.hexdigits for c in str(var_info[1]))):
+                                            print("Found address, not offset")
+                                        else:
+                                            result_inst = create_mem_inst_token(addr_range, var_info)
+                                            print("Result inst: ", dwarf_item, result_inst)
+                                            for inst in bninja_fun_insts[dwarf_item]:
+                                                if (result_inst != ""):
+                                                    print(result_inst, inst[0])
+                                                    result_offset_regex = re.search(r'(?<=mov dword\s\[)(.*)(?=\],\s0x)',result_inst)
+                                                    bninja_offset_regex = re.search(r'(?<=mov dword\s\[)(.*)(?=\],\s0x)',inst[0])
+                                                    if result_offset_regex and bninja_offset_regex:
+                                                        if result_offset_regex.group(0) == bninja_offset_regex.group(0):
+                                                            #if check_addr_range(range_regex.group(1), range_regex.group(2), inst[1]):
+                                                                print("Within range")
+                                                                print("\tFound variable at Addr: ", hex(inst[1]), inst[0])
+                                                                print("\t\tVariable:", var_info[0])
+                                                                fun_var_list.append((hex(inst[1]), var_info[0]))
                 pin_instru_list[bninja_item] = fun_var_list
                 
 

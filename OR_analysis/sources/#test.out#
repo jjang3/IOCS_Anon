@@ -1,0 +1,333 @@
+Input file: ../tests/test_local_g2
+
+global:
+global
+Here 1 global
+0x4038,x
+
+Fun name: global
+Addr: 4038	Name: x
+0x403c,a
+
+Fun name: global
+Addr: 403c	Name: a
+0x4048,arr
+
+Fun name: global
+Addr: 4048	Name: arr
+0x4058,ptr
+
+Fun name: global
+Addr: 4058	Name: ptr
+global_completed:
+Global variable
+16440	 x
+16444	 a
+16456	 arr
+16472	 ptr
+fun1:
+fun1
+Here 1 fun1
+0x1149,fun_var1
+
+Fun name: fun1
+Addr: 1149	Name: fun_var1
+fun2:
+fun2
+Here 1 fun2
+0x1159,fun_var2
+
+Fun name: fun2
+Addr: 1159	Name: fun_var2
+fun_with_arguments:
+fun_with_arguments
+Here 1 fun_with_arguments
+0x116f,argument1
+
+Fun name: fun_with_arguments
+Addr: 116f	Name: argument1
+0x1176,argument2
+
+Fun name: fun_with_arguments
+Addr: 1176	Name: argument2
+main:
+main
+Here 1 main
+0x11ce,et
+
+Fun name: main
+Addr: 11ce	Name: et
+last_fun_completed:
+Last one
+
+fun1
+Var: 4425	Addr: fun_var1
+fun2
+Var: 4441	Addr: fun_var2
+fun_with_arguments
+Var: 4463	Addr: argument1
+Var: 4470	Addr: argument2
+main
+Var: 4558	Addr: et
+[*] 0x1000	_init
+	- 0x1000 sub rsp, 0x8
+	- 0x1004 mov rax, qword ptr [rip+0x2fdd]
+	- 0x100b test rax, rax
+	- 0x100e jz 0x555555555012
+	- 0x1010 call rax
+	- 0x1012 add rsp, 0x8
+	- 0x1016 ret 
+[*] 0x1030	puts
+	- 0x1030 jmp qword ptr [rip+0x2fe2]
+	- 0x1036 push 0x0
+	- 0x103b jmp 0x555555555020
+[*] 0x1040	printf
+	- 0x1040 jmp qword ptr [rip+0x2fda]
+	- 0x1046 push 0x1
+	- 0x104b jmp 0x555555555020
+[*] 0x1060	_start
+	- 0x1060 xor ebp, ebp
+	- 0x1062 mov r9, rdx
+	- 0x1065 pop rsi
+	- 0x1066 mov rdx, rsp
+	- 0x1069 and rsp, 0xfffffffffffffff0
+	- 0x106d push rax
+	- 0x106e push rsp
+	- 0x106f lea r8, ptr [rip+0x22a]
+	- 0x1076 lea rcx, ptr [rip+0x1c3]
+	- 0x107d lea rdi, ptr [rip+0x108]
+	- 0x1084 call qword ptr [rip+0x2f56]
+	- 0x108a hlt
+[*] 0x1090	deregister_tm_clones
+	- 0x1090 lea rdi, ptr [rip+0x2fa9]
+	- 0x1097 lea rax, ptr [rip+0x2fa2]
+	- 0x109e cmp rax, rdi
+	- 0x10a1 jz 0x5555555550b8
+	- 0x10a3 mov rax, qword ptr [rip+0x2f2e]
+	- 0x10aa test rax, rax
+	- 0x10ad jz 0x5555555550b8
+	- 0x10af jmp rax
+	- 0x10b1 nop dword ptr [rax], eax
+	- 0x10b8 ret 
+	- 0x10b9 nop dword ptr [rax], eax
+[*] 0x10c0	register_tm_clones
+	- 0x10c0 lea rdi, ptr [rip+0x2f79]
+	- 0x10c7 lea rsi, ptr [rip+0x2f72]
+	- 0x10ce sub rsi, rdi
+	- 0x10d1 mov rax, rsi
+	- 0x10d4 shr rsi, 0x3f
+	- 0x10d8 sar rax, 0x3
+	- 0x10dc add rsi, rax
+	- 0x10df sar rsi, 0x1
+	- 0x10e2 jz 0x5555555550f8
+	- 0x10e4 mov rax, qword ptr [rip+0x2f05]
+	- 0x10eb test rax, rax
+	- 0x10ee jz 0x5555555550f8
+	- 0x10f0 jmp rax
+	- 0x10f2 nop word ptr [rax+rax*1], ax
+	- 0x10f8 ret 
+	- 0x10f9 nop dword ptr [rax], eax
+[*] 0x1100	__do_global_dtors_aux
+	- 0x1100 cmp byte ptr [rip+0x2f39], 0x0
+	- 0x1107 jnz 0x555555555138
+	- 0x1109 push rbp
+	- 0x110a cmp qword ptr [rip+0x2ee6], 0x0
+	- 0x1112 mov rbp, rsp
+	- 0x1115 jz 0x555555555123
+	- 0x1117 mov rdi, qword ptr [rip+0x2f12]
+	- 0x111e call 0x555555555050
+	- 0x1123 call 0x555555555090
+	- 0x1128 mov byte ptr [rip+0x2f11], 0x1
+	- 0x112f pop rbp
+	- 0x1130 ret 
+	- 0x1131 nop dword ptr [rax], eax
+	- 0x1138 ret 
+[*] 0x1140	frame_dummy
+	- 0x1140 jmp 0x5555555550c0
+[*] 0x1145	fun1
+	- 0x1145 push rbp
+	- 0x1146 mov rbp, rsp
+Var: fun_var1	Addr: 4425
+Found patching target inst
+	- 0x1149 mov dword ptr [rbp-0x4], 0x1
+	- 0x1150 mov eax, dword ptr [rbp-0x4]
+	- 0x1153 pop rbp
+	- 0x1154 ret 
+[*] 0x1155	fun2
+	- 0x1155 push rbp
+	- 0x1156 mov rbp, rsp
+Var: fun_var2	Addr: 4441
+Found patching target inst
+	- 0x1159 mov dword ptr [rbp-0x4], 0x1
+	- 0x1160 mov eax, dword ptr [rbp-0x4]
+	- 0x1163 pop rbp
+	- 0x1164 ret 
+[*] 0x1165	fun_with_arguments
+	- 0x1165 push rbp
+	- 0x1166 mov rbp, rsp
+Var: argument1	Addr: 4463
+Var: argument2	Addr: 4470
+	- 0x1169 mov dword ptr [rbp-0x14], edi
+Var: argument1	Addr: 4463
+Var: argument2	Addr: 4470
+	- 0x116c mov dword ptr [rbp-0x18], esi
+Var: argument1	Addr: 4463
+Found patching target inst
+Var: argument2	Addr: 4470
+	- 0x116f mov dword ptr [rbp-0x4], 0x0
+Var: argument1	Addr: 4463
+Var: argument2	Addr: 4470
+Found patching target inst
+	- 0x1176 mov dword ptr [rbp-0x8], 0x0
+	- 0x117d mov eax, dword ptr [rbp-0x14]
+Var: argument1	Addr: 4463
+Var: argument2	Addr: 4470
+	- 0x1180 mov dword ptr [rbp-0x4], eax
+	- 0x1183 mov eax, dword ptr [rbp-0x18]
+Var: argument1	Addr: 4463
+Var: argument2	Addr: 4470
+	- 0x1186 mov dword ptr [rbp-0x8], eax
+	- 0x1189 nop
+	- 0x118a pop rbp
+	- 0x118b ret 
+[*] 0x118c	main
+	- 0x118c push rbp
+	- 0x118d mov rbp, rsp
+	- 0x1190 sub rsp, 0x10
+Var: et	Addr: 4558
+	- 0x1194 mov dword ptr [rip+0x2e9a], 0x0
+Var: et	Addr: 4558
+	- 0x119e mov dword ptr [rip+0x2e94], 0x1
+	- 0x11a8 mov rax, 0x3433323164636261
+Var: et	Addr: 4558
+	- 0x11b2 mov qword ptr [rip+0x2e8f], rax
+Var: et	Addr: 4558
+	- 0x11b9 mov word ptr [rip+0x2e8e], 0x35
+	- 0x11c2 lea rdi, ptr [rip+0xe3b]
+	- 0x11c9 call 0x555555555030
+Var: et	Addr: 4558
+Found patching target inst
+	- 0x11ce mov dword ptr [rbp-0x8], 0x21
+	- 0x11d5 lea rax, ptr [rbp-0x8]
+Var: et	Addr: 4558
+	- 0x11d9 mov qword ptr [rip+0x2e78], rax
+	- 0x11e0 mov eax, 0x0
+	- 0x11e5 call 0x555555555145
+Var: et	Addr: 4558
+	- 0x11ea mov dword ptr [rbp-0x4], eax
+	- 0x11ed mov eax, dword ptr [rbp-0x4]
+	- 0x11f0 mov esi, eax
+	- 0x11f2 lea rdi, ptr [rip+0xe11]
+	- 0x11f9 mov eax, 0x0
+	- 0x11fe call 0x555555555040
+	- 0x1203 mov eax, 0x0
+	- 0x1208 call 0x555555555155
+Var: et	Addr: 4558
+	- 0x120d mov dword ptr [rbp-0x4], eax
+	- 0x1210 mov eax, dword ptr [rbp-0x4]
+	- 0x1213 mov esi, eax
+	- 0x1215 lea rdi, ptr [rip+0xe02]
+	- 0x121c mov eax, 0x0
+	- 0x1221 call 0x555555555040
+	- 0x1226 mov esi, 0x2
+	- 0x122b mov edi, 0x1
+	- 0x1230 call 0x555555555165
+	- 0x1235 mov eax, 0x0
+	- 0x123a leave 
+	- 0x123b ret 
+[*] 0x1240	__libc_csu_init
+	- 0x1240 push r15
+	- 0x1242 lea r15, ptr [rip+0x2b9f]
+	- 0x1249 push r14
+	- 0x124b mov r14, rdx
+	- 0x124e push r13
+	- 0x1250 mov r13, rsi
+	- 0x1253 push r12
+	- 0x1255 mov r12d, edi
+	- 0x1258 push rbp
+	- 0x1259 lea rbp, ptr [rip+0x2b90]
+	- 0x1260 push rbx
+	- 0x1261 sub rbp, r15
+	- 0x1264 sub rsp, 0x8
+	- 0x1268 call 0x555555555000
+	- 0x126d sar rbp, 0x3
+	- 0x1271 jz 0x55555555528e
+	- 0x1273 xor ebx, ebx
+	- 0x1275 nop dword ptr [rax], eax
+	- 0x1278 mov rdx, r14
+	- 0x127b mov rsi, r13
+	- 0x127e mov edi, r12d
+	- 0x1281 call qword ptr [r15+rbx*8]
+	- 0x1285 add rbx, 0x1
+	- 0x1289 cmp rbp, rbx
+	- 0x128c jnz 0x555555555278
+	- 0x128e add rsp, 0x8
+	- 0x1292 pop rbx
+	- 0x1293 pop rbp
+	- 0x1294 pop r12
+	- 0x1296 pop r13
+	- 0x1298 pop r14
+	- 0x129a pop r15
+	- 0x129c ret 
+[*] 0x12a0	__libc_csu_fini
+	- 0x12a0 ret 
+[*] 0x12a4	_fini
+	- 0x12a4 sub rsp, 0x8
+	- 0x12a8 add rsp, 0x8
+	- 0x12ac ret 
+Data section boundaries: 0x4028 to 0x4040
+Curr routine: fun1
+Curr routine: fun2
+cat Curr routine: fun_with_arguments
+Curr routine: main
+	write: 0x4038 | Name: x
+	write: 0x403c | Name: a
+	write: 0x4048 | Name: arr
+Fun: main Var: et
+Memory address: 0x7fffffffcaf8
+	0x11ce write: 0x7fffffffcaf8 name: et
+	write: 0x4058 | Name: ptr
+Fun: fun1 Var: fun_var1
+Memory address: 0x7fffffffcadc
+	0x1149 write: 0x7fffffffcadc name: fun_var1
+	0x1150 read: 0x7fffffffcadc name: fun_var1
+Fun: fun2 Var: fun_var2
+Memory address: 0x7fffffffcadc
+	0x1159 write: 0x7fffffffcadc name: fun_var2
+	0x1160 read: 0x7fffffffcadc name: fun_var2
+Fun: fun_with_arguments Var: argument1
+Memory address: 0x7fffffffcadc
+	0x116f write: 0x7fffffffcadc name: argument1
+Fun: fun_with_arguments Var: argument2
+Memory address: 0x7fffffffcad8
+Hello
+Return Variable 1
+Return Variable fun2 1
+	0x1176 write: 0x7fffffffcad8 name: argument2
+	0x1180 write: 0x7fffffffcadc name: argument1
+	0x1186 write: 0x7fffffffcad8 name: argument2
+fun1: 
+Read fun_var1
+ Return main
+ Write fun_var1
+ 
+fun2: 
+Read fun_var2
+ Return main
+ Write fun_var2
+ 
+fun_with_arguments: 
+Return main
+ Write argument1
+ Write argument2
+ 
+main: 
+Call fun1
+ Call fun2
+ Call fun_with_arguments
+ Write a
+ Write arr
+ Write et
+ Write ptr
+ Write x
+ 

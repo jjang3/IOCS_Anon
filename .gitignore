@@ -18,3 +18,5 @@ tests/*
 !tests/sources/
 .lst
 tests
+backup*.cpp
+#test.out#
