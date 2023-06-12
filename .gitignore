@@ -9,10 +9,11 @@ userspace/bin/*
 pin-3.20_build
 pin-3.27_build
 *.out
-scripts/
+scripts
 scripts/*
 !scripts/*.sh
 !scripts/*.py
+!OR_Analysis/scripts
 !tests/
 tests/*
 !tests/sources/

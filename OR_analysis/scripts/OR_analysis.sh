@@ -4,6 +4,8 @@ CC=gcc
 PS3="Select options: "
 input=$1
 input_file=$1.c
+
+current_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 parent_path=$( cd ../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 test_path=${parent_path}/tests
 source_path=${test_path}/sources
@@ -25,15 +27,16 @@ compile() {
 
 dwarf() {
     echo "Running DWARF Analysis"
-    if [ ! -d "$RESULTS_INPUT_DIR" ]; then
+    if [ ! -d "$result_input_path" ]; then
       echo "Compile first!"
       exit
     fi
+    python3 $current_path/dwarf_analysis.py --test ${result_input_path}/${input}
 }
 
 pin() {
     echo "Running PINTool"
-    if [ ! -d "$RESULTS_INPUT_DIR" ]; then
+    if [ ! -d "$result_input_path" ]; then
       echo "Compile first!"
       exit
     fi
