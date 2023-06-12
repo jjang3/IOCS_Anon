@@ -90,6 +90,7 @@ std::map<UINT64, std::string> localFunVarSet;
 std::map<std::string, std::set<std::map<UINT64, std::string>>> pinVarMap;
 
 std::map<UINT64, std::string> dynVarSet;
+std::map<UINT64, std::string> dynVarFun;
 
 #pragma region PIN_Related // start of pragma region
 /* ===================================================================== */
@@ -109,32 +110,17 @@ const char* StripPath(const char* path)
         return path;
 }
 
-template<class T>
-bool stackFind (stack<T> source, T target)
-{
-    while (!source.empty() && source.top() != target)
-        source.pop();
-
-    if (!source.empty())
-         return true;
-
-    return false;
-}
-
 /* ===================================================================== */
 // Analysis routines
 /* ===================================================================== */
 bool heapcheck = false;
 VOID DynObjCheck(CHAR* name, ADDRINT size) { 
     #if 1
-    //printf("\tDyn object found | Curr routine: %s\n", currRoutine.c_str());
-    //routineStack.push("Dyn object\n");
+    printf("\tDyn object found | Curr routine: %s\n", currRoutine.c_str());
+    // routineStack.push("Dyn object\n");
     #endif
     #if ACT_FLAG
-    //std::string privStr = "Dyn object\n";
     heapcheck = true;
-    //routineToInsts.find(currRoutine)->second.push(privStr);
-    //routineToInsts.find(currRoutine)->second.insert(privStr);
     #endif
 }
 
@@ -145,17 +131,11 @@ VOID RecMemRead(ADDRINT ip, ADDRINT addr)
     read_computed_addr = addr-offset_addr;
     auto read_it = ptrToGVName.find(read_computed_addr);
     if (read_it != ptrToGVName.end()) {
-        #if 1
+        #if DBG_FLAG
         printf("\tread: %p | Name: %s\n", (void*)read_computed_addr, ptrToGVName.find(read_computed_addr)->second.c_str());
         #endif
         auto gvName = ptrToGVName.find(read_computed_addr)->second;
         std::string privStr = "Read (global) " + gvName + "\n";
-        #if 0
-        if (stackFind(routineToInsts.find(currRoutine)->second, privStr)) 
-            printf("Exists\n");
-        else
-            routineToInsts.find(currRoutine)->second.push(privStr);
-        #endif
         routineToInsts.find(routineStack.top())->second.insert(privStr);
     }
     else
@@ -166,18 +146,20 @@ VOID RecMemRead(ADDRINT ip, ADDRINT addr)
 
         if (i == localFunVarSet.end()) { /* Not found */ }
         else {         
-            printf("\t%p read: %p name: %s\n", (void*)(ip-offset_addr),(void*)addr, i->second.c_str());
-            if(dynVarSet.find((uintptr_t)addr)!=dynVarSet.end())
+            printf("\t%p read: %p name: %s %d\n", (void*)(ip-offset_addr),(void*)addr, i->second.c_str(), heapcheck);
+            if(dynVarSet.find((uintptr_t)addr)!=dynVarSet.end() && dynVarFun[(uintptr_t)addr] == currRoutine)
             {
-                printf("Heap not found %p\n", (uintptr_t)addr);
+                #if 1
+                printf("Heap found %lx\n", (uintptr_t)addr);
+                #endif
                 std::string privStr = "Read (local heap) " + i->second + "\n";
                 routineToInsts.find(routineStack.top())->second.insert(privStr);
-
-            /* Found, i->first is f, i->second is ++-- */ 
             }
             else
-            {
-                printf("Heap found %p\n", (uintptr_t)addr);
+            {   
+                #if 1
+                printf("Heap not found %lx\n", (uintptr_t)addr);
+                #endif
                 std::string privStr = "Read (local) " + i->second + "\n";
                 routineToInsts.find(routineStack.top())->second.insert(privStr);
             }
@@ -195,44 +177,40 @@ VOID RecMemWrite(VOID* ip, ADDRINT addr)
     write_computed_addr = addr-offset_addr;
     auto write_it = ptrToGVName.find(write_computed_addr);
     if (write_it != ptrToGVName.end()) {
-        #if 1
+        #if DBG_FLAG
         printf("\twrite: %p | Name: %s\n", (void*)write_computed_addr, ptrToGVName.find(write_computed_addr)->second.c_str());
         #endif
         auto gvName = ptrToGVName.find(write_computed_addr)->second;
         std::string privStr = "Write (global) " + gvName + "\n";
-        #if 0
-        if (stackFind(routineToInsts.find(currRoutine)->second, privStr)) 
-            printf("Exists\n");
-        else
-            routineToInsts.find(currRoutine)->second.push(privStr);
-        #endif
         routineToInsts.find(routineStack.top())->second.insert(privStr);
     }
     else
     {
-        #if 1
+        #if ACT_FLAG
         map<uintptr_t,string>::iterator i = localFunVarSet.find((uintptr_t)addr);
-
         if (i == localFunVarSet.end()) { /* Not found */ }
         else 
-        {         
-            printf("\t%p write: %p name: %s\n", (void*)(ip-offset_addr), (void*)addr, i->second.c_str());
-            if(dynVarSet.find((uintptr_t)addr)!=dynVarSet.end())
+        {     
+            #if DBG_FLAG
+            printf("\t%p write: %p name: %s\n", (void*)((uintptr_t)ip-offset_addr), (void*)addr, i->second.c_str());
+            #endif
+            if(dynVarSet.find((uintptr_t)addr)!=dynVarSet.end() && dynVarFun[(uintptr_t)addr] == currRoutine)
             {
-            
+                #if 1
+                printf("Heap found %lx\n", (uintptr_t)addr);
+                #endif
                 std::string privStr = "Write (local heap) " + i->second + "\n";
                 routineToInsts.find(routineStack.top())->second.insert(privStr);
-
-            /* Found, i->first is f, i->second is ++-- */ 
             }
             else
             {
+                #if 1
+                printf("Heap not found %lx\n", (uintptr_t)addr);
+                #endif
                 std::string privStr = "Write (local) " + i->second + "\n";
                 routineToInsts.find(routineStack.top())->second.insert(privStr);
             }
         }
-
-
         #endif
     }
 }
@@ -317,11 +295,8 @@ VOID routInst(RTN rtn, VOID* v)
     RTN_Close(rtn);
 }
 
-
-
 VOID RoutineCheck(CHAR* name) { 
-    #if 1
-    //printf("%s\n", name);
+    #if ACT_FLAG
     pinVarSet.clear();
     const auto pltStr = std::string("@plt");
     const auto nameStr = std::string(name);
@@ -335,11 +310,8 @@ VOID RoutineCheck(CHAR* name) {
             routineStack.push(nameStr);
         }
     }
-
     #endif
 }
-
-
 
 VOID RoutineClear(CHAR* name) { 
     #if 1
@@ -420,9 +392,6 @@ VOID Taken(const CONTEXT* ctxt)
     PIN_UnlockClient();
 }
 
-// Stores the effective memory operand address of the current instruction.
-UINT64 _currentMemoryOperandAddress;
-
 // [Callback] Stores the memory operand address of the current instruction.
 VOID StoreInstructionMemoryOperandAddress(UINT64 effectiveAddress, CHAR* name, VOID* ip)
 {
@@ -432,39 +401,35 @@ VOID StoreInstructionMemoryOperandAddress(UINT64 effectiveAddress, CHAR* name, V
     const auto nameStr = std::string(name);
     auto it = patchLocalMap.find(nameStr);
     if(it != patchLocalMap.end()) {
-        //cout << "Found\n";
-        //printf("Address: %ld\n", address);
-        //cout << it->first << "\n";
+        #if DBG_FLAG
+        cout << "Found\n";
+        // printf("Address: %ld\n", address);
+        #endif
         for (auto var_map : it->second) {
             //cout << "j: " << j. << "\n";
             for (auto info : var_map) {
-                if (info.first == (uintptr_t)ip-offset_addr) {
+                if ((uintptr_t)info.first == (uintptr_t)ip-offset_addr) {
                     cout << "Fun: " << RTN_Name(currentRTN) << " Var: " << info.second << "\n";
                     localFunVarSet.insert(std::pair<UINT64, std::string>(effectiveAddress, info.second));
                     if (heapcheck == true) {
+                        #if 1
                         printf("Heapcheck: %d\n", heapcheck);
+                        #endif
                         heapcheck = false;
-                        printf("Inserting %p for %s\n", (void*)effectiveAddress, info.second.c_str());
+                        printf("Inserting %p for %s | Curr Fun: %s\n", (void*)effectiveAddress, info.second.c_str(), nameStr.c_str());
                         dynVarSet.insert(std::pair<UINT64, std::string>(effectiveAddress, info.second));
+                        dynVarFun.insert(std::pair<UINT64, std::string>(effectiveAddress,  nameStr));
                     }
                 }
             }
         }
     }
-    //cerr << "Ins addr: " << hex << "0x" << (ip-offset_addr) << "\n";
-    
-    //printf("%s\n", name);
+    #if DBG_FLAG
     cerr << "Memory address: " << hex << "0x" << effectiveAddress << "\n";
-	_currentMemoryOperandAddress = effectiveAddress;
+    #endif
     PIN_UnlockClient();
 }
 
-VOID MallocAfter(ADDRINT ret)
-{
-	PIN_LockClient();
-    cerr << "MallocAfter: " << "  returns " << ret << endl;    
-    PIN_UnlockClient();
-}
 VOID getMetadata(IMG img, void *v)
 {
 	// Global pointer (GP) of image, if a GP is used to address global data
@@ -498,9 +463,6 @@ VOID getMetadata(IMG img, void *v)
 
             RTN_InsertCall(mallocRtn, IPOINT_BEFORE, (AFUNPTR)DynObjCheck, IARG_ADDRINT, MALLOC, IARG_FUNCARG_ENTRYPOINT_VALUE, 0,
                         IARG_END);
-            
-            //RTN_InsertCall(mallocRtn, IPOINT_AFTER, (AFUNPTR)MallocAfter,
-            //           IARG_FUNCRET_EXITPOINT_VALUE, IARG_END);
             RTN_Close(mallocRtn);
         }
     
@@ -519,7 +481,7 @@ VOID getMetadata(IMG img, void *v)
 			string undFuncName = PIN_UndecorateSymbolName(SYM_Name(sym), UNDECORATION_NAME_ONLY);
 			RTN rtn = RTN_FindByAddress(imgLoadOffset + SYM_Value(sym));
 			#if 1
-			const char* UndecoratedFuncName = PIN_UndecorateSymbolName(SYM_Name(sym), UNDECORATION_NAME_ONLY).c_str();
+			// const char* UndecoratedFuncName = PIN_UndecorateSymbolName(SYM_Name(sym), UNDECORATION_NAME_ONLY).c_str();
 			std::cerr << "[*] " << hex << "0x" << (ADDRINT)RTN_Address(rtn)-offset_addr << "\t" << undFuncName << endl;
 			#endif
 			#if 1
@@ -536,13 +498,14 @@ VOID getMetadata(IMG img, void *v)
                         if(it != patchLocalMap.end()) {
                             //cout << "Found\n";
                             auto address = (ADDRINT)INS_Address(ins)-offset_addr;
-                            //printf("Address: %ld\n", address);
-                            //cout << it->first << "\n";
+                            #if DBG_FLAG
+                            printf("Address: %ld\n", address);
+                            cout << it->first << "\n";
+                            #endif
                             for (auto var_map : it->second) {
-                                //cout << "j: " << j. << "\n";
                                 for (auto info : var_map) {
                                     cout << "Var: " << info.second << "\tAddr: " << info.first << "\n";
-                                    if (info.first == address) {
+                                    if ((long unsigned int)info.first == address) {
                                         printf("Found patching target inst\n");
                                         INS_InsertPredicatedCall(ins, IPOINT_BEFORE, (AFUNPTR)StoreInstructionMemoryOperandAddress, 
                                             IARG_MEMORYWRITE_EA, IARG_ADDRINT, RTN_Name(rtn).c_str(), IARG_INST_PTR,
