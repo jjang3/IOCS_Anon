@@ -42,6 +42,7 @@ def check_addr_range(entry, end, actual):
         return False
 
 def create_mem_inst_token(frame_base, variable_offset):
+    print("Create mem inst token with", frame_base)
     frame_regex = re.search(r'(?<=(rbp|rsp))(.*)', frame_base[1])
     reg = frame_regex.group(1)
     base = int(frame_regex.group(2))
@@ -51,7 +52,7 @@ def create_mem_inst_token(frame_base, variable_offset):
     print(reg, offset)
     
     inst = ""
-    inst += "mov dword [" + str(reg) + hex(offset) + "], 0x*"
+    inst += "mov *word [" + str(reg) + hex(offset) + "], 0x*"
     #print(inst)
     return inst
 
@@ -59,6 +60,7 @@ bninja_fun_insts = dict()   # dictionary for binary ninja analysis
 dwarf_frame_bases = dict()  # dictionary for DWARF analysis which contains addr_range, expr per fun.
 dwarf_var_info = dict()     # dictionary for DWARF analysis which contains variable information per fun.
 pin_instru_list = dict()    # dictionary for addr - variable per fun.
+begin_mem_token = dict()    # dictionary for fun ->  -> memory token (qword vs dword)
 
 def process_file(filename):
     with open_view(filename) as bv:                
@@ -80,6 +82,9 @@ def process_file(filename):
                         #print("Annot: ", annot)
                         if token.type == InstructionTextTokenType.AnnotationToken:
                             annot = True  
+                        elif (token.type == InstructionTextTokenType.BeginMemoryOperandToken):
+                            print(dis_inst.address, token.text)
+                            begin_mem_token[dis_inst.address] = token.text
                         elif (token.type == InstructionTextTokenType.EndMemoryOperandToken):
                             annot = False
                         elif (annot == True):
@@ -87,7 +92,7 @@ def process_file(filename):
                         if (annot == False):
                             parsed_inst += token.text
                     parsed_inst = ' '.join(parsed_inst.split())
-                    #print("Parsed:", parsed_inst)
+                    print("Parsed:", parsed_inst)
                     inst_to_addr = (parsed_inst, dis_inst.address)
                     regex = re.search(r'(.*)(?=:)', parsed_inst)
                     if regex:
@@ -101,7 +106,6 @@ def process_file(filename):
             print("Inserting inst_list")
             bninja_fun_insts[fun_name] = inst_list
             #print("\n")
-    #exit()
     
 
     print('Processing file:', filename)
@@ -264,11 +268,14 @@ def process_file(filename):
         for dwarf_item in dwarf_frame_bases:
             if (bninja_item == dwarf_item):
                 print("Fun: ", bninja_item)
-                last_element = len(dwarf_frame_bases)
+                print(dwarf_frame_bases)
+                last_element = len(dwarf_frame_bases[dwarf_item])
+                print("Last element: ", last_element)
                 # Skip prologue frame bases
                 result_inst = ""
                 fun_var_list = list()
                 for (addr_index, addr_range) in enumerate(dwarf_frame_bases[dwarf_item]): 
+                    print("Index: ", addr_index, last_element)
                     if ((addr_index != 0) and (addr_index != 1) and (addr_index != (last_element-1))):
                         print("\tAddr range: ",addr_range)
                         range_regex = re.search(r'(.*)(?=-)-(?<=-)(.*)', addr_range[0])
@@ -281,13 +288,15 @@ def process_file(filename):
                                         if (all(c in 'xX' + string.hexdigits for c in str(var_info[1]))):
                                             print("Found address, not offset")
                                         else:
+                                            print("Var info: ", var_info)
                                             result_inst = create_mem_inst_token(addr_range, var_info)
                                             print("Result inst: ", dwarf_item, result_inst)
                                             for inst in bninja_fun_insts[dwarf_item]:
                                                 if (result_inst != ""):
                                                     print(result_inst, inst[0])
-                                                    result_offset_regex = re.search(r'(?<=mov dword\s\[)(.*)(?=\],\s0x)',result_inst)
-                                                    bninja_offset_regex = re.search(r'(?<=mov dword\s\[)(.*)(?=\],\s0x)',inst[0])
+                                                    # rax is special case for malloc
+                                                    result_offset_regex = re.search(r'(?<=mov .word\s\[)(.*)(?=\],\s[0x|rax|eax])',result_inst)
+                                                    bninja_offset_regex = re.search(r'(?<=mov .word\s\[)(.*)(?=\],\s[0x|rax|eax])',inst[0])
                                                     if result_offset_regex and bninja_offset_regex:
                                                         if result_offset_regex.group(0) == bninja_offset_regex.group(0):
                                                             #if check_addr_range(range_regex.group(1), range_regex.group(2), inst[1]):
