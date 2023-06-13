@@ -56,6 +56,8 @@ def create_mem_inst_token(frame_base, variable_offset):
     #print(inst)
     return inst
 
+inputfile = ""
+
 bninja_fun_insts = dict()   # dictionary for binary ninja analysis
 dwarf_frame_bases = dict()  # dictionary for DWARF analysis which contains addr_range, expr per fun.
 dwarf_var_info = dict()     # dictionary for DWARF analysis which contains variable information per fun.
@@ -318,7 +320,8 @@ def process_file(filename):
 
     cwd             = os.path.dirname(__file__)
     parent          = os.path.dirname(cwd)
-    out_file        = os.path.join(cwd, "local_OR.out")
+    result_dir      = os.path.dirname(inputfile)
+    out_file        = os.path.join(result_dir, "dwarf.out")
     #nm_file         = os.path.join(in_folder, input_name+".nm")
 
     out_file_open   = open(out_file, "w")
@@ -395,4 +398,5 @@ def show_loclist(loclist, dwarfinfo, indent, cu_offset, entryaddr, funname):
 if __name__ == '__main__':
     if sys.argv[1] == '--test':
         for filename in sys.argv[2:]:
+            inputfile = filename
             process_file(filename)
