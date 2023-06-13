@@ -5,8 +5,10 @@ PS3="Select options: "
 input=$1
 input_file=$1.c
 
+PIN_ROOT=$HOME/Waterfall/OR_analysis/pin-3.27_build
 current_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 parent_path=$( cd ../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
+lib_path=${parent_path}/sources/obj-intel64
 test_path=${parent_path}/tests
 source_path=${test_path}/sources
 result_path=${test_path}/results
@@ -40,9 +42,12 @@ pin() {
       echo "Compile first!"
       exit
     fi
+    $PIN_ROOT/pin -t $lib_path/dyn_OR.so -o $result_input_path/${input}_OR.out -- ${result_input_path}/${input}
 }
 
 all() {
+    echo "All options"
+    compile
     dwarf
     pin
 }
@@ -57,6 +62,6 @@ while true; do
             4) echo "Selected $option"; all; break;;
             $((${#options[@]}+1))) echo "Finished!"; break 2;;
             *) echo "Wrong input"; break;
-        esac
+        esac;
     done
 done

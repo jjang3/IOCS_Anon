@@ -10,10 +10,11 @@ pin-3.20_build
 pin-3.27_build
 *.out
 scripts
-scripts/*
 !scripts/*.sh
 !scripts/*.py
-!OR_Analysis/scripts
+!OR_analysis/scripts
+!OR_analysis/scripts/*.sh
+!OR_analysis/scripts/*.py
 !tests/
 tests/*
 !tests/sources/

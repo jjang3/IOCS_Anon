@@ -65,7 +65,6 @@ std::ofstream TraceFile;
 uintptr_t offset_addr;
 
 std::map<uintptr_t, string> ptrToGVName;
-//std::map<std::string, std::stack<std::string>> routineToInsts;
 std::map<std::string, std::set<std::string>> routineToInsts;
 
 /* ===================================================================== */
@@ -96,6 +95,17 @@ std::map<UINT64, std::string> dynVarFun;
 /* ===================================================================== */
 // Helper functions/arrays
 /* ===================================================================== */
+
+std::string SplitFilename (const string& str)
+{
+  size_t found;
+  //cout << "Splitting: " << str << endl;
+  found=str.find_last_of("/\\");
+  //cout << " folder: " << str.substr(0,found) << endl;
+  //cout << " file: " << str.substr(found+1) << endl;
+  return str.substr(0,found);
+}
+
 
 std::string intrinFunList[]={
     "_init", ".plt", ".plt.got", "_start", "deregister_tm_clones", "register_tm_clones", "_dl_fini",
@@ -609,7 +619,12 @@ int main(int argc, char* argv[])
         return Usage();
     }
 
-	trace = fopen("OR.out", "w");
+    printf("Input file: %s\n", argv[8]);
+    auto folder_name = SplitFilename(std::string(argv[8]));
+    auto dwarf_name = folder_name + "/dwarf.out";
+    printf("Output file: %s\n", argv[6]);
+    printf("Input dwarf file: %s\n\n", dwarf_name.c_str());
+	trace = fopen(argv[6], "w");
 	if (trace != NULL)
 	{
 		//printf("Success\n");
@@ -620,7 +635,6 @@ int main(int argc, char* argv[])
     INS_AddInstrumentFunction(instruInst, nullptr);
     RTN_AddInstrumentFunction(routInst, 0);
 
-    printf("Input file: %s\n\n", argv[8]);
     // Register Instruction to be called to instrument instructions
 	// define your file name
     #if 1 // move this to somewhere else as an init function, or make it happen in init
@@ -629,7 +643,7 @@ int main(int argc, char* argv[])
     // flag type for determining the matching behavior (in this case on string objects)
     smatch m; 
     fstream newfile;
-    newfile.open("local_OR.out",ios::in); //open a file to perform read operation using file object
+    newfile.open(dwarf_name,ios::in); //open a file to perform read operation using file object
     if (newfile.is_open()){ //checking whether the file is open
         string tp;
         string funname;
