@@ -313,7 +313,7 @@ VOID RoutineCheck(CHAR* name) {
     if (std::find(std::begin(intrinFunList), std::end(intrinFunList), nameStr) == std::end(intrinFunList)) {      
         if (nameStr.find(pltStr) == string::npos)
         {
-            #if DBG_FLAG
+            #if 1
             printf("Routine check: %s\n", nameStr.c_str());
             #endif
             currRoutine = nameStr;
@@ -332,13 +332,15 @@ VOID RoutineClear(CHAR* name) {
         {
             if (routineStack.size() != 1)
             {
-                #if DBG_FLAG
+                #if 1
+                currRoutine = nameStr;
                 printf("Routine clear %s\n", nameStr.c_str());
                 #endif
                 routineStack.pop();
                 routineSet.clear();
                 localFunVarSet.clear();
             }
+            
         }
     }
     #endif
@@ -392,10 +394,11 @@ VOID Taken(const CONTEXT* ctxt)
 	{
         auto rtnName = RTN_Name(takenRtn);
         if (std::find(std::begin(intrinFunList), std::end(intrinFunList), rtnName) == std::end(intrinFunList)) {   
-            #if DBG_FLAG
+            #if 1
             printf("\tReturn %s Curr routine: %s\n", currRoutine.c_str(), rtnName.c_str());
             #endif
             std::string privStr = "Return " +  rtnName + "\n";
+            printf("\t inserting %s into %s\n", privStr.c_str(), currRoutine.c_str());
             routineToInsts.find(currRoutine.c_str())->second.insert(privStr);
         }
     }

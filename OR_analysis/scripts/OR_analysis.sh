@@ -13,7 +13,7 @@ test_path=${parent_path}/tests
 source_path=${test_path}/sources
 result_path=${test_path}/results
 result_input_path=${result_path}/${input}
-options=("Compile" "DWARF Analysis" "PINTool" "All")
+options=("Compile" "DWARF Analysis" "PINTool" "All" "Calculate")
 
 compile() {
     echo "Compiling the source file:" ${source_path}/${input_file}
@@ -52,6 +52,11 @@ all() {
     pin
 }
 
+calculate() {
+    echo "Calculate OR"
+    python3 $current_path/OR_calculate.py --fun ${result_input_path}/fun.out --input ${result_input_path}/${input}_OR.out
+}
+
 while true; do
     select option in "${options[@]}" Quit
     do
@@ -60,6 +65,7 @@ while true; do
             2) echo "Selected $option"; dwarf; break;;
             3) echo "Selected $option"; pin; break;;
             4) echo "Selected $option"; all; break;;
+            5) echo "Selected $option"; calculate; break;;
             $((${#options[@]}+1))) echo "Finished!"; break 2;;
             *) echo "Wrong input"; break;
         esac;
