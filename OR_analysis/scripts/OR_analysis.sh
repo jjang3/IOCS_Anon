@@ -54,7 +54,7 @@ all() {
 
 calculate() {
     echo "Calculate OR"
-    python3 $current_path/OR_calculate.py --fun ${result_input_path}/fun.out --input ${result_input_path}/${input}_OR.out
+    python3 $current_path/OR_calculate.py --fun ${result_input_path}/fun.out --input ${result_input_path}/${input}_OR.out --custom ${result_input_path}/custom.out
 }
 
 while true; do
