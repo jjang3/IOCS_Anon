@@ -1,5 +1,5 @@
 [submodule "static_analysis/SVF"]
-	path = SVF
+	path = static_analysis/SVF
 	url = https://github.com/SVF-tools/SVF.git
 	dirty = ignore
 [submodule "taint_analysis/libdft64"]
@@ -7,5 +7,5 @@
 	url = https://github.com/AngoraFuzzer/libdft64.git
 	dirty = ignore
 [submodule "e9patch"]
-	path = e9patch
+	path = comp_analysis/e9patch
 	url = https://github.com/GJDuck/e9patch.git
