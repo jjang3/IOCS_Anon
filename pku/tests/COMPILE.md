@@ -1,1 +1,0 @@
-gcc -L../ pku_ex.c -lpkuapi    

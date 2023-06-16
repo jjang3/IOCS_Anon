@@ -14,19 +14,7 @@ sys.path.append(taint_script_dir)
 e9_dir              = os.path.join(home, "e9stuff")
 sys.path.append(e9_dir)
 
-import function_analysis
 import e9
-
-def taint():
-    print("Taint analysis")
-    taint_file = input("Input file: ")
-    subprocess.call([taint_analysis, taint_file])
-
-def fun():
-    print("Function analysis")
-    input_name = input("Input name: ")
-    bin_name = input("Binary name: ")
-    function_analysis.fun_analysis(input_name, bin_name)
 
 def e9patch():
     print("E9Patching")
@@ -40,10 +28,6 @@ def main():
     menu_entry_index = terminal_menu.show()
     print(f"You have selected {options[menu_entry_index]}!")
     match options[menu_entry_index]:
-        case "taint analysis":
-            taint()
-        case "fun analysis":
-            fun()
         case "e9patch":
             e9patch()
 
