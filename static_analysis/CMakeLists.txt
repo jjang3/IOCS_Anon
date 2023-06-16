@@ -49,6 +49,7 @@ message("LLVM STATUS:
 )
 
 # Set the LLVM header and library paths
+get_filename_component(PARENT_DIR ../ ABSOLUTE)
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
 link_directories(${LLVM_LIBRARY_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
@@ -88,5 +89,5 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
 
 # Include subdirectories. add_subdirectory(sources)
-add_subdirectory(SVF)
+add_subdirectory(${PARENT_DIR}/SVF)
 add_subdirectory(sources)

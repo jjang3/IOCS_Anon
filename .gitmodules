@@ -1,4 +1,4 @@
-[submodule "SVF"]
+[submodule "static_analysis/SVF"]
 	path = SVF
 	url = https://github.com/SVF-tools/SVF.git
 	dirty = ignore
