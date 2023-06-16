@@ -5,9 +5,10 @@ PS3="Select options: "
 input=$1
 input_file=$1.c
 
-PIN_ROOT=$HOME/Waterfall/OR_analysis/pin-3.27_build
 current_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 parent_path=$( cd ../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
+root_path=$( cd ../../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
+PIN_ROOT=$root_path/pin-3.27_build
 lib_path=${parent_path}/lib
 test_path=${parent_path}/tests
 source_path=${test_path}/sources
