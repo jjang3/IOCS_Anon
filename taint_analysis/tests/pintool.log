@@ -1,4 +1,0 @@
-Pin: pin-3.20-98437-f02b61307
-Copyright 2002-2020 Intel Corporation.
-A:  Source/pin/pin/image.cpp: INS_DirectControlFlowTargetAddress: 3123: not direct control flow:    817 0x00007f9709f38c49 call rbp
-
