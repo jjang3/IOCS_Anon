@@ -12,7 +12,7 @@ HEADERS 	= $(shell echo include/*.h)
 OBJECTS 	= $(SOURCES:.c=.o)
 
 # Patching-related
-INSTFLAGS	= -O1 -Wall -finstrument-functions -fplugin=/home/jaewon/Downloads/instrument-attribute-gcc-plugin/instrument_attribute.so -fplugin-arg-instrument_attribute-include-function-list=process_more_tainted_data
+INSTFLAGS	= -O1 -Wall -finstrument-functions -fplugin=/home/jaewon/Downloads/instrument-attribute-gcc-plugin/instrument_attribute.so -fplugin-arg-instrument_attribute-include-function-list=process_tainted_data,process_more_tainted_data
 LIBDIR 		= -L$(HOME)/Waterfall/pku/lib
 LIBS 		= -lpkuapi
 

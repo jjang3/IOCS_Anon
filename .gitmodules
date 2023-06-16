@@ -9,3 +9,6 @@
 [submodule "e9patch"]
 	path = comp_analysis/e9patch
 	url = https://github.com/GJDuck/e9patch.git
+[submodule "comp_analysis/instrument-attribute-gcc-plugin"]
+	path = comp_analysis/instrument-attribute-gcc-plugin
+	url = https://github.com/christophebedard/instrument-attribute-gcc-plugin.git
