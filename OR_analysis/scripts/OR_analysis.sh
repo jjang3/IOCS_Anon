@@ -8,7 +8,7 @@ input_file=$1.c
 PIN_ROOT=$HOME/Waterfall/OR_analysis/pin-3.27_build
 current_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 parent_path=$( cd ../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
-lib_path=${parent_path}/sources/obj-intel64
+lib_path=${parent_path}/lib
 test_path=${parent_path}/tests
 source_path=${test_path}/sources
 result_path=${test_path}/results
@@ -54,7 +54,7 @@ all() {
 
 calculate() {
     echo "Calculate OR"
-    python3 $current_path/OR_calculate.py --fun ${result_input_path}/fun.out --input ${result_input_path}/${input}_OR.out --custom ${result_input_path}/custom.out
+    python3 $current_path/OR_calculate.py --fun ${result_input_path}/fun.out --input ${result_input_path}/${input}_OR.out 
 }
 
 while true; do

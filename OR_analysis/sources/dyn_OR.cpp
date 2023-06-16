@@ -145,7 +145,7 @@ VOID RecMemRead(ADDRINT ip, ADDRINT addr)
         printf("\tread: %p | Name: %s\n", (void*)read_computed_addr, ptrToGVName.find(read_computed_addr)->second.c_str());
         #endif
         auto gvName = ptrToGVName.find(read_computed_addr)->second;
-        std::string privStr = "Read (global) " + gvName + "\n";
+        std::string privStr = "Read global_" + gvName + "\n";
         routineToInsts.find(routineStack.top())->second.insert(privStr);
     }
     else
@@ -162,7 +162,7 @@ VOID RecMemRead(ADDRINT ip, ADDRINT addr)
                 #if 1
                 printf("Heap found %lx\n", (uintptr_t)addr);
                 #endif
-                std::string privStr = "Read (local heap) " + i->second + "\n";
+                std::string privStr = "Read localH_" + i->second + "\n";
                 routineToInsts.find(routineStack.top())->second.insert(privStr);
             }
             else
@@ -170,7 +170,7 @@ VOID RecMemRead(ADDRINT ip, ADDRINT addr)
                 #if 1
                 printf("Heap not found %lx\n", (uintptr_t)addr);
                 #endif
-                std::string privStr = "Read (local) " + i->second + "\n";
+                std::string privStr = "Read local_" + i->second + "\n";
                 routineToInsts.find(routineStack.top())->second.insert(privStr);
             }
         }
@@ -191,7 +191,7 @@ VOID RecMemWrite(VOID* ip, ADDRINT addr)
         printf("\twrite: %p | Name: %s\n", (void*)write_computed_addr, ptrToGVName.find(write_computed_addr)->second.c_str());
         #endif
         auto gvName = ptrToGVName.find(write_computed_addr)->second;
-        std::string privStr = "Write (global) " + gvName + "\n";
+        std::string privStr = "Write global_" + gvName + "\n";
         routineToInsts.find(routineStack.top())->second.insert(privStr);
     }
     else
@@ -209,7 +209,7 @@ VOID RecMemWrite(VOID* ip, ADDRINT addr)
                 #if 1
                 printf("Heap found %lx\n", (uintptr_t)addr);
                 #endif
-                std::string privStr = "Write (local heap) " + i->second + "\n";
+                std::string privStr = "Write localH_" + i->second + "\n";
                 routineToInsts.find(routineStack.top())->second.insert(privStr);
             }
             else
@@ -217,7 +217,7 @@ VOID RecMemWrite(VOID* ip, ADDRINT addr)
                 #if 1
                 printf("Heap not found %lx\n", (uintptr_t)addr);
                 #endif
-                std::string privStr = "Write (local) " + i->second + "\n";
+                std::string privStr = "Write local_" + i->second + "\n";
                 routineToInsts.find(routineStack.top())->second.insert(privStr);
             }
         }
@@ -604,7 +604,7 @@ VOID Fini(INT32 code, VOID* v) {
             cout << itr << " ";
             fprintf(trace, "\t%s", itr.c_str());
         } 
-        fprintf(trace,"\n");
+        fprintf(trace,"Finished\n\n");
         cout << endl;
         
     }
