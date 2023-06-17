@@ -14,9 +14,8 @@ pin-3.27_build
 !OR_analysis/scripts/*.py
 !taint_analysis/scripts/*.sh
 !taint_analysis/scripts/*.py
-!tests/
-tests/*
-!tests/sources/
+!comp_analysis/tests/
+!comp_analysis/tests/sources/
 .lst
 tests
 backup*.cpp

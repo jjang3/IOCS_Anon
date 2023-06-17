@@ -108,11 +108,11 @@ def process_argument(argv):
     try:
         opts, args = getopt.getopt(argv,"hfic:",["fun=","input=","custom="])
     except getopt.GetoptError:
-        print ('OR_calculate.py --fun <fun.out> --input <*_local_OR.out> --custom <custom.out>')
+        print ('OR_calculate.py --fun <fun.out> --input <*_local_OR.out> --custom <list.out>')
         sys.exit(2)
     for opt, arg in opts:
         if opt == '-h':
-            print ('OR_calculate.py --fun <fun.out> --input <*_local_OR.out> --custom <custom.out>')
+            print ('OR_calculate.py --fun <fun.out> --input <*_local_OR.out> --custom <list.out>')
             sys.exit()
         elif opt in ("-f", "--fun"):
             funfile = arg
@@ -188,9 +188,10 @@ def process_file(funfile, localORfile, customfile):
     if customfile != "":
         with open(customfile) as c:
             for line in c:
-                split_line = line.split(", ")
+                split_line = line.split(",")
                 custom_tuple = tuple(split_line)
-        
+                print(split_line)
+    exit()
     for (index, item) in enumerate(sorted(comp_ratio_set, reverse=True)):
         if index > 5:
             break
