@@ -66,7 +66,7 @@ CFLAGS="-fno-stack-protector \
     -mno-mmx -mno-sse -mno-avx -mno-avx2 -mno-avx512f -msoft-float \
     -fno-tree-vectorize -fomit-frame-pointer \
     -I examples/"
-COMPILE="$CC $CFLAGS -c -Wall $@ $HOME/Waterfall/pku/src/pkuapi.c \"$DIRNAME/$BASENAME.$EXTENSION\""
+COMPILE="$CC $CFLAGS -c -Wall $@ $HOME/Waterfall/comp_analysis/pku/src/pkuapi.c \"$DIRNAME/$BASENAME.$EXTENSION\""
 
 echo "$COMPILE" | xargs
 if ! eval "$COMPILE"
@@ -84,7 +84,7 @@ CFLAGS="-pie -nostdlib \
     -Wl,--export-dynamic \
     -Wl,--entry=0x0 \
     -Wl,--strip-all"
-COMPILE="$CC \"$BASENAME.o\" $HOME/Waterfall/pkuapi.o -o \"$BASENAME\" $CFLAGS"
+COMPILE="$CC \"$BASENAME.o\" $HOME/Waterfall/comp_analysis/e9stuff/src/pkuapi.o -o \"$BASENAME\" $CFLAGS"
 
 echo "$COMPILE" | xargs
 if ! eval "$COMPILE"

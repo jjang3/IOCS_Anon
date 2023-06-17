@@ -13,7 +13,6 @@
 
 #define DBG_FLAG 1
 
-int pkey;
 int check;
 /*
  * Entry point.
@@ -22,33 +21,31 @@ int check;
  */
 void entry(intptr_t static_addr, intptr_t asm_str, const char *entry_exit_flag, void *section_addr, void *static_section_addr)
 {
-    check++;
     if (strcmp(entry_exit_flag, "protect") == 0) {
         #if DBG_FLAG
         fprintf(stderr, YELLOW "%.16lx: pkey: %d %p" GREEN " mprotect\n" WHITE, static_addr, pkey, static_section_addr);
         #endif
-        if (check == 1) {
-            if(pkey_mprotect(section_addr, PAGESIZE, PROT_READ | PROT_EXEC, pkey) == -1) {
-                //perror("pkey_mprotect()");
-                fprintf(stderr, RED "pkey_mprotect()\n" WHITE);
-                exit(0);
-                return;
-            }
-            // fprintf(stderr, "0x%hhx\n", *(int*)section_addr); This is to verify whether mprotect is working properly.
+        if(pkey_mprotect(section_addr, PAGESIZE, PROT_READ | PROT_EXEC, pkey) == -1) {
+            //perror("pkey_mprotect()");
+            fprintf(stderr, RED "pkey_mprotect()\n" WHITE);
+            //exit(0);
+            //fprintf(stderr, "0x%hhx\n", *(int*)section_addr);//This is to verify whether mprotect is working properly.
+            return;
         }
+        
     }
     else if (strcmp(entry_exit_flag, "entry") == 0) {
         #if DBG_FLAG
         fprintf(stderr, YELLOW "%.16lx: pkey: %d" RED " disable access\n" WHITE, static_addr, pkey, entry_exit_flag);
         #endif
-        //pkey_disable_access(); // <- segmentation fault here.
+        pkey_disable_access(); // <- segmentation fault here.
         // uncomment this to enable restriction access
     }
     else {
         #if DBG_FLAG
         fprintf(stderr, YELLOW "%.16lx: pkey: %d" GREEN " returning, enable access\n"  WHITE, static_addr, pkey, entry_exit_flag);
         #endif
-        //pkey_all_access();
+        pkey_all_access();
     }
     //printf("This is where pkey will be set/disabled\n");
 }
@@ -69,7 +66,7 @@ void init(int argc, char **argv, char **envp)
         return;
 	}
     // Assign "All Access" permission to pkey (not designated to any memory locations yet)
-    if (pkey_set(pkey, PKEY_ALL_ACCESS, 0) == -1) {
+    if (pkey_set(pkey, PKEY_DISABLE_ACCESS, 0) == -1) {
         //perror("pkey_set()");
         return;
     }
