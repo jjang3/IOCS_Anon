@@ -17,7 +17,8 @@ pin-3.27_build
 !comp_analysis/tests/
 !comp_analysis/tests/sources/
 .lst
-tests
 backup*.cpp
 #test.out#
 tests/results
+tests
+!Makefile
