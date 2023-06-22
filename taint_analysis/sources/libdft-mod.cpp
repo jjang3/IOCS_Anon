@@ -33,7 +33,7 @@ using std::endl;
 #define DLIB_SUFF_ALT	".so."
 #define	TAG 	0x01U
 
-#define DBG_FLAG 1
+#define DBG_FLAG 0
 
 /* thread context */
 extern thread_ctx_t *threads_ctx;
@@ -103,7 +103,7 @@ void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 		//	return;
 		RTN_Open(callRtn);
 		#if DBG_FLAG
-		//cerr << hex << ins_addr << " [*] " << RTN_Name(callRtn) << endl;
+		cerr << hex << ins_addr << " [*] " << RTN_Name(callRtn) << endl;
 		#endif
 		RTN_Close(callRtn);
 	}
@@ -525,7 +525,7 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 		/* set the tag markings */
 		//cerr << "\t► read(2) taint set | " << unwindStack.top() << endl;
 		taintSrc = true;
-		// \nCurr Fun: %s\n\t  unwindStack.top()
+		
 		#if DBG_FLAG
 		fprintf(trace, "Taint source read(2): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
 		#endif

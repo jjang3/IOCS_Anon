@@ -40,6 +40,7 @@ pkey_free(unsigned long pkey)
 
 void pkey_disable_access()
 {
+    printf("Disable\n");
     pkey_set(pkey, PKEY_DISABLE_ACCESS, 0);
     //pkey_set(pkey, PKEY_DISABLE_WRITE, 0);
 }

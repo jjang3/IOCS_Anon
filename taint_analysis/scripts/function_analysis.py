@@ -28,7 +28,7 @@ def fun_analysis(input_name, binary_name):
     in_folder       = os.path.join(test_folder, input_name)
     bin_file        = os.path.join(in_folder, input_name)
     in_file         = os.path.join(in_folder, "dft.out")
-    out_file        = os.path.join(in_folder, input_name+"_list.out")
+    out_file        = os.path.join(in_folder, "list.out")
     #print(cwd, parent, test_folder, in_folder)
     #exit()
     #nm_file         = os.path.join(in_folder, input_name+".nm")
@@ -42,6 +42,7 @@ def fun_analysis(input_name, binary_name):
         with open_view(bin_file) as bv:                
             print("Step: Binary Ninja")
             print("Number of functions: ", len(bv.functions))
+            # Initialization of function classes to analyze with dft.out
             for (fun_index, fun) in enumerate(bv.functions):
                 range_list = fun.address_ranges
                 fun_class = fun_dataclass(fun.name, range_list, set(), set())   # Initializing function dataclass
@@ -114,6 +115,19 @@ def fun_analysis(input_name, binary_name):
     #    if str(item) in tainted_total_funs:
     #        print("Removed") # Need to not show
 
+    sum_iterator = 0
+    #total_write = "Summary: ["
+    total_write = ""
+    for item in tainted_total_funs:
+        sum_iterator += 1
+        if (sum_iterator == len(tainted_total_funs)):
+            #total_write += "\""+item+"\""
+            total_write += item
+            break
+        total_write += item+","
+    out_file_open.write(total_write)
+
+    """
     src_write = "Sources: { " 
     for item in tainted_srcs_funs:
         print("Source: ", item)
@@ -127,19 +141,7 @@ def fun_analysis(input_name, binary_name):
         sink_write += item + " "
     sink_write += "}" + "\n\n"
     out_file_open.write(sink_write)
-
-    sum_iterator = 0
-    total_write = "Summary: ["
-    for item in tainted_total_funs:
-        sum_iterator += 1
-        if (sum_iterator == len(tainted_total_funs)):
-            #total_write += "\""+item+"\""
-            total_write += item
-            break
-        total_write += item+","
-    total_write += "]\n\n"
-    out_file_open.write(total_write)
-
+    
     exclude_write="Exclude: "
     iterator = 0
     for item in uniq_funs:
@@ -149,7 +151,8 @@ def fun_analysis(input_name, binary_name):
             break
         exclude_write += item + ","
     out_file_open.write(exclude_write)
-
+    """
+    
     out_file_open.close()
 
 if __name__ == "__main__":

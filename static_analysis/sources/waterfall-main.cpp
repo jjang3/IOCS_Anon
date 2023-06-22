@@ -3,7 +3,7 @@
 
 #include <string.h>
 
-#define DBG_FLAG 0
+#define DBG_FLAG 1
 
 using namespace llvm;
 using namespace std;

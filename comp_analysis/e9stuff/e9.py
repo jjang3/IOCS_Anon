@@ -51,18 +51,22 @@ def e9_rewrite(input_name, patch_name):
     subprocess.call([e9patch, patch_name])
     os.chdir(patch_dir)
     args = list()
+    
     args.append("-M call and target = &.init.start")
-    args.append("-P before entry(offset,asm,\"protect\",&.text.start,(static)&.text.start)@init_mprotect")
+    args.append("-P before entry(offset,F.name,\"protect\",&.text.start,(static)&.text.start)@init_mprotect")
     args.append("-M call and target = &__cyg_profile_func_enter")
-    args.append("-P before entry(offset,asm,\"entry\")@init_mprotect")
+    args.append("-P before entry(offset,F.name,\"entry\")@init_mprotect")
     #for item in fun_list:
         #args.append("-M call and target = &"+item)
         #args.append("-P print")
         #args.append("-M call and target = &_init")
         #args.append("-P before entry(offset,asm,base,&\".text\")@print")
     args.append("-M call and target = &__cyg_profile_func_exit")
-    args.append("-P before entry(offset,asm,\"exit\")@init_mprotect")
-
+    args.append("-P before entry(offset,F.name,\"exit\")@init_mprotect")
+    
+    #args.append("-M call and target = ")
+    #args.append("-P before entry(addr,bytes,size,asm)@print")
+    
     subprocess.call([e9tool, *args, in_file])
 
 

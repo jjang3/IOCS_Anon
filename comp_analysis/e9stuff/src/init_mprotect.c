@@ -19,11 +19,11 @@ int check;
  *
  * call entry(...)
  */
-void entry(intptr_t static_addr, intptr_t asm_str, const char *entry_exit_flag, void *section_addr, void *static_section_addr)
+void entry(intptr_t static_addr, intptr_t fun_str, const char *entry_exit_flag, void *section_addr, void *static_section_addr)
 {
     if (strcmp(entry_exit_flag, "protect") == 0) {
         #if DBG_FLAG
-        fprintf(stderr, YELLOW "%.16lx: pkey: %d %p" GREEN " mprotect\n" WHITE, static_addr, pkey, static_section_addr);
+        fprintf(stderr, YELLOW "%.16lx %p" GREEN " mprotect\n" WHITE, static_addr, static_section_addr);
         #endif
         if(pkey_mprotect(section_addr, PAGESIZE, PROT_READ | PROT_EXEC, pkey) == -1) {
             //perror("pkey_mprotect()");
@@ -35,17 +35,17 @@ void entry(intptr_t static_addr, intptr_t asm_str, const char *entry_exit_flag, 
         
     }
     else if (strcmp(entry_exit_flag, "entry") == 0) {
-        #if DBG_FLAG
-        fprintf(stderr, YELLOW "%.16lx: pkey: %d" RED " disable access\n" WHITE, static_addr, pkey, entry_exit_flag);
-        #endif
         pkey_disable_access(); // <- segmentation fault here.
+        #if DBG_FLAG
+        fprintf(stderr, YELLOW "%.16lx (%s):" RED " disable access\n" WHITE, static_addr, fun_str, entry_exit_flag);
+        #endif
         // uncomment this to enable restriction access
     }
     else {
-        #if DBG_FLAG
-        fprintf(stderr, YELLOW "%.16lx: pkey: %d" GREEN " returning, enable access\n"  WHITE, static_addr, pkey, entry_exit_flag);
-        #endif
         pkey_all_access();
+        #if DBG_FLAG
+        fprintf(stderr, YELLOW "%.16lx (%s):" GREEN " returning, enable access\n"  WHITE, static_addr, fun_str, entry_exit_flag);
+        #endif
     }
     //printf("This is where pkey will be set/disabled\n");
 }

@@ -7,16 +7,13 @@
 			"path": "../../../Downloads/Waterfall_test"
 		},
 		{
-			"path": "../../../Downloads/libdwarf-0.4.2"
-		},
-		{
-			"path": "../../../Downloads/libdwarf"
-		},
-		{
-			"path": "../../../Downloads"
-		},
-		{
 			"path": "../../../Downloads/Waterfall_check"
+		},
+		{
+			"path": "../../../Downloads/CVE-3156"
+		},
+		{
+			"path": "../../../Downloads/redis-5.0.14"
 		}
 	],
 	"settings": {
