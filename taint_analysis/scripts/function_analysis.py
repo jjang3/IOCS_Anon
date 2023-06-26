@@ -34,7 +34,8 @@ def find_taint_variables(bbs, src_addrs, bv):
                     for param_var in src_ssa.params:
                         print(param_var.operation, param_var)
                         if  param_var.operation == MediumLevelILOperation.MLIL_VAR_SSA or \
-                            param_var.operation == MediumLevelILOperation.MLIL_VAR:
+                            param_var.operation == MediumLevelILOperation.MLIL_VAR or \
+                            param_var.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED:
                                 cand = param_var.function.get_ssa_var_definition(param_var.src)
                                 if type(cand.src.src) == binaryninja.function.Variable:
                                     tainted_vars_local.add(cand.src.src)
@@ -50,13 +51,8 @@ def find_taint_variables(bbs, src_addrs, bv):
                                             if global_ref.function.get_llil_at(global_ref.address).hlil.operation is HighLevelILOperation.HLIL_CALL:
                                                 for op in global_ref.function.get_llil_at(global_ref.address).hlil.operands:
                                                     if str(op) in sink_funs:
-                                                        print("Taint variable added to global: ", param_var.address)
-                                                        tainted_vars_global.add(param_var.address)
-                                                        
-
-                                    
-                                    
-                
+                                                        print("Taint variable added to global: ", hex(global_var.address))
+                                                        tainted_vars_global.add(global_var.address)
 
 def check_taint_param(target_fun, param_index):
     # if target_fun == None:
@@ -171,10 +167,10 @@ def fun_analysis(input_name, binary_name):
                 for mlil_bb in fun.mlil_basic_blocks:
                     for mlil_inst in mlil_bb:
                         inst_ssa = mlil_inst.ssa_form
-                        if inst_ssa.operation == MediumLevelILOperation.MLIL_CALL_SSA:
-                            #print("Call found", mlil_inst, mlil_inst.params)
+                        if inst_ssa.operation == MediumLevelILOperation.MLIL_CALL_SSA or inst_ssa.operation == MediumLevelILOperation.MLIL_CALL:
                             call_addr   = inst_ssa.dest.operands[0]
                             #call_fun    = bv.get_function_at(call_addr)
+                            #print("Call found", mlil_inst, mlil_inst.params, mlil_inst.operation)
                             if type(call_addr) == int:
                                 call_fun = bv.get_function_at(call_addr)
                                 if call_fun != None:
@@ -190,7 +186,22 @@ def fun_analysis(input_name, binary_name):
                                                 if cand.src.src in tainted_vars_local or cand.src.src in tainted_vars_global:
                                                     print("Found taint variable, adding function: ", call_fun.start)
                                                     tainted_sinks_funs.add(call_fun.name)
-                                                    
+                                            elif param.operation == MediumLevelILOperation.MLIL_CONST_PTR or \
+                                                param.operation == MediumLevelILOperation.MLIL_CONST: 
+                                                global_var = bv.get_data_var_at(param.constant)
+                                                if global_var != None:
+                                                    if global_var.address in tainted_vars_global:
+                                                        tainted_sinks_funs.add(call_fun.name)
+                            for param in mlil_inst.params:
+                                if param.operation == MediumLevelILOperation.MLIL_CONST_PTR or \
+                                    param.operation == MediumLevelILOperation.MLIL_CONST: 
+                                    global_var = bv.get_data_var_at(param.constant)
+                                    if global_var != None:
+                                        if global_var.address in tainted_vars_global:
+                                            tainted_sinks_funs.add(fun.name)
+                # for bb in fun.basic_blocks:
+                #     for inst in bb:
+                #         print(inst)
                                         # for param_var in param_list:
                                         #     print(param_var)
                                             #for ref in call_fun.get_mlil_var_refs(param_var):

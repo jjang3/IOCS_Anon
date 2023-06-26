@@ -37,7 +37,7 @@ const void * _end_protected_sec;
 const void * _start_untrusted_sec;
 const void * _end_untrusted_sec;
 */
-//char buf[50];
+char buf[50];
 static void socket_create_bind_local()
 {
 	struct sockaddr_in server_addr;
@@ -152,6 +152,11 @@ void dynamically_unreachable(char *str)
 	return;
 }
 
+void no_pass_arg()
+{
+	printf("No pass arg: %s\n", buf);
+}
+
 /**
  * This should be a tainted function if considering network data as taint src.
  */
@@ -159,7 +164,7 @@ void process_new_data(int fd)
 {
 	//asm volatile("xor %rax, %rax\n");
 	ssize_t count;
-	char buf[16];
+	//char buf[16];
 	while ((count = read(fd, buf, sizeof(buf) - 1))) {
 		if (count == -1) {
 			/* EAGAIN, read all data */
@@ -173,7 +178,7 @@ void process_new_data(int fd)
 		buf[count-1] = '\0';
 		printf("Buffer: %s\n", buf);
 		//write(STDOUT_FILENO, buf, sizeof(buf)-1);
-
+		no_pass_arg();
 		/* Process more tainted data. */
 		if (!strcmp(buf, "secret"))
 			process_more_tainted_data(buf);
