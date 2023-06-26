@@ -26,9 +26,9 @@ extern const void *__text_end;
 //__attribute__ ((section (".isolate_data"))) int canary = 0; // Barrier variable
 //void __attribute__((constructor)) init();
 //int main()  __attribute__((aligned(PAGESIZE))) __attribute__ ((section (".protected")));
-int main();
-void process_new_data() __attribute__ ((section (".isolated_target")));
-void process_more_tainted_data() __attribute__ ((section (".isolated_target")));
+//int main();
+//void process_new_data() __attribute__ ((section (".isolated_target")));
+//void process_more_tainted_data() __attribute__ ((section (".isolated_target")));
 //int canary = 0;
 /* The linker automatically creates these symbols for "my_custom_section". */
 /*
@@ -37,6 +37,7 @@ const void * _end_protected_sec;
 const void * _start_untrusted_sec;
 const void * _end_untrusted_sec;
 */
+//char buf[50];
 static void socket_create_bind_local()
 {
 	struct sockaddr_in server_addr;
@@ -146,6 +147,7 @@ void process_more_tainted_data(char *str)
 
 void dynamically_unreachable(char *str)
 {
+	printf("%s\n", str);
 	printf("Dynamically unreachable, but touches tainted value\n");
 	return;
 }
@@ -175,8 +177,9 @@ void process_new_data(int fd)
 		/* Process more tainted data. */
 		if (!strcmp(buf, "secret"))
 			process_more_tainted_data(buf);
-		else if (!strcmp(buf, "unreachable"))
+		else if (!strcmp(buf, "unreachable")){
 			dynamically_unreachable(buf);	
+			exit(1);}
 		else if (!strcmp(buf, "exit"))
 			exit(1);
 		

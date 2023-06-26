@@ -17,8 +17,9 @@ parser.add_argument('-i', '--input', required=True)             # testing applic
 parser.add_argument('-b', '--binary', required=True)             # testing application to rewrite
 args                = parser.parse_args()
 
-tainted_vars        = set()
-sink_funs           = set()
+tainted_vars_local      = set()
+tainted_vars_global     = set()
+sink_funs               = set()
 
 def main():
     fun_analysis(args.input, args.binary)
@@ -36,15 +37,23 @@ def find_taint_variables(bbs, src_addrs, bv):
                             param_var.operation == MediumLevelILOperation.MLIL_VAR:
                                 cand = param_var.function.get_ssa_var_definition(param_var.src)
                                 if type(cand.src.src) == binaryninja.function.Variable:
-                                    tainted_vars.add(cand.src.src)
-                                    print("Taint variable added: ", cand.src, hex(cand.address))
+                                    tainted_vars_local.add(cand.src.src)
+                                    print("Taint variable added to local: ", cand.src.src, hex(cand.address))
                         elif param_var.operation == MediumLevelILOperation.MLIL_CONST_PTR or \
                             param_var.operation == MediumLevelILOperation.MLIL_CONST:
                                 global_var = bv.get_data_var_at(param_var.constant)
                                 print(global_var)
                                 for global_ref in global_var.code_refs:
                                     if global_ref.function.get_llil_at(global_ref.address).mlil is not None:
-                                        print(global_ref.function.get_llil_at(global_ref.address).mlil)
+                                        oper = global_ref.function.get_llil_at(global_ref.address).mlil.operation
+                                        if oper is MediumLevelILOperation.MLIL_CALL:
+                                            if global_ref.function.get_llil_at(global_ref.address).hlil.operation is HighLevelILOperation.HLIL_CALL:
+                                                for op in global_ref.function.get_llil_at(global_ref.address).hlil.operands:
+                                                    if str(op) in sink_funs:
+                                                        print("Taint variable added to global: ", param_var.address)
+                                                        tainted_vars_global.add(param_var.address)
+                                                        
+
                                     
                                     
                 
@@ -178,7 +187,7 @@ def fun_analysis(input_name, binary_name):
                                                 param.operation == MediumLevelILOperation.MLIL_VAR_SSA:
                                                 cand = param.function.get_ssa_var_definition(param.src)
                                                 print(call_fun, cand.src.src, cand.src, hex(cand.address))
-                                                if cand.src.src in tainted_vars:
+                                                if cand.src.src in tainted_vars_local or cand.src.src in tainted_vars_global:
                                                     print("Found taint variable, adding function: ", call_fun.start)
                                                     tainted_sinks_funs.add(call_fun.name)
                                                     

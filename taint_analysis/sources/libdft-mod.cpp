@@ -33,7 +33,7 @@ using std::endl;
 #define DLIB_SUFF_ALT	".so."
 #define	TAG 	0x01U
 
-#define DBG_FLAG 0
+#define DBG_FLAG 1
 
 /* thread context */
 extern thread_ctx_t *threads_ctx;
