@@ -105,14 +105,15 @@ def process_argument(argv):
     funfile = ''
     localORfile = ''
     customfile = ''
+    greedyopt = int()
     try:
-        opts, args = getopt.getopt(argv,"hfic:",["fun=","input=","custom="])
+        opts, args = getopt.getopt(argv,"hfic:",["fun=","input=","custom=","greedy="])
     except getopt.GetoptError:
-        print ('OR_calculate.py --fun <fun.out> --input <*_local_OR.out> --custom <list.out>')
+        print ('OR_calculate.py --fun <fun.out> --input <*_local_OR.out> --custom <list.out> --greedy <0 or 1>')
         sys.exit(2)
     for opt, arg in opts:
         if opt == '-h':
-            print ('OR_calculate.py --fun <fun.out> --input <*_local_OR.out> --custom <list.out>')
+            print ('OR_calculate.py --fun <fun.out> --input <*_local_OR.out> --custom <list.out> --greedy <0 or 1>')
             sys.exit()
         elif opt in ("-f", "--fun"):
             funfile = arg
@@ -120,14 +121,18 @@ def process_argument(argv):
             localORfile = arg
         elif opt in ("-c", "--custom"):
             customfile = arg
-    process_file(funfile, localORfile, customfile)
+        elif opt in ("-g", "--greedy"):
+            greedyopt = arg
+    process_file(funfile, localORfile, customfile, greedyopt)
 
-def process_file(funfile, localORfile, customfile):
+def process_file(funfile, localORfile, customfile, greedyopt):
     print(funfile)    
     print(localORfile)
     print(customfile)
     #fun_regex = re.search(r'(.*[a-z,A-Z,0-9])(?=:)')
     least_priv = 0
+    print("Greedy option <0 (Size) or 1 (Ratio)>:", greedyopt)
+    
     with open(localORfile) as l:
         fun_name = ""
         for index, line in enumerate(l):

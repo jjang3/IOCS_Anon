@@ -14,6 +14,18 @@
 		},
 		{
 			"path": "../../../Downloads/redis-5.0.14"
+		},
+		{
+			"path": "../../../Downloads/cb-multios"
+		},
+		{
+			"path": "../../../Downloads/lighttpd-1.4.58"
+		},
+		{
+			"path": "../../../Downloads/lighttpd1.4-lighttpd-1.4.56"
+		},
+		{
+			"path": "../../../Downloads/min-dop"
 		}
 	],
 	"settings": {

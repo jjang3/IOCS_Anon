@@ -149,56 +149,56 @@ def fun_analysis(input_name, binary_name):
             for (fun_index, fun) in enumerate(bv.functions):
                 fun_class = fun_dataclass(fun.name, fun.address_ranges, set(), set()) # initializing 
                 fun_class_set.add(fun_class)  # Adding dataclass to a set
-                find_taint_variables(fun.mlil_basic_blocks, tainted_srcs_addr, bv)
-                potential_sinks = set()
-                print("Analyzing at function:", fun.name)
-                for callee_fun in fun.callees:
-                    symbol = bv.symbols[callee_fun.name]
-                    #print(callee_fun.name)
-                    if len(symbol) <= 1 and callee_fun.name not in sink_funs:
-                        potential_sinks.add(callee_fun)
-                        for index, param in enumerate(callee_fun.parameter_vars):
-                            if param.type is not None and param.type.type_class == TypeClass.PointerTypeClass:
-                                print(param.index)
-                        #         check_taint_param(callee_fun, param.index)
-                                #print(callee_fun.get_mlil_var_refs(param))
-                                #call_instr = callee_fun.get_low_level_il_at(callee_fun.start).mlil
-                                #print(call_instr)
-                for mlil_bb in fun.mlil_basic_blocks:
-                    for mlil_inst in mlil_bb:
-                        inst_ssa = mlil_inst.ssa_form
-                        if inst_ssa.operation == MediumLevelILOperation.MLIL_CALL_SSA or inst_ssa.operation == MediumLevelILOperation.MLIL_CALL:
-                            call_addr   = inst_ssa.dest.operands[0]
-                            #call_fun    = bv.get_function_at(call_addr)
-                            #print("Call found", mlil_inst, mlil_inst.params, mlil_inst.operation)
-                            if type(call_addr) == int:
-                                call_fun = bv.get_function_at(call_addr)
-                                if call_fun != None:
-                                    if call_fun in potential_sinks:
-                                        param_list = call_fun.parameter_vars
-                                        print(inst_ssa.params)
-                                        for param in inst_ssa.params:
-                                            print(param.operation)
-                                            if  param.operation == MediumLevelILOperation.MLIL_VAR or \
-                                                param.operation == MediumLevelILOperation.MLIL_VAR_SSA:
-                                                cand = param.function.get_ssa_var_definition(param.src)
-                                                print(call_fun, cand.src.src, cand.src, hex(cand.address))
-                                                if cand.src.src in tainted_vars_local or cand.src.src in tainted_vars_global:
-                                                    print("Found taint variable, adding function: ", call_fun.start)
-                                                    tainted_sinks_funs.add(call_fun.name)
-                                            elif param.operation == MediumLevelILOperation.MLIL_CONST_PTR or \
-                                                param.operation == MediumLevelILOperation.MLIL_CONST: 
-                                                global_var = bv.get_data_var_at(param.constant)
-                                                if global_var != None:
-                                                    if global_var.address in tainted_vars_global:
-                                                        tainted_sinks_funs.add(call_fun.name)
-                            for param in mlil_inst.params:
-                                if param.operation == MediumLevelILOperation.MLIL_CONST_PTR or \
-                                    param.operation == MediumLevelILOperation.MLIL_CONST: 
-                                    global_var = bv.get_data_var_at(param.constant)
-                                    if global_var != None:
-                                        if global_var.address in tainted_vars_global:
-                                            tainted_sinks_funs.add(fun.name)
+                # find_taint_variables(fun.mlil_basic_blocks, tainted_srcs_addr, bv)
+                # potential_sinks = set()
+                # print("Analyzing at function:", fun.name)
+                # for callee_fun in fun.callees:
+                #     symbol = bv.symbols[callee_fun.name]
+                #     #print(callee_fun.name)
+                #     if len(symbol) <= 1 and callee_fun.name not in sink_funs:
+                #         potential_sinks.add(callee_fun)
+                #         for index, param in enumerate(callee_fun.parameter_vars):
+                #             if param.type is not None and param.type.type_class == TypeClass.PointerTypeClass:
+                #                 print(param.index)
+                #                 #check_taint_param(callee_fun, param.index)
+                #                 #print(callee_fun.get_mlil_var_refs(param))
+                #                 #call_instr = callee_fun.get_low_level_il_at(callee_fun.start).mlil
+                #                 #print(call_instr)
+                
+                # for mlil_bb in fun.mlil_basic_blocks:
+                #     for mlil_inst in mlil_bb:
+                #         inst_ssa = mlil_inst.ssa_form
+                #         if inst_ssa.operation == MediumLevelILOperation.MLIL_CALL_SSA or inst_ssa.operation == MediumLevelILOperation.MLIL_CALL:
+                #             call_addr   = inst_ssa.dest.operands[0]
+                #             #call_fun    = bv.get_function_at(call_addr)
+                #             #print("Call found", mlil_inst, mlil_inst.params, mlil_inst.operation)
+                #             if type(call_addr) == int:
+                #                 call_fun = bv.get_function_at(call_addr)
+                #                 if call_fun != None:
+                #                     if call_fun in potential_sinks:
+                #                         param_list = call_fun.parameter_vars
+                #                         #print(inst_ssa.params)
+                #                         for param in inst_ssa.params:
+                #                             print(param.operation)
+                #                             if  param.operation == MediumLevelILOperation.MLIL_VAR or param.operation == MediumLevelILOperation.MLIL_VAR_SSA:
+                #                                 cand = param.function.get_ssa_var_definition(param.src)
+                #                                 #print(call_fun, cand.src.src, cand.src, hex(cand.address))
+                #                                 if cand.src.src in tainted_vars_local or cand.src.src in tainted_vars_global:
+                #                                     print("Found taint variable, adding function: ", call_fun.start)
+                #                                     tainted_sinks_funs.add(call_fun.name)
+                #                             elif param.operation == MediumLevelILOperation.MLIL_CONST_PTR or \
+                #                                 param.operation == MediumLevelILOperation.MLIL_CONST: 
+                #                                 global_var = bv.get_data_var_at(param.constant)
+                #                                 if global_var != None:
+                #                                     if global_var.address in tainted_vars_global:
+                #                                         tainted_sinks_funs.add(call_fun.name)
+                #             for param in mlil_inst.params:
+                #                 if param.operation == MediumLevelILOperation.MLIL_CONST_PTR or \
+                #                     param.operation == MediumLevelILOperation.MLIL_CONST: 
+                #                     global_var = bv.get_data_var_at(param.constant)
+                #                     if global_var != None:
+                #                         if global_var.address in tainted_vars_global:
+                #                             tainted_sinks_funs.add(fun.name)
                 # for bb in fun.basic_blocks:
                 #     for inst in bb:
                 #         print(inst)

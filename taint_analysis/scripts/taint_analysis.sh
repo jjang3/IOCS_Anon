@@ -49,7 +49,8 @@ taint()
     mkdir $result_input_path
     mv $test_path/$input $result_input_path
   fi
-  $PIN_ROOT/pin -follow-execv -t $lib_path/libdft-mod.so -- ${result_input_path}/${input}
+  $PIN_ROOT/pin -follow-execv -t $lib_path/libdft-mod.so -- ${result_input_path}/${input} 1111
+  objdump -d $test_path/$input &> $result_input_path/$input.objdump
   mv dft.out $result_input_path
 }
 
