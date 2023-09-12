@@ -46,7 +46,8 @@ class SizeType(Enum):
     CHAR = 1
     INT = 4
     CHARPTR = 8
-def generate_table(varcount):
+    
+def generate_table(varcount, target_dir):
     varlist = list()
     include_lib_flags="""
 #include <sys/auxv.h>
@@ -85,7 +86,7 @@ void __attribute__((constructor)) table()
     end_table="""\t_writegsbase_u64((long long unsigned int)table);
 }
 """
-    table_file = open("table.c", "w")
+    table_file = open("%s/table.c" % target_dir, "w")
     table_file.write(include_lib_flags)
     table_file.write(begin_table)
     for item in varlist:
@@ -166,6 +167,7 @@ offset_dict         = dict()
 prog_offset_set     = dict()
 struct_offset_set   = dict()
 table_offset        = 0
+
 def process_binary(filename, funfile, dirloc):
         target_dir = None        
         if dirloc != None:
@@ -182,22 +184,22 @@ def process_binary(filename, funfile, dirloc):
                     funlist = line.split(",")
                     
         dir_list = os.listdir(target_dir)
-        print(filename, funfile)
+        print(filename, funfile, target_dir)
         # --- DWARF analysis --- #
-        dwarf_analysis(funlist, filename)
+        dwarf_analysis(funlist, filename, target_dir)
         
         # --- Binary Ninja Analysis --- #
         with open_view(filename) as bv:                
             arch = Architecture['x86_64']
-            bn = BinAnalysis(bv)
-            bn.analyze_binary(funlist)
+            # bn = BinAnalysis(bv)
+            # bn.analyze_binary(funlist)
 
-        if dirloc != '':
-            for dir_file in dir_list:
-                if (dir_file.endswith('.s')):
-                    process_file(funlist, target_dir, dir_file)
-        else:
-            process_file(funlist, target_dir, target_file)
+        # if dirloc != '':
+        #     for dir_file in dir_list:
+        #         if (dir_file.endswith('.s')):
+        #             process_file(funlist, target_dir, dir_file)
+        # else:
+        #     process_file(funlist, target_dir, target_file)
             
 def analyze_temp_inst(temp_inst, patch_targets):
     inst_type = False
@@ -271,7 +273,7 @@ class PatchingInst:
     src: Optional[str] = None       
     offset: Optional[str] = None
     
-def dwarf_analysis(funlist, filename):
+def dwarf_analysis(funlist, filename, target_dir):
     dwarf_var_count     = 0
     with open(filename, 'rb') as f:
         elffile = ELFFile(f)
@@ -433,7 +435,7 @@ def dwarf_analysis(funlist, filename):
     #     for var in fun_var_info[item]:
     #         print(var)
     print("Variable count: ", dwarf_var_count)
-    generate_table(dwarf_var_count)
+    generate_table(dwarf_var_count, target_dir)
 
 def process_file(funlist, target_dir, target_file):
         # if (target_file.endswith('.asm')):

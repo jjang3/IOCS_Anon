@@ -1,8 +1,8 @@
 # Library-related                                                                                                                                                                                                                      
 SHELL           = /bin/zsh
 CC              = gcc
-PIEFLAGS = -no-pie -fno-pie
-ASMFLAGS		= -O0  -gdwarf-2 -save-temps -masm=intel -c -fno-stack-protector -fno-asynchronous-unwind-tables
+PIEFLAGS = 		-no-pie -fno-pie
+ASMFLAGS		= -O0  -gdwarf-2 -c -save-temps=obj
 LIBFLAGS	    = -Wall -fPIC -shared
 LIBLDFLAGS      = -ldl -mfsgsbase
 LIBTARGET       = table.so
@@ -19,17 +19,21 @@ lib: $(LIBTARGET)
 $(LIBTARGET): 
 		$(CC) $(LIBFLAGS) table.c -o $@ $(LIBLDFLAGS)
 
-%.new: %.s
+%.new: %
 	$(eval name := $(basename $@))	;\
-	as $< -o $(name).o ;\
-	gcc $(PIEFLAGS) $(name).o -o $@
+	$(CC) $(LIBFLAGS) ${name}/table.c -o ${name}/table.so $(LIBLDFLAGS)
+	if [ ! -d ${name}/lib ]; then mkdir -p $(name)/lib; fi
+	mv ${name}/table.so $(name)/lib
+	as ${name}/$<.s -o ${name}/$(name).o ;\
+	gcc $(PIEFLAGS) ${name}/$(name).o -o ${name}/$@
 
 %.out: %.c	# This is for one file
 	$(eval name := $(basename $@))	;\
-	$(CC) $(PIEFLAGS) $(ASMFLAGS) $< ;\
-	as $(name).s -o $(name).o ;\
-	gcc $(name).o $(PIEFLAGS) -o $@
-# 	#@echo ${name}	;\
+	if [ ! -d ${name} ]; then \
+		mkdir ${name} ;\
+	fi ;\
+	$(CC) $(ASMFLAGS) $< -o ${name}/$@ ;\
+	printf "main" >> ${name}/list.out
 
 clean:
 		rm -rf lib *.o *.out *.i hello.s
