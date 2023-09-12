@@ -11,7 +11,7 @@ taint_script_dir    = os.path.join(taint_dir, "scripts")
 taint_analysis      = os.path.join(taint_script_dir, "taint_analysis.sh")
 sys.path.append(taint_script_dir)
 
-e9_dir              = os.path.join(home, "e9stuff")
+e9_dir              = os.path.join(home, "comp_analysis", "e9stuff")
 sys.path.append(e9_dir)
 
 import e9
