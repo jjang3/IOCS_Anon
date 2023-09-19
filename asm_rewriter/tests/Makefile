@@ -2,7 +2,7 @@
 SHELL           = /bin/zsh
 CC              = gcc
 PIEFLAGS = 		-no-pie -fno-pie
-ASMFLAGS		= -O0  -gdwarf-2 -c -save-temps=obj
+ASMFLAGS		= -O0 -gdwarf-2 -c -save-temps=obj
 LIBFLAGS	    = -Wall -fPIC -shared
 LIBLDFLAGS      = -ldl -mfsgsbase
 LIBTARGET       = table.so
@@ -33,6 +33,8 @@ $(LIBTARGET):
 		mkdir ${name} ;\
 	fi ;\
 	$(CC) $(ASMFLAGS) $< -o ${name}/$@ ;\
+	as ${name}/${name}.s -o ${name}/${name}.o
+	$(CC) -O0 -gdwarf-2 ${name}/${name}.o -o ${name}/$@
 	printf "main" >> ${name}/list.out
 
 clean:

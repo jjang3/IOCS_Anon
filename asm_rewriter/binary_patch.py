@@ -1,4 +1,5 @@
 from __future__ import print_function
+from tkinter import N
 from termcolor import colored
 from configparser import NoSectionError
 from posixpath import basename
@@ -33,8 +34,33 @@ from elftools.dwarf.structs import DWARFStructs
 from elftools.dwarf.descriptions import (describe_CFI_instructions,
     set_global_machine_arch)
 from elftools.dwarf.enums import DW_EH_encoding_flags
-# import regex
+import logging
 
+class CustomFormatter(logging.Formatter):
+
+    # FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s | %(levelname)s"
+    # logging.basicConfig(level=os.environ.get("LOGLEVEL", "DEBUG"), format=FORMAT)
+    blue = "\x1b[33;34m"
+    yellow = "\x1b[33;20m"
+    red = "\x1b[31;20m"
+    bold_green = "\x1b[42;1m"
+    reset = "\x1b[0m"
+    # format = "%(funcName)5s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
+    format = "[%(filename)s:%(lineno)s - %(funcName)18s() ] %(levelname)9s    %(message)s "
+
+    FORMATS = {
+        logging.DEBUG: yellow + format + reset,
+        logging.INFO: blue + format + reset,
+        logging.WARNING: yellow + format + reset,
+        logging.ERROR: red + format + reset,
+        logging.CRITICAL: bold_green + format + reset
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+    
 # If pyelftools is not installed, the example can also run from the root or
 # examples/ dir of the source distribution.
 sys.path[0:0] = ['.', '..']
@@ -109,38 +135,16 @@ def conv_expr(expr):
     print("New expression: ", new_expr)
     return new_expr
 
-def conv_reg(reg_name):
-    match reg_name:
-        case "eax":
-            return "rax"
-        case "ebx":
-            return "rbx"
-        case "ecx":
-            return "rcx"
-        case "edx":
-            return "rdx"
-        case "esi":
-            return "rsi"
-        case "edi":
-            return "rdi"
-        case "r8d":
-            return "r8"
-        case "r9d":
-            return "r9"
-        case "r10d":
-            return "r10"
-        case "r11d":
-            return "r11"
-        case "r12d":
-            return "r12"
-        case "r13d":
-            return "r13"
-        case "r14d":
-            return "r14"
-        case "r15d":
-            return "r15"
-        case _:
-            return reg_name
+def conv_suffix(suffix):
+    match suffix:
+        case "b":
+            return "BYTE PTR" # 8-bit
+        case "w":
+            return "WORD PTR" #16-bit
+        case "l":
+            return "DWORD PTR" # 32-bit
+        case "q":
+            return "QWORD PTR" # 64-bit
     
 def process_argument(argv):
     inputfile = ''
@@ -191,8 +195,8 @@ def process_binary(filename, funfile, dirloc):
         # --- Binary Ninja Analysis --- #
         with open_view(filename) as bv:                
             arch = Architecture['x86_64']
-            # bn = BinAnalysis(bv)
-            # bn.analyze_binary(funlist)
+            bn = BinAnalysis(bv)
+            bn.analyze_binary(funlist)
 
         # if dirloc != '':
         #     for dir_file in dir_list:
@@ -315,7 +319,7 @@ def dwarf_analysis(funlist, filename, target_dir):
                 if (DIE.tag == "DW_TAG_subprogram"):
                     target_fun = False
                     fun_frame_base = None
-                    # print("Target fun: ", target_fun)
+                    print("Target fun: ", target_fun)
                     for attr in DIE.attributes.values():
                         if loc_parser.attribute_has_location(attr, CU['version']):
                             lowpc = DIE.attributes['DW_AT_low_pc'].value
@@ -383,7 +387,7 @@ def dwarf_analysis(funlist, filename, target_dir):
                                     print("Pointer:", ptr_type_die.tag)
                                     if 'DW_AT_name' in ptr_type_die.attributes:
                                         struct_name = ptr_type_die.attributes['DW_AT_name'].value.decode()
-                                        print("\t\tStruct type found: ", struct_name)
+                                        print("\t\tPointer type found: ", struct_name)
                                         for struct_item in struct_set:
                                             if struct_name == struct_item.name:
                                                 dwarf_var_count += len(struct_item.member_list)
@@ -441,10 +445,10 @@ def process_file(funlist, target_dir, target_file):
         # if (target_file.endswith('.asm')):
         print(target_file)
         # print(os.path.join(target_dir, target_file))
-        with fileinput.input(os.path.join(target_dir, target_file), inplace=True, encoding="utf-8", backup='.bak') as f:
+        with fileinput.input(os.path.join(target_dir, target_file), inplace=False, encoding="utf-8", backup='.bak') as f:
             fun_begin_regex = r'(?<=.type\t)(.*)(?=,\s@function)'
             fun_end_regex   = r'(\t.cfi_endproc)'
-            dis_line_regex  = r'(\b[a-z]+\b)(.*),\s(.*)'
+            dis_line_regex  = r'\t(mov|lea|sub|add|cmp)([a-z])\t(.*),\s(.*)'
             offset_regex    = r'(\b[|BYTE PTR|DWORD PTR|QWORD PTR]+\b)\s(.*[0-9]\[.*\]|(\b[a-z]+\b:\b[0-9]+\b))'
             lea_regex       = r'(\s*|.*)\[(.*)\]'
             calc_offset_regex = r'(-\b[0-9,a-z]+\b)\[(.*)\]'
@@ -457,7 +461,8 @@ def process_file(funlist, target_dir, target_file):
             for line in f:
                 # print('\t.file\t"%s.c"' % target_file.rsplit('.', maxsplit=1)[0])
                 if line.startswith('\t.file\t"%s.c"' % target_file.rsplit('.', maxsplit=1)[0]):
-                    print("""	.macro lea_gs dest, offset
+                    print("""
+    .macro lea_gs dest, offset
 		mov	r11, [gs:[\offset]]
 		lea \dest, [r11]
 	.endm
@@ -504,49 +509,51 @@ def process_file(funlist, target_dir, target_file):
                             offset_targets = prog_offset_set[currFun]   
                             struct_targets = struct_offset_set[currFun]
                             check = True
-                        except:
-                            # print("Skipping")
+                        except Exception as err:
+                            print("Skipping", type(err))
                             check = False
                 
                 fun_end = re.search(fun_end_regex, line)
                 if fun_end is not None:
                     check = False
-
+                
                 if check == True:
                     dis_line = line.rstrip('\n')
+                    print(patch_targets)
                     # print(line, end='')
-                    # print(line)
+                    # mnemonic source, destination AT&T
                     dis_regex = re.search(dis_line_regex, dis_line)
                     temp_inst = None
-                    off_regex = None
+                    # off_regex = None
                     if dis_regex is not None:
-                        inst_type = dis_regex.group(1)
-                        dest = dis_regex.group(2)
-                        src = dis_regex.group(3).strip()
-                        # print("Old: ", inst_type, "| dest: ", dest, "| src:", src)
-                        if inst_type == "lea":
-                            off_regex = re.search(lea_regex, dest)
-                            if off_regex is not None and off_regex.group(1) != "":  
-                                offset = off_regex.group(2)
-                                temp_inst = PatchingInst(inst_type, dest, src, offset)
-                            else:
-                                off_regex = re.search(lea_regex, src)
-                                offset = off_regex.group(2)
-                                temp_inst = PatchingInst(inst_type, dest, src, offset)
-                        else:
-                            off_regex = re.search(offset_regex, dest)
-                            if off_regex is not None:
-                                calc_regex = re.search(calc_offset_regex, dest)
-                                if calc_regex is not None:
-                                    offset = calc_regex.group(2) + calc_regex.group(1)
-                                    temp_inst = PatchingInst(inst_type, dest, src, offset)
-                            else:
-                                off_regex = re.search(offset_regex, src)
-                                calc_regex = re.search(calc_offset_regex, src)
-                                if calc_regex is not None:
-                                    offset = calc_regex.group(2) + calc_regex.group(1)
-                                    temp_inst = PatchingInst(inst_type, dest, src, offset)
-                        # print("Temp:", temp_inst)
+                        inst_type   = dis_regex.group(1)
+                        suffix      = dis_regex.group(2)
+                        src         = dis_regex.group(3)
+                        dest        = dis_regex.group(4)
+                        print("Inst Type: ", inst_type, "\t|\tSuffix: ", conv_suffix(suffix), "\t| src: ", src,"\t| dest: ", dest)
+                        # if inst_type == "lea":
+                        #     off_regex = re.search(lea_regex, dest)
+                        #     if off_regex is not None and off_regex.group(1) != "":  
+                        #         offset = off_regex.group(2)
+                        #         temp_inst = PatchingInst(inst_type, dest, src, offset)
+                        #     else:
+                        #         off_regex = re.search(lea_regex, src)
+                        #         offset = off_regex.group(2)
+                        #         temp_inst = PatchingInst(inst_type, dest, src, offset)
+                        # else:
+                        #     off_regex = re.search(offset_regex, dest)
+                        #     if off_regex is not None:
+                        #         calc_regex = re.search(calc_offset_regex, dest)
+                        #         if calc_regex is not None:
+                        #             offset = calc_regex.group(2) + calc_regex.group(1)
+                        #             temp_inst = PatchingInst(inst_type, dest, src, offset)
+                        #     else:
+                        #         off_regex = re.search(offset_regex, src)
+                        #         calc_regex = re.search(calc_offset_regex, src)
+                        #         if calc_regex is not None:
+                        #             offset = calc_regex.group(2) + calc_regex.group(1)
+                        #             temp_inst = PatchingInst(inst_type, dest, src, offset)
+                        print("Temp:", temp_inst)
                         
                     if temp_inst != None:
                         result = analyze_temp_inst(temp_inst, patch_targets)
@@ -592,13 +599,13 @@ def process_file(funlist, target_dir, target_file):
 
                             print(line, end='')
                         else:
-                            print(line, end='')
+                            # print(line, end='')
                             None
                     else:
-                        print(line, end='')
+                        # print(line, end='')
                         None
                 else:
-                    print(line, end='')
+                    # print(line, end='')
                     None
 
 def find_struct(fun_name, var_targets, var):
@@ -638,47 +645,59 @@ def find_struct(fun_name, var_targets, var):
     #     print("output", item)
     return output
                                 
-        
+log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
+
+# create console handler with a higher log level
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+ch.setFormatter(CustomFormatter())
+log.addHandler(ch)
 
 class BinAnalysis:
-    avoid_targets       = set()
-    patching_targets    = list()
-    fun_offset_set      = dict()
-    fun_ignore_set      = set()
-    vars_written_stack  = list()
-    fun_struct_set      = set()
+    patch_tgts  = set()
+    
     def __init__(self, bv):
         self.bv = bv
         
+    def find_var(self, var):
+        for item in self.patch_tgts:
+            if var == item[0]:
+                log.critical("Found")
+                return True
+        return False
+    
     def find_offset(self, inst_ssa):
-        print("Find offset:", inst_ssa, type(inst_ssa)) 
+        log.info("Finding the offset of %s %s", inst_ssa, type(inst_ssa)) 
         try:
             if type(inst_ssa) == binaryninja.lowlevelil.LowLevelILLoadSsa:
                 if inst_ssa.src_memory != None:
-                    # Memory reading operation 
                     try:
                         if inst_ssa.src.left.src.reg == "fsbase": 
-                            print("Found segment", inst_ssa.src.left, inst_ssa.src.right, inst_ssa.src.left.src.reg)
+                            log.warning("Found segment %s %s %s", inst_ssa.src.left, inst_ssa.src.right, inst_ssa.src.left.src.reg)
                             reg = inst_ssa.src.left.src.reg.__str__().split('base')
                             reg = ''.join(reg)
                             expr = str()
                             expr = reg + ":" + str(int(str(inst_ssa.src.right), 16))
-                            print(expr)
-                            return ("segment", expr)
+                            return None
                         else:
                             result = self.find_offset(inst_ssa.src)
                             if result != None:
                                 return result
                     except Exception as error:
-                        print(error)
+                        if type(inst_ssa.src) == binaryninja.lowlevelil.LowLevelILConstPtr:
+                            log.error("Global value, skip")
+                            return None
+                        else:
+                            log.error("Error: %s", error)
             elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILSetRegSsa:
                 try:
-                    # print(type(inst_ssa.src))
+                    log.debug("SetRegSSA")
                     result = self.find_offset(inst_ssa.src)
                     if result != None:
                         return result
                 except Exception as error:
-                    print(error)
+                    log.error("Error: %s", error)
             elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILStoreSsa:
                 try:
                     try:
@@ -686,9 +705,13 @@ class BinAnalysis:
                         if result != None:
                             return result
                     except Exception as error:
-                        print(error)
+                        log.error("Error: %s", error)
                 except Exception as error:
-                    print(error)
+                    log.error("Error: %s", error)
+            elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILRegSsaPartial:
+                log.debug(inst_ssa.full_reg)
+                result = self.find_offset(inst_ssa.function.get_ssa_reg_definition(inst_ssa.full_reg))
+                return result
             elif binaryninja.commonil.Arithmetic in inst_ssa.__class__.__bases__:
                 try:
                     reg = inst_ssa.left.src.reg.__str__()
@@ -701,20 +724,9 @@ class BinAnalysis:
                     else:
                         return None
                 offset = str(int(inst_ssa.right.__str__(), base=16))
-                # print("Offset:", offset)
-                if type(inst_ssa) == binaryninja.lowlevelil.LowLevelILSub:
-                    expr = reg + "-"+ offset 
-                elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILAdd \
-                    and inst_ssa.right.constant > -1:
-                    expr = reg + "+"+ offset 
-                # Currently do not see the need for offset calculation besides Sub/Add
-                elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILAdd \
-                    and inst_ssa.right.constant < 0:
-                    expr = reg + offset
-                # else:
-                #     print("Not add nor sub", inst_ssa.right.constant )
-                #     expr = reg + offset
-                print("Expr: ", expr)
+                log.debug("Offset: %s", offset)
+                expr = offset + "(%" + reg + ")"
+                log.critical("Expr: %s", expr)
                 return expr
         except:
             try:
@@ -723,402 +735,201 @@ class BinAnalysis:
                 return None
         else:
             return None
-       
-    def check_for_mem_ref(self, inst_ssa, mlil_fun):
-        try: 
-            print("Checking mem ref", type(inst_ssa), inst_ssa)
-            mem_ref = None
-            cand = None
-            result = None
-            if type(inst_ssa) == binaryninja.mediumlevelil.MediumLevelILVarSsa:
-                result = self.check_for_mem_ref(inst_ssa.src, mlil_fun)
-            
-            if result != None:
-                return result
-            elif type(inst_ssa) == binaryninja.mediumlevelil.SSAVariable:
-                cand = mlil_fun.get_ssa_var_definition(inst_ssa)
-                print("Finding cand", cand)
-                
-            if cand != None:
-                # print(type(cand.llil.src), cand.llil.dest)
-                target_cand = None
-                if type(cand.llil.src) != binaryninja.lowlevelil.LowLevelILConst:
-                    target_cand = cand.llil.src
-                else:
-                    target_cand = cand.llil.dest
-                print("Target cand", target_cand, type(target_cand))
-                
-                if type(target_cand) == binaryninja.lowlevelil.LowLevelILLoadSsa:
-                    offset = self.find_offset(target_cand)
-                    return offset
-                elif binaryninja.commonil.Arithmetic in target_cand.__class__.__bases__:
-                    offset = self.find_offset(target_cand)
-                    print(offset)
-                    return offset
-                else:
-                    if type(target_cand.src) == binaryninja.lowlevelil.SSARegister:
-                        mem_ref = cand.llil.function.get_ssa_reg_definition(target_cand.src)
-                    elif type(target_cand.src) == binaryninja.lowlevelil.LowLevelILRegSsaPartial:
-                        mem_ref = cand.llil.function.get_ssa_reg_definition(target_cand.src.full_reg)
-                
-                print("Mem ref", mem_ref)
-                if mem_ref != None:
-                    if type(mem_ref.src) == binaryninja.lowlevelil.LowLevelILConstPtr:
-                        # This means it is NOT a stack variable, but global variable
-                        return "global"
-                    else:
-                        print(self.bv.get_disassembly(mem_ref.address), "\n\tMemory ref exists: ", mem_ref, type(mem_ref), type(mem_ref.src), "\n")
-                        offset = self.analyze_mem_ref_inst(mem_ref)
-                        # offset = self.find_offset(mem_ref)
-                        return offset
-                else:
-                    if type(cand.src.src.ssa_form) == binaryninja.mediumlevelil.MediumLevelILLoadSsa:
-                        if cand.src.src.ssa_form.src.operation == MediumLevelILOperation.MLIL_CONST_PTR or MediumLevelILOperation.MLIL_CONST:
-                            global_cand = self.bv.get_data_var_at(cand.src.src.src.constant)
-                            for code_refs in global_cand.code_refs:
-                                # Global variables
-                                print("Omit these instructions for patching: ", hex(code_refs.address))
-                                self.avoid_targets.add(code_refs.address)
-            else:
-                return None
-        except Exception as error:
-            print("Not SSA Variable: ", error, "\n")
-            return None
-    
-    def analyze_mem_ref_inst(self, inst_ssa):
-        global table_offset
-        if inst_ssa == False:
-            return False
         
-        print("Analyze mem ref inst:", type(inst_ssa), hex(inst_ssa.address))
-        dis_inst = self.bv.get_disassembly(inst_ssa.address)
-        if dis_inst == None:
-            return None
-        print("Analyzing", dis_inst, "\t| SSA: ", inst_ssa)
-        # pattern = r"(\b[a-z]+\b).*(\b[a-z]+\b)(?=,)"
-        pattern = r"(\b[mov|lea]+\b)\s*(.*),\s(.*)"
-        offset_pattern = r".*\[(.*)\]"
-        find_type_target = re.search(pattern, dis_inst)
-        # print(find_type_target)
-        i_type      = str()
-        dest        = str()
-        src         = str()
-        if find_type_target != None:
-            i_type = find_type_target.group(1)
-            dest = conv_reg(find_type_target.group(2))
-            src = find_type_target.group(3)
-        print("Check:", i_type, dest, src)
-        # Note: Not putting table offset here because this should be already taken care of by other instructions (may need to add it here later though)
-        off = self.find_offset(inst_ssa)
-        if off[0] == "segment" or off[1] in self.fun_ignore_set or off in self.fun_ignore_set:
-            print("Ignore offset address", off)
-            return off
-        elif off != None and off != False:
-            patch_inst = PatchingInst(inst_type=i_type, dest=dest, offset=off)
-            if patch_inst not in self.patching_targets:
-                if off != None and off not in self.fun_offset_set and off not in self.fun_ignore_set:
-                    print("Add offset")
-                    self.fun_offset_set[off] = table_offset
-                    print(colored("Adding %s" % patch_inst, 'green', attrs=['reverse']))
-                    self.patching_targets.append(patch_inst)   
-                    table_offset += 8
-   
-    
-    def find_add_offset(self, inst_ssa_expr, i_type, dest, src, offset):
-        global table_offset
-        expr = None
-        if offset == None:
-            expr = self.find_offset(inst_ssa_expr)
-        else:
-            expr = offset
-        print(inst_ssa_expr, expr, self.fun_offset_set)
-        if expr != None and expr not in self.fun_offset_set and expr != False and expr not in self.fun_ignore_set:
-            print("Add offset")
-            self.fun_offset_set[expr] = table_offset
-            try:
-                src = int(src, 16)
-                patch_inst = PatchingInst(inst_type=i_type, dest=dest, src=int(src,16),offset=expr)
-            except:
-                
-                patch_inst = PatchingInst(inst_type=i_type, dest=conv_reg(dest), src=conv_reg(src),offset=expr)
-            print(colored("Adding %s" % patch_inst, 'green', attrs=['reverse']))
-            self.patching_targets.append(patch_inst)
-            table_offset += 8
-        elif expr in self.fun_offset_set:
-            print("Offset found", self.fun_offset_set[expr])
-            patch_inst = PatchingInst(inst_type=i_type, dest=dest, src=src ,offset=expr)
-            if patch_inst not in self.patching_targets:
-                print(colored("Adding %s" % patch_inst, 'blue', attrs=['reverse']))
-                self.patching_targets.append(patch_inst)
-            # exit()
-        elif inst_ssa_expr == None and expr != None and expr not in self.fun_ignore_set:
-            patch_inst = PatchingInst(inst_type=i_type, dest=dest, src=src, offset=expr)
-            print("Adding", patch_inst)
-            self.patching_targets.append(patch_inst)
-        None
-    
-    def analyze_inst(self, inst_ssa, llil_fun, mlil_fun, ignore, var_targets):
-        dis_inst = self.bv.get_disassembly(inst_ssa.address)
-        print("Analyzing inst", dis_inst)
-        if dis_inst == None:
-            return None
-        pattern = r"(\b[a-z]+\b)\s*(.*),\s(.*)"
-        offset_pattern = r".*\[(.*)\]"
-        find_type_target = re.search(pattern, dis_inst)
-        i_type      = str()
-        dest        = str()
-        src         = str()
-        if find_type_target != None:
-            i_type = find_type_target.group(1)
-            dest = find_type_target.group(2)
-            src = find_type_target.group(3)
-        
-        if inst_ssa.address in self.avoid_targets:
-            # Avoid this target
-            return None
-        
-        result = self.check_for_mem_ref(inst_ssa.dest, mlil_fun)
-        if result != None:
-            if result == "global":
-                return None
-            
-            # try:
-            if result[0] == "segment":
-                # print(dis_inst, "Add ignore offset target", result[1])
-                if result[1] not in self.fun_ignore_set:
-                    print(colored("Ignoring %s" % result[1], 'red', attrs=['reverse']))
-                    self.fun_ignore_set.add(result[1])
-                else:
-                    target = str()
-                    ignore_expr = str()
-                    if re.search(offset_pattern, dest):
-                        target = re.search(offset_pattern, dest).group(1)
-                    if re.search(offset_pattern, src):
-                        target = re.search(offset_pattern, src).group(1)
-                    ignore_expr = conv_expr(target)
-                    if ignore_expr not in self.fun_ignore_set:
-                        print(colored("Ignoring %s" % ignore_expr, 'red', attrs=['reverse']))
-                        self.fun_ignore_set.add(ignore_expr)
-            elif result != None:
-                print("Got the expression: ", result)
-                self.find_add_offset(None, i_type, dest, src, result)
-            # except:
-                
-            # try:
-            #     mem_ref_result = self.analyze_mem_ref_inst(result)
-            #     if mem_ref_result[0] == "segment": 
-            #         print(dis_inst, "Add ignore offset target", mem_ref_result[1])
-            #         self.fun_ignore_set.add(mem_ref_result[1])
-            #         exit()
-            # except:
-            #     if result != None:
-                    # print("Got the expression: ", result)
-                    # self.find_add_offset(None, i_type, dest, src, result)
-            # exit()
-        else:
-            for llil_bb in llil_fun.ssa_form:
-                for llil_inst in llil_bb:
-                    # print("Target", target_offset)
-                    if llil_inst == inst_ssa.llil:
-                        print("Target: ", llil_inst, llil_inst.operation, result)
-                        if llil_inst.operation == LowLevelILOperation.LLIL_SET_REG_SSA:
-                            if binaryninja.commonil.Arithmetic in llil_inst.src.__class__.__bases__:
-                                self.find_add_offset(llil_inst.src, i_type, dest, src, None)
-                        elif llil_inst.operation == LowLevelILOperation.LLIL_STORE_SSA:
-                            if re.search(offset_pattern, dest):
-                                target = re.search(offset_pattern, dest).group(1)
-                            if re.search(offset_pattern, src):
-                                target = re.search(offset_pattern, src).group(1)
-                            expr = conv_expr(target)
-                            if ignore == True:
-                                # print("Ignore this")
-                                for var in var_targets:
-                                    if var.offset == expr:
-                                        self.fun_ignore_set.add(expr)
-                                        print(var, var.struct_type)
-                                        if var.struct_type != None:
-                                            print("Ignore other member variables too", llil_fun.source_function.name, var_targets)
-                                            find_struct_result = find_struct(llil_fun.source_function.name, None, var)
-                                        for item in find_struct_result:
-                                            self.fun_ignore_set.add(item)
-                                        print(colored("Ignoring %s" % self.fun_ignore_set, 'red', attrs=['reverse']))
-                            if binaryninja.commonil.Arithmetic in llil_inst.dest.__class__.__bases__ and expr not in self.fun_ignore_set:
-                                self.find_add_offset(llil_inst.dest, i_type, dest, src, None)
-                            
-         
-    def analyze_llil_inst(self, inst_ssa, dis_inst):
-        print("Analyzing llil inst", inst_ssa, type(inst_ssa), dis_inst)
-        try:
-            if binaryninja.commonil.Arithmetic in inst_ssa.__class__.__bases__:
-                print("Here", inst_ssa)
-                offset = self.find_offset(inst_ssa)
-                if offset != None:
-                    pattern = r"(\b[a-z]+\b)\s*(.*),\s(.*)"
-                    print("dis:",dis_inst)
-                    find_type_target = re.search(pattern, dis_inst)
-                    i_type  = str()
-                    dest    = str()
-                    src     = str()
-                    if find_type_target != None:
-                        i_type = find_type_target.group(1)
-                        dest = find_type_target.group(2)
-                        src = find_type_target.group(3)
-                    print("info:", i_type, dest, src, offset)
-                    self.find_add_offset(None, i_type, dest, src, offset)
-            else:
-                self.analyze_llil_inst(inst_ssa.src, dis_inst)
-        except Exception as error:
-            print(error, "\n")
-            return None   
-                 
-    def analyze_params(self, src_ssa, mlil_fun):
-        # Takes in SSA parameters
-        for param_var in src_ssa.params:
-            print(param_var.operation, param_var)
-            if param_var.operation == MediumLevelILOperation.MLIL_VAR_SSA or \
-            param_var.operation == MediumLevelILOperation.MLIL_VAR or \
-            param_var.operation == MediumLevelILOperation.MLIL_SET_VAR_SSA or \
-            param_var.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED:
-                result = self.check_for_mem_ref(param_var, mlil_fun)
-                if result != None:                    
-                    self.analyze_mem_ref_inst(result)
-                    
-    def analyze_call_inst(self, inst_ssa, llil_fun, mlil_fun, var_targets):
-        try:
-            if type(inst_ssa.dest) == binaryninja.mediumlevelil.MediumLevelILConstPtr:
-                called_fun =  self.bv.get_function_at(inst_ssa.dest.constant)
-                # print("Function", type(called_fun), called_fun.name)
-                if (called_fun.name == "calloc" or called_fun.name == "malloc"):
-                    print("Found heap fun")
-                    result = inst_ssa.vars_written[0]
-                    # print("Dest", result, "\n\t",  mlil_fun.get_ssa_var_uses(result))
-                    for item in mlil_fun.get_ssa_var_uses(result):
-                        if type(item) == binaryninja.mediumlevelil.MediumLevelILSetVar:
-                            result = self.analyze_inst(item, llil_fun, mlil_fun, True, var_targets)
-                            print(result)
-                            # print(item.src)
-                            # print(hex(item.address), self.bv.get_disassembly(item.address))
-                            # result = self.check_for_mem_ref(item, mlil_fun)
-                            # print(result)
-        except Exception as error:
-            print(error, "\n")
-            # None
-        # exit()
-        # result = self.check_for_mem_ref(inst_ssa, mlil_fun)
-        # print(result)
-
-    def backward_slice(self, high, medium, low, lift, var_targets):
-        
-        
-                            # 
-                    # print(type(inst.left), inst.right)
-                    # print(inst.ssa_form)
-                    
-        # This is disabled, no need fo rHLIL
-        # for hlil_bb in high:
-        #     for inst in hlil_bb:
-        #         try: 
-        #             if type(inst.src) == HighLevelILCall:
-        #                 # print("Register:", inst.dest, self.bv.get_disassembly(inst.address))
-        #                 test = self.bv.get_code_refs(inst.src)
-        #                 print("Register:", inst.dest, inst, test)
-        #         except:
-        #             None
-
-        for mlil_bb in medium:
-            for inst in mlil_bb:
-                
-                inst_ssa = inst.ssa_form
-                # If I were to only target taint function (not all variables), build off from this:
-                # print(inst, inst_ssa, inst_ssa.operation)
-                if inst_ssa.operation == MediumLevelILOperation.MLIL_CALL_SSA:
-                    # Disabling for now since I don't quite see the need
-                    None 
-                    print("Call instruction analysis", inst)
-                    # self.analyze_params(inst_ssa, medium)
-                    self.analyze_call_inst(inst_ssa, low, medium, var_targets)
-                elif inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_SSA or \
-                        inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED:
-                    # This is where I try to analyze instruction that doesn't refer to memory (hard set)
-                    # None
-                    # if inst_ssa.address == 6918:
-                        #  print(inst_ssa.vars_written[0])
-                    #     print("Analyzing: ", inst_ssa, type(inst_ssa.src), type(inst_ssa.dest))
-                    print(inst_ssa, inst_ssa.vars_written[0])
-                    print(colored("Checking %s %s" % (inst_ssa,inst_ssa.vars_written[0]), 'yellow', attrs=['reverse']))
-                    self.analyze_inst(inst_ssa, low, medium, False, var_targets)
-                    # print("\n")
-                    None
-        for llil_bb in low.ssa_form:
-            for llil_inst in llil_bb:
-                if llil_inst.operation == LowLevelILOperation.LLIL_SET_REG_SSA:
-                    # print(type(llil_inst.src))
-                    if binaryninja.lowlevelil.LowLevelILUnaryBase in llil_inst.src.__class__.__bases__: 
-                        dis_inst = self.bv.get_disassembly(llil_inst.address)
-                        if dis_inst == None:
-                            break
-                        self.analyze_llil_inst(llil_inst, dis_inst)
-        
-        for lift_bb in lift:
-            for inst in lift_bb:
-                if inst.operation == LowLevelILOperation.LLIL_SUB:
-                    if type(inst.left) == binaryninja.lowlevelil.LowLevelILLoad:
-                        off = self.find_offset(inst.left.src)
-                        if off != None and off != False:
-                            try:
-                                dis_inst = self.bv.get_disassembly(inst.address)
-                                pattern = r"(\b[cmp]+\b)\s*(.*),\s(.*)"
-                                find_type_target = re.search(pattern, dis_inst)
-                                # print(find_type_target)
-                                i_type      = str()
-                                src         = str()
-                                if find_type_target != None:
-                                    i_type = find_type_target.group(1)
-                                    dest = find_type_target.group(2)
-                                    src = find_type_target.group(3)
-                                    patch_inst = PatchingInst(inst_type=i_type, dest=dest, src=src, offset=off)
-                                    if patch_inst not in self.patching_targets:
-                                        # print(self.fun_ignore_set)
-                                        if off != None and off not in self.fun_ignore_set:
-                                            self.patching_targets.append(patch_inst)
-                                            print(colored("Adding %s" % patch_inst, 'green', attrs=['reverse']))
-                            except Exception as Err:
-                                print("No disassembly inst", Err)
-        
-
     def analyze_binary(self, funlist):
         print("Step: Binary Ninja")
-        # print(self.bv.get_data_refs_for_type_field("myStruct", 4))
-        # print(self.bv.get_code_refs_for_type_field("badStruct", 0))
-        # # for item in refs:
-        # #     print(item)
         for func in self.bv.functions:
-            print ("Function:", func.name)
+            print ("\tFunction:", func.name)
             if func.name in funlist:
                 hlil_fun = func.high_level_il
                 mlil_fun = func.medium_level_il
                 llil_fun = func.low_level_il
                 lift_fun = func.lifted_il
-                var_targets = None
+                var_targets = None  # Variable targets obtained from DWARF
                 try:
                     var_targets = fun_var_info[func.name]
                     self.backward_slice(hlil_fun, mlil_fun, llil_fun, lift_fun, var_targets)
-                    fun_patch_tgts[func.name] = self.patching_targets.copy()
-                    prog_offset_set[func.name] = self.fun_offset_set.copy()
-                    struct_offset_set[func.name] = find_struct(func.name, var_targets, None).copy()
+                except Exception as error:
+                    log.error("%s", error)
                     
-                    print("\n\nClearing\n\n")
-                    self.patching_targets.clear()
-                    self.fun_offset_set.clear()
-                    self.fun_ignore_set.clear()
+    def backward_slice(self, high, medium, low, lift, var_targets):
+        """
+        Workflow of backward slice starts from the MLIL as it is the most intuitive way of observing the behavior
+        After obtaining the informations (e.g., where malloc()'d variable is being used, register offset for local var)
+        We start digging deeper into the lower level as intricate information is omitted in the MLIL.
+        For example, you would not be able to know if malloc'd string of "test" is used later in printf function in the MLIL
+        MLIL -> LLIL
+        """
+        for mlil_bb in medium:
+            for inst in mlil_bb:
+                inst_ssa = inst.ssa_form
+                # These operations are highest level of variable assignments are one we care about.
+                if inst_ssa.operation == MediumLevelILOperation.MLIL_CALL_SSA:
+                    # First analyze any function call instructions (e.g., malloc/calloc) to find potential patch targets
+                    # var_10 -> -8(%rbp), this information is going to be used and saved in the case when we analyze the LLIL
+                    # To-do: Is there a need to analyze parameters of call instruction? Or not necessary.
+                    patch_tgt = self.analyze_call_inst(inst_ssa, medium)
+                    if patch_tgt != None:
+                        self.patch_tgts.add(patch_tgt)
+                        log.debug("Patch target: %s", patch_tgt)
+                elif inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_SSA or \
+                     inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED:
+                    # Check if variable name exists for this MLIL instruction, and see whether it has been already checked
+                    try:
+                        var = inst_ssa.vars_written[0].var
+                        if self.find_var(var):
+                            continue
+                        else:
+                            # log.debug("Analyze %s", inst_ssa)
+                            None
+                    except Exception as error:
+                        log.error("%s", error)
+                        
+    def analyze_params(self, inst_ssa, medium):
+        # Takes in SSA parameters
+        log.info(inst_ssa)
+        for param_var in inst_ssa.params:
+            if param_var.operation == MediumLevelILOperation.MLIL_VAR_SSA or \
+            param_var.operation == MediumLevelILOperation.MLIL_VAR or \
+            param_var.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED:
+                var = None
+                offset = None
+                use_ref = medium.ssa_form.get_ssa_var_definition(param_var.src)
+                try:
+                    # In the case of scanf (or anything that takes reference of variable)
+                    # use_ref should result in something like rsi#1 (arg) = &var_1c (var name)
+                    var = use_ref.vars_read[0]
+                    # From here, we need to convert MLIL to LLIL to figure out the offset value
+                    # that is stored in the "rax" register
+                    if type(use_ref.llil.src) == LowLevelILRegSsa:
+                        reg = use_ref.llil.src.src # LowLevelILRegSsa type -> get reg
+                        offset = inst_ssa.llil.function.get_ssa_reg_definition(reg)
+                    if offset != None:
+                        return (var, self.analyze_llil_inst(offset, offset.function))
                 except:
-                    print("No var_targets")
-                # print(var_targets)
-                
-                # Think about how to handle "cmp" instruction.
-                # It's basically same as sub, but doesn't store the result.
-                # Use lifted_IL, get SUB, the reason why tihs is fine is because
-                # it doesn't store the info, so just being SUB implies comparison.
+                    None
+                else:
+                    if type(use_ref.llil.src.src) == LowLevelILRegSsaPartial:
+                        reg = use_ref.llil.src.src.full_reg
+                        reg_def = inst_ssa.llil.function.get_ssa_reg_definition(reg)
+                        try:
+                            mapped_MLLIL = reg_def.src.src.mapped_medium_level_il # This is done to get the var name
+                            var = mapped_MLLIL.vars_read[0]
+                        except Exception as error:
+                            log.error("%s", error)
+                            return None
+
+                        offset = self.analyze_llil_inst(use_ref.llil.src, use_ref.llil.function)
+                        if offset == None:
+                            continue
+                        else:
+                            log.debug(use_ref.llil)
+                            if self.find_var(var):
+                                log.error("Exists")
+                                return None
+                            else:
+                                return (var, offset)
+                            
+    
+    def analyze_call_inst(self, inst_ssa, medium):
+        # Call instruction either can be malloc which stores the address in rax register or
+        # scanf that uses the parameter of the function.
+        # returns -> Tuples
+        log.info(inst_ssa)
+        try:
+            var = inst_ssa.vars_written[0]
+            log.info("Analyzing call inst\t%s %s", inst_ssa, inst_ssa.vars_written[0])
+            use_ref = medium.ssa_form.get_ssa_var_uses(var)
+            if use_ref is not None:
+                # log.debug("%s %s", self.analyze_llil_inst(use_ref[0].llil, use_ref[0].llil.function), use_ref[0].vars_written[0])
+                return (use_ref[0].vars_written[0].var, self.analyze_llil_inst(use_ref[0].llil, use_ref[0].llil.function))
+            else:
+                return None
+        except:
+            return self.analyze_params(inst_ssa, medium)
+        
+    
+    def analyze_inst(self, inst_ssa, mlil_fun, var_targets):
+        dis_inst = self.bv.get_disassembly(inst_ssa.address)
+        
+        # Example: mov     qword [rbp-0x8], rax
+        dis_inst_pattern    = re.search(r"(\b[a-z]+\b)\s*(.*),\s(.*)", dis_inst)
+        inst_type       = str()
+        dest            = str()
+        src             = str()
+        if dis_inst_pattern != None:
+            inst_type   = dis_inst_pattern.group(1)
+            dest        = dis_inst_pattern.group(2)
+            src         = dis_inst_pattern.group(3)
+        else:
+            log.error("Regex failed")
+        
+        log.info("Analyzing inst\t%s", dis_inst)
+        # mem_ref_result = self.mem_ref_chk(inst_ssa.dest, mlil_fun)
+        
+    def mem_ref_chk(self, inst_ssa, mlil_fun):
+        try:
+            log.debug("%s", inst_ssa)
+            cand = None
+            if type(inst_ssa) == binaryninja.mediumlevelil.SSAVariable:
+                cand = mlil_fun.get_ssa_var_definition(inst_ssa)
+                log.debug("Candidate (MLIL) %s", cand)
+            
+            if cand != None:
+                log.debug("Candidate exists %s %s %s", cand.llil,  type(cand.llil.src),  type(cand.llil.dest))
+                target_llil_src     = self.analyze_llil_inst(cand.llil.src, cand.llil.function)
+                target_llil_dest    = self.analyze_llil_inst(cand.llil.dest, cand.llil.function)
+                target_cand = (target_llil_src, target_llil_dest)
+                if None not in target_cand:
+                    log.critical("Target cand (LLIL) %s", target_cand)
+            else:
+                log.error("No candidate")
+        except Exception as error:
+            log.error("%s", error)
+            return None
+        
+    def analyze_llil_inst(self, inst_ssa, llil_fun):
+        log.debug("Analyze LLIL inst %s %s", inst_ssa, type(inst_ssa))
+        if type(inst_ssa) == binaryninja.lowlevelil.LowLevelILRegSsa:
+            log.debug("RegSSA")
+            reg = inst_ssa.src.reg.__str__()
+            return reg
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILSetRegSsa:
+            log.debug("SetSSA")
+            offset = self.find_offset(inst_ssa)
+            return offset
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILStoreSsa:
+            log.debug("StoreSSA")
+            offset = self.find_offset(inst_ssa)
+            return offset
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILLoadSsa:
+            log.debug("LoadSSA")
+            offset = self.find_offset(inst_ssa)
+            return offset
+        elif type(inst_ssa) == binaryninja.lowlevelil.SSARegister:
+            log.debug("SSARegister")
+            reg_def = llil_fun.get_ssa_reg_definition(inst_ssa)
+            if reg_def != None:
+                log.debug("Reg ref %s", reg_def)
+                if type(reg_def.src) == binaryninja.lowlevelil.LowLevelILConstPtr:
+                    log.error("Global")
+                    return None
+                else:
+                    return reg_def
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILRegSsaPartial:
+            log.debug("RegisterSSAPartial")
+            reg_def = llil_fun.get_ssa_reg_definition(inst_ssa.full_reg)
+            if reg_def != None:
+                log.debug("Reg ref %s", reg_def)
+                if type(reg_def.src) == binaryninja.lowlevelil.LowLevelILConstPtr:
+                    log.error("Global")
+                    return None
+                else:
+                    return reg_def
+        elif binaryninja.commonil.Arithmetic in inst_ssa.__class__.__bases__:
+            log.debug("ArithSSA")
+            offset = self.find_offset(inst_ssa)
+            return offset
 if __name__ == '__main__':
     process_argument(sys.argv[1:])
     
