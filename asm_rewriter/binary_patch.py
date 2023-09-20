@@ -171,7 +171,6 @@ offset_dict         = dict()
 prog_offset_set     = dict()
 struct_offset_set   = dict()
 table_offset        = 0
-
 def process_binary(filename, funfile, dirloc):
         target_dir = None        
         if dirloc != None:
@@ -193,7 +192,7 @@ def process_binary(filename, funfile, dirloc):
         dwarf_analysis(funlist, filename, target_dir)
         
         # --- Binary Ninja Analysis --- #
-        with open_view(filename) as bv:                
+        with load(filename, options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:                  
             arch = Architecture['x86_64']
             bn = BinAnalysis(bv)
             bn.analyze_binary(funlist)
@@ -655,7 +654,14 @@ ch.setFormatter(CustomFormatter())
 log.addHandler(ch)
 
 class BinAnalysis:
-    patch_tgts  = set()
+    # Patch targets resulting from analysis of the current working function
+    patch_tgts      = set()
+    
+    # Patch targets from utilizing the analysis result of the current working function
+    cur_fun_tgts    = list()
+    
+    # Offset to table offset set of the current working function
+    off_to_table    = set()
     
     def __init__(self, bv):
         self.bv = bv
@@ -663,11 +669,30 @@ class BinAnalysis:
     def find_var(self, var):
         for item in self.patch_tgts:
             if var == item[0]:
-                log.critical("Found")
+                log.critical("Found var")
                 return True
         return False
+
+    def find_off(self, offset):
+        try:
+            offset_pattern = r'(\b[qword ptr|dword ptr]+\b)\s\[(%.*)([*+\/-]0x[0-9].*)\]'
+            offset_regex = re.search(offset_pattern, offset)
+            expr = str()
+            expr = str(int(offset_regex.group(3),base=16)) + "(" + offset_regex.group(2) + ")"
+            for item in self.patch_tgts:
+                if expr == item[1]:
+                    log.critical("Found offset")
+                    return True, expr
+            return False, None
+        except:
+            return False, None
+        # for item in self.patch_tgts:
+        #     if offset == item[1]:
+        #         log.critical("Found offset")
+        #         return True
+        # return False
     
-    def find_offset(self, inst_ssa):
+    def calc_offset(self, inst_ssa):
         log.info("Finding the offset of %s %s", inst_ssa, type(inst_ssa)) 
         try:
             if type(inst_ssa) == binaryninja.lowlevelil.LowLevelILLoadSsa:
@@ -681,7 +706,7 @@ class BinAnalysis:
                             expr = reg + ":" + str(int(str(inst_ssa.src.right), 16))
                             return None
                         else:
-                            result = self.find_offset(inst_ssa.src)
+                            result = self.calc_offset(inst_ssa.src)
                             if result != None:
                                 return result
                     except Exception as error:
@@ -693,7 +718,7 @@ class BinAnalysis:
             elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILSetRegSsa:
                 try:
                     log.debug("SetRegSSA")
-                    result = self.find_offset(inst_ssa.src)
+                    result = self.calc_offset(inst_ssa.src)
                     if result != None:
                         return result
                 except Exception as error:
@@ -701,7 +726,7 @@ class BinAnalysis:
             elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILStoreSsa:
                 try:
                     try:
-                        result = self.find_offset(inst_ssa.dest)
+                        result = self.calc_offset(inst_ssa.dest)
                         if result != None:
                             return result
                     except Exception as error:
@@ -710,7 +735,7 @@ class BinAnalysis:
                     log.error("Error: %s", error)
             elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILRegSsaPartial:
                 log.debug(inst_ssa.full_reg)
-                result = self.find_offset(inst_ssa.function.get_ssa_reg_definition(inst_ssa.full_reg))
+                result = self.calc_offset(inst_ssa.function.get_ssa_reg_definition(inst_ssa.full_reg))
                 return result
             elif binaryninja.commonil.Arithmetic in inst_ssa.__class__.__bases__:
                 try:
@@ -718,19 +743,19 @@ class BinAnalysis:
                 except:
                     reg = inst_ssa.left.__str__()
                 if type(inst_ssa.right) == binaryninja.lowlevelil.LowLevelILLoadSsa:
-                    result = self.find_offset(inst_ssa.right)
+                    result = self.calc_offset(inst_ssa.right)
                     if result != None:
                         return result
                     else:
                         return None
                 offset = str(int(inst_ssa.right.__str__(), base=16))
                 log.debug("Offset: %s", offset)
-                expr = offset + "(%" + reg + ")"
+                expr = offset + "(" + reg + ")"
                 log.critical("Expr: %s", expr)
                 return expr
         except:
             try:
-                return self.find_offset(inst_ssa.src)
+                return self.calc_offset(inst_ssa.src)
             except: 
                 return None
         else:
@@ -749,16 +774,22 @@ class BinAnalysis:
                 try:
                     var_targets = fun_var_info[func.name]
                     self.backward_slice(hlil_fun, mlil_fun, llil_fun, lift_fun, var_targets)
+                    for item in self.cur_fun_tgts:
+                        log.debug(item)
+                    for item in self.off_to_table:
+                        log.debug(item)
                 except Exception as error:
                     log.error("%s", error)
                     
     def backward_slice(self, high, medium, low, lift, var_targets):
         """
-        Workflow of backward slice starts from the MLIL as it is the most intuitive way of observing the behavior
+        - Workflow of backward slice starts from the MLIL as it is the most intuitive way of observing the behavior
         After obtaining the informations (e.g., where malloc()'d variable is being used, register offset for local var)
         We start digging deeper into the lower level as intricate information is omitted in the MLIL.
-        For example, you would not be able to know if malloc'd string of "test" is used later in printf function in the MLIL
+         For example, you would not be able to know if malloc'd string of "test" is used later in printf function in the MLIL
         MLIL -> LLIL
+        - MLIL used in this case is for the sake of gathering information; We will work on LLIL level to utilize the information
+        gathered.
         """
         for mlil_bb in medium:
             for inst in mlil_bb:
@@ -785,6 +816,64 @@ class BinAnalysis:
                     except Exception as error:
                         log.error("%s", error)
                         
+        for llil_bb in low:
+            for inst in llil_bb:
+                self.find_patch_tgts(inst)
+                
+                
+    def find_patch_tgts(self, inst):
+        global table_offset
+        dis_inst = self.bv.get_disassembly(inst.address)
+        if dis_inst == None:
+            return None
+        log.debug("Find patching tgt: %s", dis_inst)
+        # Example: mov     qword [rbp-0x8], rax 
+        dis_inst_pattern    = re.search(r"(\b[a-z]+\b)\s*(.*),\s(.*)", dis_inst)
+        inst_type           = str()
+        src                 = str()
+        dest                = str()
+        if dis_inst_pattern != None:
+            inst_type   = dis_inst_pattern.group(1)
+            src         = dis_inst_pattern.group(2)
+            dest        = dis_inst_pattern.group(3)
+        else:
+            log.error("Regex failed %s", dis_inst)
+        
+        # Either source or dest can be ptr, so whichever one passes through, find offset in the set
+        patch_inst = None
+        expr = None
+        if re.search(r'(\b[qword ptr|dword ptr]+\b)', src):
+            result, expr = self.find_off(src)
+            if result:
+                patch_inst = PatchingInst(inst_type=inst_type, dest=dest, src=src, offset=expr)
+        else:
+            result, expr = self.find_off(dest)
+            if result:
+                patch_inst = PatchingInst(inst_type=inst_type, dest=dest, src=src, offset=expr)
+        
+        
+        if patch_inst != None:
+            if patch_inst not in self.cur_fun_tgts:
+                update = True
+                for item in self.cur_fun_tgts:
+                    if patch_inst.offset == item.offset:
+                        log.debug("Table offset should not be updated")
+                        update = False
+
+                if update:
+                    self.cur_fun_tgts.append(patch_inst)
+                    self.off_to_table.add((patch_inst.offset, table_offset))
+                    table_offset += 8
+                else:
+                    self.cur_fun_tgts.append(patch_inst)
+                    
+                print(colored("Adding %s | Next table offset %d" % (patch_inst, table_offset), 'blue', attrs=['reverse']))
+            else:
+                print(colored("Overlap %s" % (patch_inst), 'red', 
+                attrs=['reverse']))
+
+                
+    # ------------------------------ Analysis Methods ------------------------------ #           
     def analyze_params(self, inst_ssa, medium):
         # Takes in SSA parameters
         log.info(inst_ssa)
@@ -825,7 +914,7 @@ class BinAnalysis:
                         else:
                             log.debug(use_ref.llil)
                             if self.find_var(var):
-                                log.error("Exists")
+                                log.info("Exists")
                                 return None
                             else:
                                 return (var, offset)
@@ -850,21 +939,10 @@ class BinAnalysis:
         
     
     def analyze_inst(self, inst_ssa, mlil_fun, var_targets):
-        dis_inst = self.bv.get_disassembly(inst_ssa.address)
+        # Only interested in instruction with the disassembly code as we gathered supposedly all necessary information from 
+        # previous analysis
         
-        # Example: mov     qword [rbp-0x8], rax
-        dis_inst_pattern    = re.search(r"(\b[a-z]+\b)\s*(.*),\s(.*)", dis_inst)
-        inst_type       = str()
-        dest            = str()
-        src             = str()
-        if dis_inst_pattern != None:
-            inst_type   = dis_inst_pattern.group(1)
-            dest        = dis_inst_pattern.group(2)
-            src         = dis_inst_pattern.group(3)
-        else:
-            log.error("Regex failed")
-        
-        log.info("Analyzing inst\t%s", dis_inst)
+        log.info("Analyzing inst\t%s", inst_ssa)
         # mem_ref_result = self.mem_ref_chk(inst_ssa.dest, mlil_fun)
         
     def mem_ref_chk(self, inst_ssa, mlil_fun):
@@ -896,15 +974,15 @@ class BinAnalysis:
             return reg
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILSetRegSsa:
             log.debug("SetSSA")
-            offset = self.find_offset(inst_ssa)
+            offset = self.calc_offset(inst_ssa)
             return offset
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILStoreSsa:
             log.debug("StoreSSA")
-            offset = self.find_offset(inst_ssa)
+            offset = self.calc_offset(inst_ssa)
             return offset
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILLoadSsa:
             log.debug("LoadSSA")
-            offset = self.find_offset(inst_ssa)
+            offset = self.calc_offset(inst_ssa)
             return offset
         elif type(inst_ssa) == binaryninja.lowlevelil.SSARegister:
             log.debug("SSARegister")
@@ -928,7 +1006,7 @@ class BinAnalysis:
                     return reg_def
         elif binaryninja.commonil.Arithmetic in inst_ssa.__class__.__bases__:
             log.debug("ArithSSA")
-            offset = self.find_offset(inst_ssa)
+            offset = self.calc_offset(inst_ssa)
             return offset
 if __name__ == '__main__':
     process_argument(sys.argv[1:])
