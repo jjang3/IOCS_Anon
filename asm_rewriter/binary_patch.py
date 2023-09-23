@@ -67,6 +67,7 @@ sys.path[0:0] = ['.', '..']
 sys.path.insert(0, '/home/jaewon/binaryninja')
 
 fun_patch_tgts      = dict()
+fun_off_to_table    = dict()
 
 class SizeType(Enum):
     CHAR = 1
@@ -197,12 +198,12 @@ def process_binary(filename, funfile, dirloc):
             bn = BinAnalysis(bv)
             bn.analyze_binary(funlist)
 
-        # if dirloc != '':
-        #     for dir_file in dir_list:
-        #         if (dir_file.endswith('.s')):
-        #             process_file(funlist, target_dir, dir_file)
-        # else:
-        #     process_file(funlist, target_dir, target_file)
+        if dirloc != '':
+            for dir_file in dir_list:
+                if (dir_file.endswith('.s')):
+                    process_file(funlist, target_dir, dir_file)
+        else:
+            process_file(funlist, target_dir, target_file)
             
 def analyze_temp_inst(temp_inst, patch_targets):
     inst_type = False
@@ -272,8 +273,8 @@ class VarData:
 @dataclass
 class PatchingInst:
     inst_type: Optional[str] = None
+    src: Optional[str] = None
     dest: Optional[str] = None
-    src: Optional[str] = None       
     offset: Optional[str] = None
     
 def dwarf_analysis(funlist, filename, target_dir):
@@ -365,7 +366,7 @@ def dwarf_analysis(funlist, filename, target_dir):
                                 if offset_regex := re.search(reg_regex, offset):
                                     var_offset = int(offset_regex.group(1))
                                     var_offset += fun_frame_base
-                                    reg_offset = "rbp" + str(var_offset)
+                                    reg_offset = str(var_offset) + "(%rbp)" 
                                     print("\t\tStarting offset: ", reg_offset)
                         if (attr.name == "DW_AT_type" and target_fun == True):
                             try:
@@ -387,6 +388,7 @@ def dwarf_analysis(funlist, filename, target_dir):
                                     if 'DW_AT_name' in ptr_type_die.attributes:
                                         struct_name = ptr_type_die.attributes['DW_AT_name'].value.decode()
                                         print("\t\tPointer type found: ", struct_name)
+                                        dwarf_var_count += 1
                                         for struct_item in struct_set:
                                             if struct_name == struct_item.name:
                                                 dwarf_var_count += len(struct_item.member_list)
@@ -440,64 +442,127 @@ def dwarf_analysis(funlist, filename, target_dir):
     print("Variable count: ", dwarf_var_count)
     generate_table(dwarf_var_count, target_dir)
 
+def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
+    log.critical("Patch the instruction %s", disassembly)
+    # This regex is used to find offset (e.g., -16(%rbp)) to determine store or load
+    off_regex       = r"(-|)([0-9].*\(%r..\))"
+    tgt_offset      = int()
+    for offset in offset_targets:
+        if offset[0] == temp.offset:
+            tgt_offset = offset[1]
+    
+    store_or_load   = str()
+    if re.search(off_regex, temp.src):
+        store_or_load = "load"
+    elif re.search(off_regex, temp.dest):
+        store_or_load = "store"
+    else:
+        store_or_load = None
+    
+    # print(temp)
+    if temp.inst_type == "mov":
+        if store_or_load == "store":
+            new_inst_type = "mov_set_gs"
+            log.info("Patching with mov_set_gs")
+            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
+        elif store_or_load == "load":
+            new_inst_type = "mov_load_gs"
+            log.info("Patching with mov_load_gs")
+            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
+    elif temp.inst_type == "lea":
+        new_inst_type = "lea_gs"
+        log.info("Patching with lea_gs")
+        line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
+    return line
+    # result = analyze_temp_inst(temp_inst, patch_targets)
+    # if result[0] == True:
+    
+    #     # print("Found candidate", dis_line, result[1], temp_inst)
+    #     # Need to work from here.
+    #     try:
+    #         table_offset = offset_targets[temp_inst.offset]
+    #         replace_inst = str()
+    #     except:
+    #         # print("No offset exists")
+    #         break
+        
+    #     if temp_inst.offset in struct_targets and off_regex is not None:
+    #         # print("Struct found", temp_inst.offset)
+    #         if result[1] == "dest":
+    #             replace_inst = "mov_str_mem_gs"
+    #             # print(replace_inst, off_regex.group(2), temp_inst.src, table_offset)
+    #             line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %s, %d\t" % (replace_inst, off_regex.group(2), temp_inst.src, table_offset), line)
+    #         elif result[1] == "src":
+    #             replace_inst = "load_str_mem_gs"
+    #             line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %s\t" % (replace_inst, (temp_inst.dest), off_regex.group(2)), line)
+    #     else:    
+    #         if temp_inst.inst_type == "lea":
+    #             replace_inst = "lea_gs"
+    #             line = re.sub(r"(\b[a-z]+\b).*(?!\b)", "%s\t%s, %d\t" % (replace_inst, conv_reg(temp_inst.dest), table_offset), line)
+    #             # print("New line:", line)
+    #         elif temp_inst.inst_type == "add":
+    #             replace_inst = "add_gs"
+    #             line = re.sub(r"(\b[a-z]+\b).*(\b)", "%s\t%s, %d\t" % (replace_inst, conv_reg(temp_inst.src), table_offset), line)
+    #         elif temp_inst.inst_type == "cmp":
+    #             replace_inst = "cmp_gs"
+    #             line = re.sub(r"(\b[a-z]+\b).*(\b)", "%s\t%s, %d\t" % (replace_inst, conv_reg(temp_inst.src), table_offset), line)
+    #         elif result[1] == "dest": # mov_gs_set "Destination" is the ptr, hence need to use the src
+    #             replace_inst = "mov_set_gs"
+    #             # print("Target line: ", line)
+    #             line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\t" % (replace_inst, conv_reg(temp_inst.src), table_offset), line)
+    #             # print("New line:", line)
+    #             None
+    #         elif result[1] == "src": # mov_gs_load "Source" is the ptr, need to "load" the value from the table back
+    #             replace_inst = "mov_load_gs" 
+    #             line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\t" % (replace_inst, conv_reg(temp_inst.dest), table_offset), line)
+
+
 def process_file(funlist, target_dir, target_file):
         # if (target_file.endswith('.asm')):
         print(target_file)
         # print(os.path.join(target_dir, target_file))
-        with fileinput.input(os.path.join(target_dir, target_file), inplace=False, encoding="utf-8", backup='.bak') as f:
+        with fileinput.input(os.path.join(target_dir, target_file), inplace=True, encoding="utf-8", backup='.bak') as f:
             fun_begin_regex = r'(?<=.type\t)(.*)(?=,\s@function)'
             fun_end_regex   = r'(\t.cfi_endproc)'
             dis_line_regex  = r'\t(mov|lea|sub|add|cmp)([a-z])\t(.*),\s(.*)'
-            offset_regex    = r'(\b[|BYTE PTR|DWORD PTR|QWORD PTR]+\b)\s(.*[0-9]\[.*\]|(\b[a-z]+\b:\b[0-9]+\b))'
-            lea_regex       = r'(\s*|.*)\[(.*)\]'
-            calc_offset_regex = r'(-\b[0-9,a-z]+\b)\[(.*)\]'
             check = False
             currFun = str()
             patch_targets = list()
-            offset_targets = dict()
+            offset_targets = list()
             struct_targets = set()
             # print(funlist)
             for line in f:
                 # print('\t.file\t"%s.c"' % target_file.rsplit('.', maxsplit=1)[0])
                 if line.startswith('\t.file\t"%s.c"' % target_file.rsplit('.', maxsplit=1)[0]):
                     print("""
-    .macro lea_gs dest, offset
-		mov	r11, [gs:[\offset]]
-		lea \dest, [r11]
-	.endm
-	.macro mov_set_gs src, offset
-		xor r11, r11
-		mov	r11, [gs:[\offset]]
-		mov qword PTR [r11], \src
-	.endm
+    .macro mov_set_gs src offset
+        rdgsbase %r11
+        mov \offset(%r11),	%r11
+        mov \src, (%r11)
+    .endm
     .macro mov_load_gs dest, offset
-		mov	\dest, [gs:[\offset]]
-		mov \dest, [\dest]
-	.endm
- 	.macro add_gs value, offset
-		mov	r11, [gs:[\offset]]
-		mov r11, [r11]
-		add r11, \\value
-		mov	r12, [gs:[\offset]]
-		mov qword PTR [r12], r11
-	.endm
-	.macro cmp_gs value, offset
-		mov	r11, [gs:[\offset]]
-		mov r11, [r11]
-		cmp r11, \\value
-	.endm
-	.macro mov_str_mem_gs dest, src, offset
-        xor r11d, r11d
-		mov	r11d, [gs:[\offset]]
-		mov r12d, r11d
-		mov dword PTR [r11d], \src
-		lea r14, \dest
-		mov [r14], r11d
-	.endm
-	.macro load_str_mem_gs dest, src
-		mov	r11d, \src
-		mov \dest, [r11d]
-	.endm
+        rdgsbase %r11
+        mov \offset(%r11), %r11
+        mov (%r11), \dest
+    .endm
+    .macro lea_gs dest, offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+        lea (%r11), \dest
+    .endm
+    .macro add_gs value, offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+        mov (%r11), %r11
+        add $\\value, %r11
+        mov	\offset(%r11), %r12 
+        mov %r11, (%r12)
+    .endm
+    .macro cmp_gs value, offset
+        mov	\offset(%r11), %r11
+        mov (%r11), %r11
+        cmp $\\value, %r11
+    .endm
 """, end='')
                 fun_begin = re.search(fun_begin_regex, line)
                 if fun_begin is not None:
@@ -505,11 +570,10 @@ def process_file(funlist, target_dir, target_file):
                         currFun = fun_begin.group(1)
                         try:
                             patch_targets = fun_patch_tgts[currFun]
-                            offset_targets = prog_offset_set[currFun]   
-                            struct_targets = struct_offset_set[currFun]
+                            offset_targets = fun_off_to_table[currFun]   
                             check = True
                         except Exception as err:
-                            print("Skipping", type(err))
+                            log.error("Skipping", type(err))
                             check = False
                 
                 fun_end = re.search(fun_end_regex, line)
@@ -518,93 +582,54 @@ def process_file(funlist, target_dir, target_file):
                 
                 if check == True:
                     dis_line = line.rstrip('\n')
-                    print(patch_targets)
-                    # print(line, end='')
+                    # log.debug(pprint(patch_targets))
+                    # log.debug(pprint(offset_targets))
                     # mnemonic source, destination AT&T
+                    log.debug(dis_line)
                     dis_regex = re.search(dis_line_regex, dis_line)
                     temp_inst = None
-                    # off_regex = None
                     if dis_regex is not None:
                         inst_type   = dis_regex.group(1)
                         suffix      = dis_regex.group(2)
                         src         = dis_regex.group(3)
                         dest        = dis_regex.group(4)
-                        print("Inst Type: ", inst_type, "\t|\tSuffix: ", conv_suffix(suffix), "\t| src: ", src,"\t| dest: ", dest)
-                        # if inst_type == "lea":
-                        #     off_regex = re.search(lea_regex, dest)
-                        #     if off_regex is not None and off_regex.group(1) != "":  
-                        #         offset = off_regex.group(2)
-                        #         temp_inst = PatchingInst(inst_type, dest, src, offset)
-                        #     else:
-                        #         off_regex = re.search(lea_regex, src)
-                        #         offset = off_regex.group(2)
-                        #         temp_inst = PatchingInst(inst_type, dest, src, offset)
-                        # else:
-                        #     off_regex = re.search(offset_regex, dest)
-                        #     if off_regex is not None:
-                        #         calc_regex = re.search(calc_offset_regex, dest)
-                        #         if calc_regex is not None:
-                        #             offset = calc_regex.group(2) + calc_regex.group(1)
-                        #             temp_inst = PatchingInst(inst_type, dest, src, offset)
-                        #     else:
-                        #         off_regex = re.search(offset_regex, src)
-                        #         calc_regex = re.search(calc_offset_regex, src)
-                        #         if calc_regex is not None:
-                        #             offset = calc_regex.group(2) + calc_regex.group(1)
-                        #             temp_inst = PatchingInst(inst_type, dest, src, offset)
-                        print("Temp:", temp_inst)
-                        
-                    if temp_inst != None:
-                        result = analyze_temp_inst(temp_inst, patch_targets)
-                        if result[0] == True:
-                            # print("Found candidate", dis_line, result[1], temp_inst)
-                            # Need to work from here.
-                            try:
-                                table_offset = offset_targets[temp_inst.offset]
-                                replace_inst = str()
-                            except:
-                                # print("No offset exists")
-                                break
-                            
-                            if temp_inst.offset in struct_targets and off_regex is not None:
-                                # print("Struct found", temp_inst.offset)
-                                if result[1] == "dest":
-                                    replace_inst = "mov_str_mem_gs"
-                                    # print(replace_inst, off_regex.group(2), temp_inst.src, table_offset)
-                                    line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %s, %d\t" % (replace_inst, off_regex.group(2), temp_inst.src, table_offset), line)
-                                elif result[1] == "src":
-                                    replace_inst = "load_str_mem_gs"
-                                    line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %s\t" % (replace_inst, (temp_inst.dest), off_regex.group(2)), line)
-                            else:    
-                                if temp_inst.inst_type == "lea":
-                                    replace_inst = "lea_gs"
-                                    line = re.sub(r"(\b[a-z]+\b).*(?!\b)", "%s\t%s, %d\t" % (replace_inst, conv_reg(temp_inst.dest), table_offset), line)
-                                    # print("New line:", line)
-                                elif temp_inst.inst_type == "add":
-                                    replace_inst = "add_gs"
-                                    line = re.sub(r"(\b[a-z]+\b).*(\b)", "%s\t%s, %d\t" % (replace_inst, conv_reg(temp_inst.src), table_offset), line)
-                                elif temp_inst.inst_type == "cmp":
-                                    replace_inst = "cmp_gs"
-                                    line = re.sub(r"(\b[a-z]+\b).*(\b)", "%s\t%s, %d\t" % (replace_inst, conv_reg(temp_inst.src), table_offset), line)
-                                elif result[1] == "dest": # mov_gs_set "Destination" is the ptr, hence need to use the src
-                                    replace_inst = "mov_set_gs"
-                                    # print("Target line: ", line)
-                                    line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\t" % (replace_inst, conv_reg(temp_inst.src), table_offset), line)
-                                    # print("New line:", line)
-                                    None
-                                elif result[1] == "src": # mov_gs_load "Source" is the ptr, need to "load" the value from the table back
-                                    replace_inst = "mov_load_gs" 
-                                    line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\t" % (replace_inst, conv_reg(temp_inst.dest), table_offset), line)
-
-                            print(line, end='')
+                        expr        = str()
+                        off_regex   = r"(-|)([0-9].*\(%r..\))"
+                        if re.search(off_regex, src):
+                            expr = src
+                        elif re.search(off_regex, dest):
+                            expr = dest
                         else:
-                            # print(line, end='')
+                            expr = None
+                        # print("Inst Type: ", inst_type, "\t|\tSuffix: ", conv_suffix(suffix), "\t| src: ", src,"\t| dest: ", dest)
+                        
+                        temp_inst = PatchingInst(inst_type, src, dest, expr)
+                        log.debug("Temp: %s", temp_inst)
+                    
+                    
+                    if temp_inst != None:
+                        # pprint(patch_targets)
+                        if temp_inst in patch_targets:
+                            log.critical("Found")
+                            replace_inst = str()
+                            try:
+                                replace_inst = patch_inst(dis_line, temp_inst, offset_targets)
+                                
+                            except:
+                                log.error("No offset exists")
+                                # break
+                            if replace_inst != None:
+                                line = replace_inst
+                                log.info(line)
+                                print(line, end='')
+                        else:
+                            print(line, end='')
                             None
                     else:
-                        # print(line, end='')
+                        print(line, end='')
                         None
                 else:
-                    # print(line, end='')
+                    print(line, end='')
                     None
 
 def find_struct(fun_name, var_targets, var):
@@ -645,6 +670,7 @@ def find_struct(fun_name, var_targets, var):
     return output
                                 
 log = logging.getLogger(__name__)
+
 log.setLevel(logging.DEBUG)
 
 # create console handler with a higher log level
@@ -652,6 +678,7 @@ ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
 ch.setFormatter(CustomFormatter())
 log.addHandler(ch)
+log.disabled = True
 
 class BinAnalysis:
     # Patch targets resulting from analysis of the current working function
@@ -774,13 +801,15 @@ class BinAnalysis:
                 try:
                     var_targets = fun_var_info[func.name]
                     self.backward_slice(hlil_fun, mlil_fun, llil_fun, lift_fun, var_targets)
+                    fun_patch_tgts[func.name] = self.cur_fun_tgts.copy()
                     for item in self.cur_fun_tgts:
                         log.debug(item)
+                    fun_off_to_table[func.name] = self.off_to_table.copy()
                     for item in self.off_to_table:
                         log.debug(item)
                 except Exception as error:
                     log.error("%s", error)
-                    
+                
     def backward_slice(self, high, medium, low, lift, var_targets):
         """
         - Workflow of backward slice starts from the MLIL as it is the most intuitive way of observing the behavior
@@ -840,36 +869,36 @@ class BinAnalysis:
             log.error("Regex failed %s", dis_inst)
         
         # Either source or dest can be ptr, so whichever one passes through, find offset in the set
-        patch_inst = None
+        tgt_inst = None
         expr = None
         if re.search(r'(\b[qword ptr|dword ptr]+\b)', src):
             result, expr = self.find_off(src)
             if result:
-                patch_inst = PatchingInst(inst_type=inst_type, dest=dest, src=src, offset=expr)
+                tgt_inst = PatchingInst(inst_type=inst_type, dest=dest, src=expr, offset=expr) # expr -> None
         else:
             result, expr = self.find_off(dest)
             if result:
-                patch_inst = PatchingInst(inst_type=inst_type, dest=dest, src=src, offset=expr)
+                tgt_inst = PatchingInst(inst_type=inst_type, dest=expr, src=src, offset=expr) # expr -> None
         
         
-        if patch_inst != None:
-            if patch_inst not in self.cur_fun_tgts:
+        if tgt_inst != None:
+            if tgt_inst not in self.cur_fun_tgts:
                 update = True
                 for item in self.cur_fun_tgts:
-                    if patch_inst.offset == item.offset:
+                    if tgt_inst.offset == item.offset:
                         log.debug("Table offset should not be updated")
                         update = False
 
                 if update:
-                    self.cur_fun_tgts.append(patch_inst)
-                    self.off_to_table.add((patch_inst.offset, table_offset))
+                    self.cur_fun_tgts.append(tgt_inst)
+                    self.off_to_table.add((tgt_inst.offset, table_offset))
                     table_offset += 8
                 else:
-                    self.cur_fun_tgts.append(patch_inst)
-                    
-                print(colored("Adding %s | Next table offset %d" % (patch_inst, table_offset), 'blue', attrs=['reverse']))
+                    self.cur_fun_tgts.append(tgt_inst)
+
+                print(colored("Adding %s | Next table offset %d" % (tgt_inst, table_offset), 'blue', attrs=['reverse']))
             else:
-                print(colored("Overlap %s" % (patch_inst), 'red', 
+                print(colored("Overlap %s" % (tgt_inst), 'red', 
                 attrs=['reverse']))
 
                 
