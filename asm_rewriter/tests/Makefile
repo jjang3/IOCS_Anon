@@ -9,9 +9,9 @@ PARENT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../)
 
 %.new: %
 	$(eval name := $(basename $@))	;\
-	$(CC) $(LIBFLAGS) ${name}/table.c -o ${name}/table.so $(LIBLDFLAGS)
-	if [ ! -d ${name}/lib ]; then mkdir -p $(name)/lib; fi
-	mv ${name}/table.so $(name)/lib
+	# $(CC) $(LIBFLAGS) ${name}/table.c -o ${name}/table.so $(LIBLDFLAGS)
+	# if [ ! -d ${name}/lib ]; then mkdir -p $(name)/lib; fi
+	# mv ${name}/table.so $(name)/lib
 	as ${name}/$<.s -o ${name}/$(name).o ;\
 	gcc ${name}/$(name).o -o ${name}/$@
 

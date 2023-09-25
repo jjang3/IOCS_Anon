@@ -669,8 +669,8 @@ def find_struct(fun_name, var_targets, var):
     #     print("output", item)
     return output
                                 
+# Debug options here
 log = logging.getLogger(__name__)
-
 log.setLevel(logging.DEBUG)
 
 # create console handler with a higher log level
@@ -678,7 +678,7 @@ ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
 ch.setFormatter(CustomFormatter())
 log.addHandler(ch)
-log.disabled = True
+log.disabled = False
 
 class BinAnalysis:
     # Patch targets resulting from analysis of the current working function
@@ -713,11 +713,6 @@ class BinAnalysis:
             return False, None
         except:
             return False, None
-        # for item in self.patch_tgts:
-        #     if offset == item[1]:
-        #         log.critical("Found offset")
-        #         return True
-        # return False
     
     def calc_offset(self, inst_ssa):
         log.info("Finding the offset of %s %s", inst_ssa, type(inst_ssa)) 
@@ -832,22 +827,43 @@ class BinAnalysis:
                     if patch_tgt != None:
                         self.patch_tgts.add(patch_tgt)
                         log.debug("Patch target: %s", patch_tgt)
+                    None
                 elif inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_SSA or \
                      inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED:
                     # Check if variable name exists for this MLIL instruction, and see whether it has been already checked
+                    # print(inst_ssa, inst_ssa.operation)
                     try:
-                        var = inst_ssa.vars_written[0].var
+                        var = None
+                        if len(inst_ssa.vars_address_taken) != 0:
+                            # Ex: %rsi#1 = &var_1c
+                            var = inst_ssa.vars_address_taken[0]
+                        elif len(inst_ssa.vars_read) == 0:
+                            continue
+                        elif inst_ssa.vars_written[0].var.core_variable.source_type == VariableSourceType.StackVariableSourceType:
+                            # Ex: var_18#1 = %rax_1#2
+                            var = inst_ssa.vars_written[0].var
+                        elif inst_ssa.vars_read[0].var.core_variable.source_type == VariableSourceType.StackVariableSourceType:
+                            # Ex: %rax_7#8 = var_1c
+                            var = inst_ssa.vars_read[0].var
+                            
+                        # If variable is not found, then analyze the instruction
                         if self.find_var(var):
+                            log.error("Found variable %s, skip", var)
                             continue
                         else:
-                            # log.debug("Analyze %s", inst_ssa)
-                            None
+                            log.info("Analyze inst: %s", inst_ssa)
+                            patch_tgt = self.analyze_inst(inst_ssa, medium, var_targets)
+                            if patch_tgt != None:
+                                self.patch_tgts.add(patch_tgt)
+                                log.debug("Patch target: %s", patch_tgt)
                     except Exception as error:
                         log.error("%s", error)
                         
+        # After all analysis is done with the MLIL level, find patch targets by dissecting disassembly of LLIL
         for llil_bb in low:
             for inst in llil_bb:
                 self.find_patch_tgts(inst)
+                
                 
                 
     def find_patch_tgts(self, inst):
@@ -970,8 +986,51 @@ class BinAnalysis:
     def analyze_inst(self, inst_ssa, mlil_fun, var_targets):
         # Only interested in instruction with the disassembly code as we gathered supposedly all necessary information from 
         # previous analysis
-        
-        log.info("Analyzing inst\t%s", inst_ssa)
+        log.info("Analyzing inst\t%s %s", inst_ssa, inst_ssa.operation)
+        if inst_ssa.operation == MediumLevelILOperation.MLIL_VAR_SSA or \
+            inst_ssa.operation == MediumLevelILOperation.MLIL_VAR:
+            log.debug("Instruction: %s %s %s", inst_ssa, type(inst_ssa.src), type(inst_ssa.dest))
+        elif inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_SSA or \
+            inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED:
+            log.debug("Instruction: %s", inst_ssa)
+            # First condition is to check whether either src or dest is address of (&var_c)
+            # log.debug(inst_ssa.src.vars_address_taken[0])
+            offset = None
+            addr_of_var = None
+            var = None
+            if type(inst_ssa.src) == binaryninja.mediumlevelil.MediumLevelILAddressOf:
+                addr_of_var = inst_ssa.src
+            elif type(inst_ssa.dest) == binaryninja.mediumlevelil.MediumLevelILAddressOf:
+                addr_of_var = inst_ssa.dest
+            elif type(inst_ssa.src) == binaryninja.mediumlevelil.SSAVariable:
+                inst_var = mlil_fun.get_ssa_var_definition(inst_ssa.src)                
+            elif type(inst_ssa.dest) == binaryninja.mediumlevelil.SSAVariable:
+                inst_var = mlil_fun.get_ssa_var_definition(inst_ssa.dest)
+            
+            
+            # if it turns out addr_of_var is not none, then handle the case, otherwise it will go thru
+            if addr_of_var != None:
+                addr_var = addr_of_var.vars_address_taken[0]
+                # Instead of using the MLIL (as this camouflages register name as Variable), lower it to LLIL to get the actual reg
+                if type(inst_ssa.llil.src) == LowLevelILRegSsa:
+                    reg = inst_ssa.llil.src.src # LowLevelILRegSsa type -> get reg
+                    offset = inst_ssa.llil.function.get_ssa_reg_definition(reg)
+                if offset != None:
+                    return (addr_var, self.analyze_llil_inst(offset, offset.function))
+            elif inst_var != None:
+            # else if variable simply exists, then we analyze the LLIL to get the offset
+                var = None
+                if inst_ssa.vars_written[0].var.core_variable.source_type == VariableSourceType.StackVariableSourceType:
+                    # Ex: var_18#1 = %rax_1#2
+                    var = inst_ssa.vars_written[0].var
+                elif inst_ssa.vars_read[0].var.core_variable.source_type == VariableSourceType.StackVariableSourceType:
+                    # Ex: %rax_7#8 = var_1c
+                    var = inst_ssa.vars_read[0].var
+                    
+                if var != None:
+                    return (var, self.analyze_llil_inst(inst_var.llil, inst_var.llil.function))
+
+            
         # mem_ref_result = self.mem_ref_chk(inst_ssa.dest, mlil_fun)
         
     def mem_ref_chk(self, inst_ssa, mlil_fun):
