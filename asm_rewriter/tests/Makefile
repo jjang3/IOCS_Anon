@@ -24,6 +24,7 @@ PARENT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../)
 	$(CC) $(ASMFLAGS) $< -o ${name}/$@ ;\
 	as ${name}/${name}.s -o ${name}/${name}.o
 	$(CC) -O0 -gdwarf-2 ${name}/${name}.o -o ${name}/$@
+	rm ${name}/list.out
 	printf "main" >> ${name}/list.out
 
 clean:
