@@ -24,8 +24,13 @@ PARENT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../)
 	$(CC) $(ASMFLAGS) $< -o ${name}/$@ ;\
 	as ${name}/${name}.s -o ${name}/${name}.o
 	$(CC) -O0 -gdwarf-2 ${name}/${name}.o -o ${name}/$@
-	rm ${name}/list.out
+	if [ ! -e ${name}/list.out ] ;\
+	then ;\
+		echo "Doesn't exist" ;\
+	else ;\
+		rm ${name}/list.out ;\
+	fi ;\
 	printf "main" >> ${name}/list.out
 
 clean:
-		rm -rf lib *.o *.out *.i hello.s
+	rm -rf lib *.o *.out *.i
