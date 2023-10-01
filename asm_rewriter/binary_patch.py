@@ -198,12 +198,12 @@ def process_binary(filename, funfile, dirloc):
             bn = BinAnalysis(bv)
             bn.analyze_binary(funlist)
 
-        if dirloc != '':
-            for dir_file in dir_list:
-                if (dir_file.endswith('.s')):
-                    process_file(funlist, target_dir, dir_file)
-        else:
-            process_file(funlist, target_dir, target_file)
+        # if dirloc != '':
+        #     for dir_file in dir_list:
+        #         if (dir_file.endswith('.s')):
+        #             process_file(funlist, target_dir, dir_file)
+        # else:
+        #     process_file(funlist, target_dir, target_file)
             
 def analyze_temp_inst(temp_inst, patch_targets):
     inst_type = False
@@ -424,7 +424,7 @@ def dwarf_analysis(funlist, filename, target_dir):
                                 # print(describe_form_class(attr.form))
                                 # print(attr.udata_value())
                                 None
-                    if offset != None: 
+                    if offset != None and temp_struct != None: 
                         print("\tMember name %s |\tOffset %s\n" % (attr_name, offset.group(1)))
                         temp_struct.member_list.add((attr_name, offset.group(1)))
                 if temp_struct not in struct_set and temp_struct is not None:
@@ -530,6 +530,8 @@ def process_file(funlist, target_dir, target_file):
             patch_targets = list()
             offset_targets = list()
             struct_targets = set()
+            max_patch = 0
+            patch_count = 0
             # print(funlist)
             for line in f:
                 # print('\t.file\t"%s.c"' % target_file.rsplit('.', maxsplit=1)[0])
@@ -580,7 +582,7 @@ def process_file(funlist, target_dir, target_file):
                 if fun_end is not None:
                     check = False
                 
-                if check == True:
+                if check == True: #and patch_count < max_patch:
                     dis_line = line.rstrip('\n')
                     # log.debug(pprint(patch_targets))
                     # log.debug(pprint(offset_targets))
@@ -619,6 +621,7 @@ def process_file(funlist, target_dir, target_file):
                                 log.error("No offset exists")
                                 # break
                             if replace_inst != None:
+                                patch_count += 1
                                 line = replace_inst
                                 log.info(line)
                                 print(line, end='')
@@ -693,6 +696,14 @@ class BinAnalysis:
     def __init__(self, bv):
         self.bv = bv
         
+    def search_var(self, inst_ssa):
+        mapped_MLLIL = inst_ssa.mapped_medium_level_il 
+        print(mapped_MLLIL)
+        if mapped_MLLIL.operation != MediumLevelILOperation.MLIL_VAR:
+            return self.search_var(inst_ssa.src)
+        else:
+            return mapped_MLLIL
+        
     def find_var(self, var):
         for item in self.patch_tgts:
             if var == item[0]:
@@ -715,9 +726,11 @@ class BinAnalysis:
             return False, None
     
     def calc_offset(self, inst_ssa):
+        arrow = 'U+21B3'
         log.info("Finding the offset of %s %s", inst_ssa, type(inst_ssa)) 
         try:
             if type(inst_ssa) == binaryninja.lowlevelil.LowLevelILLoadSsa:
+                log.debug("%s LoadSSA", chr(int(arrow[2:], 16)))
                 if inst_ssa.src_memory != None:
                     try:
                         if inst_ssa.src.left.src.reg == "fsbase": 
@@ -728,9 +741,14 @@ class BinAnalysis:
                             expr = reg + ":" + str(int(str(inst_ssa.src.right), 16))
                             return None
                         else:
-                            result = self.calc_offset(inst_ssa.src)
-                            if result != None:
-                                return result
+                            # print("Not segment")
+                            mapped_MLLIL = inst_ssa.mapped_medium_level_il # This is done to get the var (or find if not)
+                            if mapped_MLLIL != None:
+                                result = self.calc_offset(inst_ssa.src)
+                                if result != None:
+                                    return result
+                            else:
+                                log.error("No variable assigned, skip")
                     except Exception as error:
                         if type(inst_ssa.src) == binaryninja.lowlevelil.LowLevelILConstPtr:
                             log.error("Global value, skip")
@@ -739,13 +757,14 @@ class BinAnalysis:
                             log.error("Error: %s", error)
             elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILSetRegSsa:
                 try:
-                    log.debug("SetRegSSA")
+                    log.debug("%s SetRegSSA",  chr(int(arrow[2:], 16)))
                     result = self.calc_offset(inst_ssa.src)
                     if result != None:
                         return result
                 except Exception as error:
                     log.error("Error: %s", error)
             elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILStoreSsa:
+                log.debug("%s StoreSSA",  chr(int(arrow[2:], 16)))
                 try:
                     try:
                         result = self.calc_offset(inst_ssa.dest)
@@ -756,14 +775,18 @@ class BinAnalysis:
                 except Exception as error:
                     log.error("Error: %s", error)
             elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILRegSsaPartial:
-                log.debug(inst_ssa.full_reg)
+                log.debug("%s RegSSAPartial %s",  chr(int(arrow[2:], 16)), inst_ssa.full_reg)
                 result = self.calc_offset(inst_ssa.function.get_ssa_reg_definition(inst_ssa.full_reg))
                 return result
             elif binaryninja.commonil.Arithmetic in inst_ssa.__class__.__bases__:
+                log.debug("%s Arithmetic",  chr(int(arrow[2:], 16)))
                 try:
                     reg = inst_ssa.left.src.reg.__str__()
                 except:
                     reg = inst_ssa.left.__str__()
+                if reg == "%rsp":
+                    return None # We do not want any RSP
+                
                 if type(inst_ssa.right) == binaryninja.lowlevelil.LowLevelILLoadSsa:
                     result = self.calc_offset(inst_ssa.right)
                     if result != None:
@@ -827,7 +850,14 @@ class BinAnalysis:
                     if patch_tgt != None:
                         self.patch_tgts.add(patch_tgt)
                         log.debug("Patch target: %s", patch_tgt)
-                    None
+                    else:
+                        for param_var in inst_ssa.params:
+                            print(param_var)
+                            patch_tgt = self.analyze_params(inst_ssa, param_var, medium)
+                            if patch_tgt != None:
+                                self.patch_tgts.add(patch_tgt)
+                                log.debug("Patch target: %s", patch_tgt)
+                    # None
                 elif inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_SSA or \
                      inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED:
                     # Check if variable name exists for this MLIL instruction, and see whether it has been already checked
@@ -919,50 +949,64 @@ class BinAnalysis:
 
                 
     # ------------------------------ Analysis Methods ------------------------------ #           
-    def analyze_params(self, inst_ssa, medium):
+    def analyze_params(self, inst_ssa, param_var, medium):
         # Takes in SSA parameters
         log.info(inst_ssa)
-        for param_var in inst_ssa.params:
-            if param_var.operation == MediumLevelILOperation.MLIL_VAR_SSA or \
-            param_var.operation == MediumLevelILOperation.MLIL_VAR or \
-            param_var.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED:
-                var = None
-                offset = None
-                use_ref = medium.ssa_form.get_ssa_var_definition(param_var.src)
-                try:
-                    # In the case of scanf (or anything that takes reference of variable)
-                    # use_ref should result in something like rsi#1 (arg) = &var_1c (var name)
-                    var = use_ref.vars_read[0]
-                    # From here, we need to convert MLIL to LLIL to figure out the offset value
-                    # that is stored in the "rax" register
-                    if type(use_ref.llil.src) == LowLevelILRegSsa:
-                        reg = use_ref.llil.src.src # LowLevelILRegSsa type -> get reg
-                        offset = inst_ssa.llil.function.get_ssa_reg_definition(reg)
-                    if offset != None:
-                        return (var, self.analyze_llil_inst(offset, offset.function))
-                except:
-                    None
-                else:
-                    if type(use_ref.llil.src.src) == LowLevelILRegSsaPartial:
-                        reg = use_ref.llil.src.src.full_reg
-                        reg_def = inst_ssa.llil.function.get_ssa_reg_definition(reg)
-                        try:
-                            mapped_MLLIL = reg_def.src.src.mapped_medium_level_il # This is done to get the var name
-                            var = mapped_MLLIL.vars_read[0]
-                        except Exception as error:
-                            log.error("%s", error)
-                            return None
+        if param_var.operation == MediumLevelILOperation.MLIL_VAR_SSA or \
+        param_var.operation == MediumLevelILOperation.MLIL_VAR or \
+        param_var.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED:
+            var = None
+            offset = None
+            use_ref = medium.ssa_form.get_ssa_var_definition(param_var.src)
+            try:
+                # In the case of scanf (or anything that takes reference of variable)
+                # use_ref should result in something like rsi#1 (arg) = &var_1c (var name)
+                var = use_ref.vars_read[0]
+                # From here, we need to convert MLIL to LLIL to figure out the offset value
+                # that is stored in the "rax" register
+                if type(use_ref.llil.src) == LowLevelILRegSsa:
+                    reg = use_ref.llil.src.src # LowLevelILRegSsa type -> get reg
+                    offset = inst_ssa.llil.function.get_ssa_reg_definition(reg)
+                if offset != None:
+                    return (var, self.analyze_llil_inst(offset, offset.function))
+            except:
+                None
+            else:
+                if type(use_ref.llil.src.src) == LowLevelILRegSsaPartial:
+                    reg = use_ref.llil.src.src.full_reg
+                    reg_def = inst_ssa.llil.function.get_ssa_reg_definition(reg)
+                    try:
+                        mapped_MLLIL = reg_def.src.src.mapped_medium_level_il # This is done to get the var name
+                        var = mapped_MLLIL.vars_read[0]
+                    except Exception as error:
+                        log.error("%s", error)
+                        return None
 
-                        offset = self.analyze_llil_inst(use_ref.llil.src, use_ref.llil.function)
-                        if offset == None:
-                            continue
+                    offset = self.analyze_llil_inst(use_ref.llil.src, use_ref.llil.function)
+                    if offset == None:
+                        return None
+                    else:
+                        log.debug(use_ref.llil)
+                        if self.find_var(var):
+                            log.info("Exists")
+                            return None
                         else:
-                            log.debug(use_ref.llil)
+                            return (var, offset)
+        elif param_var.operation == MediumLevelILOperation.MLIL_CONST:
+            print(param_var)
+            if len(param_var.llils) > 0:
+                for llil in param_var.llils:
+                    if llil.operation == LowLevelILOperation.LLIL_SET_REG_SSA:
+                        offset = self.analyze_llil_inst(llil, llil.function)
+                        if offset != None:
+                            var = self.search_var(llil)
                             if self.find_var(var):
                                 log.info("Exists")
                                 return None
                             else:
                                 return (var, offset)
+                            exit()
+                            
                             
     
     def analyze_call_inst(self, inst_ssa, medium):
@@ -980,7 +1024,7 @@ class BinAnalysis:
             else:
                 return None
         except:
-            return self.analyze_params(inst_ssa, medium)
+            return None
         
     
     def analyze_inst(self, inst_ssa, mlil_fun, var_targets):

@@ -4,7 +4,7 @@
 PS3="Select options: "
 input=$1
 
-options=("Migrate" "Compile")
+options=("Migrate" "Patch" "Compile")
 
 # This is coreutils path
 coreutils_build_path="/home/jaewon/coreutils/new_build"
@@ -27,11 +27,17 @@ migrate()
     if [ ! -d "$result_path" ]; then
         mkdir $result_path
     fi
-
-    cp ${coreutils_src_path}/${input} $result_path
+    cp ${coreutils_src_path}/${input} ${coreutils_src_path}/${input}.def
+    mv ${coreutils_src_path}/${input} $result_path/${input}.out
     cp ${coreutils_src_path}/${input}.s $result_path
     rm $result_path/list.out
     printf "main" >> $result_path/list.out
+}
+
+patch()
+{
+    echo "Patch"
+    python3 binary_patch.py --binary ${input}.out --fun list.out --dir=tests/${input}
 }
 
 compile()
@@ -42,6 +48,10 @@ compile()
         echo "No source file, please use other option"
         exit
     fi
+    cp ${test_path}/libMakefile ${result_path}/Makefile
+    cd ${result_path}
+    make lib
+    cp -rf ${result_path}/lib ${coreutils_src_path}
     echo ${result_path}/${input}.s
     as -o ${coreutils_src_path}/${input}.o ${result_path}/${input}.s
     sleep 3
@@ -55,7 +65,8 @@ while true; do
     do
         case $REPLY in
             1) echo "Selected $option"; migrate; break;;
-            2) echo "Selected $option"; compile; break;;
+            2) echo "Selected $option"; patch; break;;
+            3) echo "Selected $option"; compile; break;;
             $((${#options[@]}+1))) echo "Finished!"; break 2;;
             *) echo "Wrong input"; break;
         esac;
