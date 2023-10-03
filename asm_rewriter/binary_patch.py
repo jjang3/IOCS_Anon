@@ -97,16 +97,16 @@ void __attribute__((constructor)) table()
 """ % (varcount)
 
     count = 0
-    while count < varcount:
+    while count < varcount: 
         varentry = "\tvoid *addr_%d;" % count
         mmapentry = """
-    addr_%d = mmap(NULL, getpagesize(), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS | MAP_32BIT, -1, 0);     
+    addr_%d = mmap(NULL, getpagesize(), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);     
     if (addr_%d == MAP_FAILED) {     
         fprintf(stderr, "mmap() failed\\n");     
         exit(EXIT_FAILURE);
     }
     table[%d] = addr_%d;\n
-""" % (count, count, count, count)
+""" % (count, count, count, count) #  | MAP_32BIT
         varlist.append((varentry, mmapentry))
         count += 1
 
@@ -146,6 +146,24 @@ def conv_suffix(suffix):
             return "DWORD PTR" # 32-bit
         case "q":
             return "QWORD PTR" # 64-bit
+        
+def conv_imm(imm):
+    imm_pattern = r"(\$)(.*)"
+    imm_regex = re.search(imm_pattern, imm)
+    new_imm = str()
+    if imm_regex:
+        offset = int(imm_regex.group(2), 16)
+        if offset == 4294967295:
+            offset = -1
+        elif offset == 4294967165:
+            offset = -130
+        elif offset == 4294967166:
+            offset = -131
+        new_imm = imm_regex.group(1) + str(offset)
+        return new_imm
+    else:
+        return imm
+        
     
 def process_argument(argv):
     inputfile = ''
@@ -173,6 +191,8 @@ prog_offset_set     = dict()
 struct_offset_set   = dict()
 table_offset        = 0
 def process_binary(filename, funfile, dirloc):
+        global var_count
+        global dwarf_var_count
         target_dir = None        
         if dirloc != None:
             target_dir = os.path.join(os.path.dirname(os.path.abspath(filename)), dirloc)
@@ -198,64 +218,17 @@ def process_binary(filename, funfile, dirloc):
             bn = BinAnalysis(bv)
             bn.analyze_binary(funlist)
 
-        # if dirloc != '':
-        #     for dir_file in dir_list:
-        #         if (dir_file.endswith('.s')):
-        #             process_file(funlist, target_dir, dir_file)
-        # else:
-        #     process_file(funlist, target_dir, target_file)
+        var_count += dwarf_var_count
+        # Based on variable counts found by static analysis + dwarf analysis, generate table.
+        generate_table(var_count, target_dir)
+
+        if dirloc != '':
+            for dir_file in dir_list:
+                if (dir_file.endswith('.s')):
+                    process_file(funlist, target_dir, dir_file)
+        else:
+            process_file(funlist, target_dir, target_file)
             
-def analyze_temp_inst(temp_inst, patch_targets):
-    inst_type = False
-    src = False
-    dest = False
-    offset = False
-    found = False
-    pattern = r'(\b[|BYTE PTR|DWORD PTR|QWORD PTR]+\b)\s(.*[0-9]\[.*\])'
-    ptr_regex = re.search(pattern, temp_inst.dest)
-    target = str()
-    # print(temp_inst.inst_type, temp_inst.dest)
-    if ptr_regex != None:
-        target = "dest"
-    else:
-        target = "src"
-        
-    
-    # print("Target:", target)
-    for item in patch_targets:
-        # print(item)
-        if temp_inst.inst_type == item.inst_type:
-            # print(temp_inst.inst_type, item.inst_type)
-            inst_type = True
-        # if target == "dest":
-        #     print(temp_inst.dest, item.dest)
-        #     if temp_inst.dest == item.dest:
-        #         dest = True
-        # else:
-        #     print(temp_inst.src, item.src)
-        #     try:
-        #         if int(temp_inst.src) == int(item.src):
-        #             src = True
-        #     except:
-        #         if temp_inst.src == item.src:
-        #             src = True
-                
-        if temp_inst.offset == item.offset:
-            # print(temp_inst.offset, item.offset)
-            offset = True
-        
-        # print(inst_type, offset)
-        # if inst_type and src and offset:
-        #     found = True
-        #     break
-        # elif inst_type and dest and offset:
-        #     found = True
-        #     break
-        if inst_type and offset:
-            found = True
-            break
-        
-    return (found, target)
 
 struct_set = list()
 fun_var_info = dict()
@@ -276,9 +249,11 @@ class PatchingInst:
     src: Optional[str] = None
     dest: Optional[str] = None
     offset: Optional[str] = None
-    
+
+var_count = 0
+dwarf_var_count = 0
 def dwarf_analysis(funlist, filename, target_dir):
-    dwarf_var_count     = 0
+    global dwarf_var_count
     with open(filename, 'rb') as f:
         elffile = ELFFile(f)
 
@@ -313,13 +288,15 @@ def dwarf_analysis(funlist, filename, target_dir):
                 # Check if this attribute contains location information
                 if (DIE.tag == None and DIE.size == 1 and len(var_list) != 0 and funname is not None):
                     print("Store var_list for", funname)
+                    pprint(var_list)
+                    dwarf_var_count += len(var_list)
                     fun_var_info[funname] = var_list.copy()
                     var_list.clear()
-                    
+                    print("----------------------------------------------------------------------------\n")
                 if (DIE.tag == "DW_TAG_subprogram"):
                     target_fun = False
                     fun_frame_base = None
-                    print("Target fun: ", target_fun)
+                    # print("Target fun: ", target_fun)
                     for attr in DIE.attributes.values():
                         if loc_parser.attribute_has_location(attr, CU['version']):
                             lowpc = DIE.attributes['DW_AT_low_pc'].value
@@ -334,11 +311,12 @@ def dwarf_analysis(funlist, filename, target_dir):
                                     highpc_attr_class)
                                 continue
                             funname = DIE.attributes["DW_AT_name"].value.decode()
-                            print("Function name:", funname, "\t| Begin: ", hex(lowpc), "\t| End:", hex(highpc))
                             if funname in funlist:
                                 target_fun = True
-                            print('  Found a compile unit at offset %s, length %s' % (
-                                CU.cu_offset, CU['unit_length']))
+                                print("Target fun: ", target_fun)
+                                print("Function name:", funname, "\t| Begin: ", hex(lowpc), "\t| End:", hex(highpc))
+                            # print('  Found a compile unit at offset %s, length %s' % (
+                                # CU.cu_offset, CU['unit_length']))
                             loc = loc_parser.parse_from_attribute(attr, CU['version'])
                             if isinstance(loc, list):
                                 for loc_entity in loc:
@@ -379,7 +357,8 @@ def dwarf_analysis(funlist, filename, target_dir):
                                         print("\t\tStruct type found: ", struct_name)
                                         for struct_item in struct_set:
                                             if struct_name == struct_item.name:
-                                                dwarf_var_count += len(struct_item.member_list)
+                                                # dwarf_var_count += len(struct_item.member_list)
+                                                None
                                 if type_die.tag == "DW_TAG_pointer_type":
                                     print(hex(type_die.attributes['DW_AT_type'].value))
                                     ptr_ref = type_die.attributes['DW_AT_type'].value + type_die.cu.cu_offset
@@ -388,12 +367,15 @@ def dwarf_analysis(funlist, filename, target_dir):
                                     if 'DW_AT_name' in ptr_type_die.attributes:
                                         struct_name = ptr_type_die.attributes['DW_AT_name'].value.decode()
                                         print("\t\tPointer type found: ", struct_name)
-                                        dwarf_var_count += 1
+                                        # dwarf_var_count += 1
+                                        None
                                         for struct_item in struct_set:
                                             if struct_name == struct_item.name:
-                                                dwarf_var_count += len(struct_item.member_list)
-                                else:
-                                    dwarf_var_count += 1
+                                                # dwarf_var_count += len(struct_item.member_list)
+                                                None
+                                # else:
+                                    None
+                                    # dwarf_var_count += 1
                             except Exception  as err:
                                 print(err)
                     temp_var = VarData(var_name, struct_name, reg_offset)
@@ -405,7 +387,7 @@ def dwarf_analysis(funlist, filename, target_dir):
                     for attr in DIE.attributes.values():
                         if (attr.name == "DW_AT_name"):
                             struct_name = DIE.attributes["DW_AT_name"].value.decode()
-                            print("Struct name: ", struct_name)
+                            # print("Struct name: ", struct_name)
                             temp_struct = StructData(struct_name, set())
                 if (DIE.tag == "DW_TAG_member"):
                     attr_name = None
@@ -425,27 +407,29 @@ def dwarf_analysis(funlist, filename, target_dir):
                                 # print(attr.udata_value())
                                 None
                     if offset != None and temp_struct != None: 
-                        print("\tMember name %s |\tOffset %s\n" % (attr_name, offset.group(1)))
+                        # print("\tMember name %s |\tOffset %s\n" % (attr_name, offset.group(1)))
                         temp_struct.member_list.add((attr_name, offset.group(1)))
                 if temp_struct not in struct_set and temp_struct is not None:
                     struct_set.append(temp_struct)
-            print("----------------------------------------------------------------------------\n")
+                
+            # if (target_fun == True):
+            #     print("----------------------------------------------------------------------------\n")
             # ------- After DIE ------- #  
     
-    for item in struct_set:
-        print(item)
+    # for item in struct_set:
+    #     print(item)
     
     # for item in fun_var_info:
     #     print("Variables for:", item)
     #     for var in fun_var_info[item]:
     #         print(var)
     print("Variable count: ", dwarf_var_count)
-    generate_table(dwarf_var_count, target_dir)
 
 def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
     log.critical("Patch the instruction %s", disassembly)
-    # This regex is used to find offset (e.g., -16(%rbp)) to determine store or load
-    off_regex       = r"(-|)([0-9].*\(%r..\))"
+    log.debug(temp)
+    # This regex is used to find offset (e.g., -16(%rbp)) to determine  or load
+    off_regex       = r"(-|\$|)([0-9].*\(%r..\))"
     tgt_offset      = int()
     for offset in offset_targets:
         if offset[0] == temp.offset:
@@ -458,9 +442,9 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
         store_or_load = "store"
     else:
         store_or_load = None
-    
-    # print(temp)
+
     if temp.inst_type == "mov":
+        # print(temp, store_or_load)
         if store_or_load == "store":
             new_inst_type = "mov_set_gs"
             log.info("Patching with mov_set_gs")
@@ -473,58 +457,23 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
         new_inst_type = "lea_gs"
         log.info("Patching with lea_gs")
         line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
+    elif temp.inst_type == "cmp":
+        new_inst_type = "cmp_gs"
+        if store_or_load == "store":
+            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
+        elif store_or_load == "load":
+            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
     return line
-    # result = analyze_temp_inst(temp_inst, patch_targets)
-    # if result[0] == True:
     
-    #     # print("Found candidate", dis_line, result[1], temp_inst)
-    #     # Need to work from here.
-    #     try:
-    #         table_offset = offset_targets[temp_inst.offset]
-    #         replace_inst = str()
-    #     except:
-    #         # print("No offset exists")
-    #         break
-        
-    #     if temp_inst.offset in struct_targets and off_regex is not None:
-    #         # print("Struct found", temp_inst.offset)
-    #         if result[1] == "dest":
-    #             replace_inst = "mov_str_mem_gs"
-    #             # print(replace_inst, off_regex.group(2), temp_inst.src, table_offset)
-    #             line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %s, %d\t" % (replace_inst, off_regex.group(2), temp_inst.src, table_offset), line)
-    #         elif result[1] == "src":
-    #             replace_inst = "load_str_mem_gs"
-    #             line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %s\t" % (replace_inst, (temp_inst.dest), off_regex.group(2)), line)
-    #     else:    
-    #         if temp_inst.inst_type == "lea":
-    #             replace_inst = "lea_gs"
-    #             line = re.sub(r"(\b[a-z]+\b).*(?!\b)", "%s\t%s, %d\t" % (replace_inst, conv_reg(temp_inst.dest), table_offset), line)
-    #             # print("New line:", line)
-    #         elif temp_inst.inst_type == "add":
-    #             replace_inst = "add_gs"
-    #             line = re.sub(r"(\b[a-z]+\b).*(\b)", "%s\t%s, %d\t" % (replace_inst, conv_reg(temp_inst.src), table_offset), line)
-    #         elif temp_inst.inst_type == "cmp":
-    #             replace_inst = "cmp_gs"
-    #             line = re.sub(r"(\b[a-z]+\b).*(\b)", "%s\t%s, %d\t" % (replace_inst, conv_reg(temp_inst.src), table_offset), line)
-    #         elif result[1] == "dest": # mov_gs_set "Destination" is the ptr, hence need to use the src
-    #             replace_inst = "mov_set_gs"
-    #             # print("Target line: ", line)
-    #             line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\t" % (replace_inst, conv_reg(temp_inst.src), table_offset), line)
-    #             # print("New line:", line)
-    #             None
-    #         elif result[1] == "src": # mov_gs_load "Source" is the ptr, need to "load" the value from the table back
-    #             replace_inst = "mov_load_gs" 
-    #             line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\t" % (replace_inst, conv_reg(temp_inst.dest), table_offset), line)
-
-
 def process_file(funlist, target_dir, target_file):
         # if (target_file.endswith('.asm')):
         print(target_file)
         # print(os.path.join(target_dir, target_file))
-        with fileinput.input(os.path.join(target_dir, target_file), inplace=True, encoding="utf-8", backup='.bak') as f:
+        debug = False
+        with fileinput.input(os.path.join(target_dir, target_file), inplace=(not debug), encoding="utf-8", backup='.bak') as f:
             fun_begin_regex = r'(?<=.type\t)(.*)(?=,\s@function)'
             fun_end_regex   = r'(\t.cfi_endproc)'
-            dis_line_regex  = r'\t(mov|lea|sub|add|cmp)([a-z])\t(.*),\s(.*)'
+            dis_line_regex  = r'\t(mov|lea|sub|add|cmp)([a-z]*)\t(.*),\s(.*)'
             check = False
             currFun = str()
             patch_targets = list()
@@ -556,14 +505,15 @@ def process_file(funlist, target_dir, target_file):
         rdgsbase %r11
         mov	\offset(%r11), %r11
         mov (%r11), %r11
-        add $\\value, %r11
+        add \\value, %r11
         mov	\offset(%r11), %r12 
         mov %r11, (%r12)
     .endm
     .macro cmp_gs value, offset
+        rdgsbase %r11
         mov	\offset(%r11), %r11
-        mov (%r11), %r11
-        cmp $\\value, %r11
+		mov (%r11), %r11
+        cmp \\value, %r11
     .endm
 """, end='')
                 fun_begin = re.search(fun_begin_regex, line)
@@ -616,7 +566,6 @@ def process_file(funlist, target_dir, target_file):
                             replace_inst = str()
                             try:
                                 replace_inst = patch_inst(dis_line, temp_inst, offset_targets)
-                                
                             except:
                                 log.error("No offset exists")
                                 # break
@@ -626,51 +575,17 @@ def process_file(funlist, target_dir, target_file):
                                 log.info(line)
                                 print(line, end='')
                         else:
-                            print(line, end='')
+                            if debug != True:
+                                print(line, end='')
                             None
                     else:
-                        print(line, end='')
+                        if debug != True:
+                            print(line, end='')
                         None
                 else:
-                    print(line, end='')
+                    if debug != True:
+                        print(line, end='')
                     None
-
-def find_struct(fun_name, var_targets, var):
-    offset_regex = r"(\b[a-z]+\b)(.*)"
-    output = set()
-    # for tgt in patching_targets:
-    if var_targets != None:
-        # print("Ignore based on entire variable targets; Find struct object offset and include members")
-        for var in var_targets:
-            if var.struct_type != None:
-                for struct_item in struct_set:    
-                    print("Struct found")
-                    offset_target = var.offset
-                    if var.struct_type == struct_item.name:
-                        for member in struct_item.member_list:
-                            if rbp_offset := re.search(offset_regex, offset_target):
-                                fun_frame_base = int(rbp_offset.group(2))
-                                offset = fun_frame_base + int(member[1])
-                                new_offset = "rbp" + str(offset)
-                                # print(new_offset)
-                                output.add(new_offset)
-    elif var_targets == None and var != None:
-        print("Find a struct based on individual variable")
-        if var.struct_type != None:
-            for struct_item in struct_set:    
-                print("Struct found")
-                offset_target = var.offset
-                if var.struct_type == struct_item.name:
-                    for member in struct_item.member_list:
-                        if rbp_offset := re.search(offset_regex, offset_target):
-                            fun_frame_base = int(rbp_offset.group(2))
-                            offset = fun_frame_base + int(member[1])
-                            new_offset = "rbp" + str(offset)
-                            print(new_offset)
-                            output.add(new_offset)
-    # for item in output:
-    #     print("output", item)
-    return output
                                 
 # Debug options here
 log = logging.getLogger(__name__)
@@ -696,6 +611,13 @@ class BinAnalysis:
     def __init__(self, bv):
         self.bv = bv
         
+    def search_var_tgts(self, expr, var_targets):
+        for item in var_targets:
+            if expr == item.offset:
+                print(expr, item.offset)
+                return True
+        return False
+    
     def search_var(self, inst_ssa):
         mapped_MLLIL = inst_ssa.mapped_medium_level_il 
         print(mapped_MLLIL)
@@ -725,7 +647,7 @@ class BinAnalysis:
         except:
             return False, None
     
-    def calc_offset(self, inst_ssa):
+    def calc_offset(self, inst_ssa, var_targets):
         arrow = 'U+21B3'
         log.info("Finding the offset of %s %s", inst_ssa, type(inst_ssa)) 
         try:
@@ -744,7 +666,7 @@ class BinAnalysis:
                             # print("Not segment")
                             mapped_MLLIL = inst_ssa.mapped_medium_level_il # This is done to get the var (or find if not)
                             if mapped_MLLIL != None:
-                                result = self.calc_offset(inst_ssa.src)
+                                result = self.calc_offset(inst_ssa.src, var_targets)
                                 if result != None:
                                     return result
                             else:
@@ -758,7 +680,7 @@ class BinAnalysis:
             elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILSetRegSsa:
                 try:
                     log.debug("%s SetRegSSA",  chr(int(arrow[2:], 16)))
-                    result = self.calc_offset(inst_ssa.src)
+                    result = self.calc_offset(inst_ssa.src, var_targets)
                     if result != None:
                         return result
                 except Exception as error:
@@ -767,7 +689,7 @@ class BinAnalysis:
                 log.debug("%s StoreSSA",  chr(int(arrow[2:], 16)))
                 try:
                     try:
-                        result = self.calc_offset(inst_ssa.dest)
+                        result = self.calc_offset(inst_ssa.dest, var_targets)
                         if result != None:
                             return result
                     except Exception as error:
@@ -776,7 +698,7 @@ class BinAnalysis:
                     log.error("Error: %s", error)
             elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILRegSsaPartial:
                 log.debug("%s RegSSAPartial %s",  chr(int(arrow[2:], 16)), inst_ssa.full_reg)
-                result = self.calc_offset(inst_ssa.function.get_ssa_reg_definition(inst_ssa.full_reg))
+                result = self.calc_offset(inst_ssa.function.get_ssa_reg_definition(inst_ssa.full_reg), var_targets)
                 return result
             elif binaryninja.commonil.Arithmetic in inst_ssa.__class__.__bases__:
                 log.debug("%s Arithmetic",  chr(int(arrow[2:], 16)))
@@ -788,19 +710,25 @@ class BinAnalysis:
                     return None # We do not want any RSP
                 
                 if type(inst_ssa.right) == binaryninja.lowlevelil.LowLevelILLoadSsa:
-                    result = self.calc_offset(inst_ssa.right)
+                    result = self.calc_offset(inst_ssa.right, var_targets)
                     if result != None:
                         return result
                     else:
                         return None
                 offset = str(int(inst_ssa.right.__str__(), base=16))
+                # If the offset is part of "variable targets", then we try to return expr, else, 
+                # we just return None
                 log.debug("Offset: %s", offset)
                 expr = offset + "(" + reg + ")"
-                log.critical("Expr: %s", expr)
-                return expr
+                if self.search_var_tgts(expr, var_targets):
+                    log.debug("Offset: %s", offset)
+                    log.critical("Expr: %s", expr)
+                    return expr
+                else:
+                    return None
         except:
             try:
-                return self.calc_offset(inst_ssa.src)
+                return self.calc_offset(inst_ssa.src, var_targets)
             except: 
                 return None
         else:
@@ -814,11 +742,11 @@ class BinAnalysis:
                 hlil_fun = func.high_level_il
                 mlil_fun = func.medium_level_il
                 llil_fun = func.low_level_il
-                lift_fun = func.lifted_il
+                instr_fun = func.instructions
                 var_targets = None  # Variable targets obtained from DWARF
                 try:
                     var_targets = fun_var_info[func.name]
-                    self.backward_slice(hlil_fun, mlil_fun, llil_fun, lift_fun, var_targets)
+                    self.backward_slice(hlil_fun, mlil_fun, llil_fun, instr_fun, var_targets)
                     fun_patch_tgts[func.name] = self.cur_fun_tgts.copy()
                     for item in self.cur_fun_tgts:
                         log.debug(item)
@@ -826,9 +754,9 @@ class BinAnalysis:
                     for item in self.off_to_table:
                         log.debug(item)
                 except Exception as error:
-                    log.error("%s", error)
+                    log.error("No variable targets: %s", error)
                 
-    def backward_slice(self, high, medium, low, lift, var_targets):
+    def backward_slice(self, high, medium, low, instr, var_targets):
         """
         - Workflow of backward slice starts from the MLIL as it is the most intuitive way of observing the behavior
         After obtaining the informations (e.g., where malloc()'d variable is being used, register offset for local var)
@@ -846,18 +774,18 @@ class BinAnalysis:
                     # First analyze any function call instructions (e.g., malloc/calloc) to find potential patch targets
                     # var_10 -> -8(%rbp), this information is going to be used and saved in the case when we analyze the LLIL
                     # To-do: Is there a need to analyze parameters of call instruction? Or not necessary.
-                    patch_tgt = self.analyze_call_inst(inst_ssa, medium)
-                    if patch_tgt != None:
-                        self.patch_tgts.add(patch_tgt)
-                        log.debug("Patch target: %s", patch_tgt)
-                    else:
-                        for param_var in inst_ssa.params:
-                            print(param_var)
-                            patch_tgt = self.analyze_params(inst_ssa, param_var, medium)
-                            if patch_tgt != None:
-                                self.patch_tgts.add(patch_tgt)
-                                log.debug("Patch target: %s", patch_tgt)
-                    # None
+                    # patch_tgt = self.analyze_call_inst(inst_ssa, medium)
+                    # if patch_tgt != None:
+                    #     self.patch_tgts.add(patch_tgt)
+                    #     log.debug("Patch target: %s", patch_tgt)
+                    # else:
+                    #     for param_var in inst_ssa.params:
+                    #         print(param_var)
+                    #         patch_tgt = self.analyze_params(inst_ssa, param_var, medium)
+                    #         if patch_tgt != None:
+                    #             self.patch_tgts.add(patch_tgt)
+                    #             log.debug("Patch target: %s", patch_tgt)
+                    None
                 elif inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_SSA or \
                      inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED:
                     # Check if variable name exists for this MLIL instruction, and see whether it has been already checked
@@ -892,13 +820,20 @@ class BinAnalysis:
         # After all analysis is done with the MLIL level, find patch targets by dissecting disassembly of LLIL
         for llil_bb in low:
             for inst in llil_bb:
-                self.find_patch_tgts(inst)
+                self.find_patch_tgts(inst.address)
                 
+        # Offset-based checking
+        for item in instr:
+            # print(type(item[0][0]))
+            # print(item)
+            # if item[0][0].__str__() == "cmp":
+            addr = item[1]
+            self.find_patch_tgts(addr)
+        # exit()
                 
-                
-    def find_patch_tgts(self, inst):
+    def find_patch_tgts(self, addr):
         global table_offset
-        dis_inst = self.bv.get_disassembly(inst.address)
+        dis_inst = self.bv.get_disassembly(addr)
         if dis_inst == None:
             return None
         log.debug("Find patching tgt: %s", dis_inst)
@@ -920,11 +855,11 @@ class BinAnalysis:
         if re.search(r'(\b[qword ptr|dword ptr]+\b)', src):
             result, expr = self.find_off(src)
             if result:
-                tgt_inst = PatchingInst(inst_type=inst_type, dest=dest, src=expr, offset=expr) # expr -> None
+                tgt_inst = PatchingInst(inst_type=inst_type, dest=conv_imm(dest), src=conv_imm(expr), offset=expr) # expr -> None
         else:
             result, expr = self.find_off(dest)
             if result:
-                tgt_inst = PatchingInst(inst_type=inst_type, dest=expr, src=src, offset=expr) # expr -> None
+                tgt_inst = PatchingInst(inst_type=inst_type, dest=conv_imm(expr), src=conv_imm(src), offset=expr) # expr -> None
         
         
         if tgt_inst != None:
@@ -951,6 +886,7 @@ class BinAnalysis:
     # ------------------------------ Analysis Methods ------------------------------ #           
     def analyze_params(self, inst_ssa, param_var, medium):
         # Takes in SSA parameters
+        # pprint("analyze param: ", var_targets)
         log.info(inst_ssa)
         if param_var.operation == MediumLevelILOperation.MLIL_VAR_SSA or \
         param_var.operation == MediumLevelILOperation.MLIL_VAR or \
@@ -993,7 +929,7 @@ class BinAnalysis:
                         else:
                             return (var, offset)
         elif param_var.operation == MediumLevelILOperation.MLIL_CONST:
-            print(param_var)
+            # print(param_var)
             if len(param_var.llils) > 0:
                 for llil in param_var.llils:
                     if llil.operation == LowLevelILOperation.LLIL_SET_REG_SSA:
@@ -1031,6 +967,7 @@ class BinAnalysis:
         # Only interested in instruction with the disassembly code as we gathered supposedly all necessary information from 
         # previous analysis
         log.info("Analyzing inst\t%s %s", inst_ssa, inst_ssa.operation)
+        # log.debug(var_targets)
         if inst_ssa.operation == MediumLevelILOperation.MLIL_VAR_SSA or \
             inst_ssa.operation == MediumLevelILOperation.MLIL_VAR:
             log.debug("Instruction: %s %s %s", inst_ssa, type(inst_ssa.src), type(inst_ssa.dest))
@@ -1060,7 +997,7 @@ class BinAnalysis:
                     reg = inst_ssa.llil.src.src # LowLevelILRegSsa type -> get reg
                     offset = inst_ssa.llil.function.get_ssa_reg_definition(reg)
                 if offset != None:
-                    return (addr_var, self.analyze_llil_inst(offset, offset.function))
+                    return (addr_var, self.analyze_llil_inst(offset, offset.function, var_targets))
             elif inst_var != None:
             # else if variable simply exists, then we analyze the LLIL to get the offset
                 var = None
@@ -1072,33 +1009,10 @@ class BinAnalysis:
                     var = inst_ssa.vars_read[0].var
                     
                 if var != None:
-                    return (var, self.analyze_llil_inst(inst_var.llil, inst_var.llil.function))
+                    return (var, self.analyze_llil_inst(inst_var.llil, inst_var.llil.function, var_targets))
 
-            
-        # mem_ref_result = self.mem_ref_chk(inst_ssa.dest, mlil_fun)
         
-    def mem_ref_chk(self, inst_ssa, mlil_fun):
-        try:
-            log.debug("%s", inst_ssa)
-            cand = None
-            if type(inst_ssa) == binaryninja.mediumlevelil.SSAVariable:
-                cand = mlil_fun.get_ssa_var_definition(inst_ssa)
-                log.debug("Candidate (MLIL) %s", cand)
-            
-            if cand != None:
-                log.debug("Candidate exists %s %s %s", cand.llil,  type(cand.llil.src),  type(cand.llil.dest))
-                target_llil_src     = self.analyze_llil_inst(cand.llil.src, cand.llil.function)
-                target_llil_dest    = self.analyze_llil_inst(cand.llil.dest, cand.llil.function)
-                target_cand = (target_llil_src, target_llil_dest)
-                if None not in target_cand:
-                    log.critical("Target cand (LLIL) %s", target_cand)
-            else:
-                log.error("No candidate")
-        except Exception as error:
-            log.error("%s", error)
-            return None
-        
-    def analyze_llil_inst(self, inst_ssa, llil_fun):
+    def analyze_llil_inst(self, inst_ssa, llil_fun, var_targets):
         log.debug("Analyze LLIL inst %s %s", inst_ssa, type(inst_ssa))
         if type(inst_ssa) == binaryninja.lowlevelil.LowLevelILRegSsa:
             log.debug("RegSSA")
@@ -1106,15 +1020,15 @@ class BinAnalysis:
             return reg
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILSetRegSsa:
             log.debug("SetSSA")
-            offset = self.calc_offset(inst_ssa)
+            offset = self.calc_offset(inst_ssa, var_targets)
             return offset
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILStoreSsa:
             log.debug("StoreSSA")
-            offset = self.calc_offset(inst_ssa)
+            offset = self.calc_offset(inst_ssa, var_targets)
             return offset
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILLoadSsa:
             log.debug("LoadSSA")
-            offset = self.calc_offset(inst_ssa)
+            offset = self.calc_offset(inst_ssa, var_targets)
             return offset
         elif type(inst_ssa) == binaryninja.lowlevelil.SSARegister:
             log.debug("SSARegister")
@@ -1138,7 +1052,7 @@ class BinAnalysis:
                     return reg_def
         elif binaryninja.commonil.Arithmetic in inst_ssa.__class__.__bases__:
             log.debug("ArithSSA")
-            offset = self.calc_offset(inst_ssa)
+            offset = self.calc_offset(inst_ssa, var_targets)
             return offset
 if __name__ == '__main__':
     process_argument(sys.argv[1:])

@@ -15,6 +15,8 @@ current_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 test_path=${current_path}/tests
 result_path=${test_path}/$1
 
+# https://www.maizure.org/projects/decoded-gnu-coreutils/index.html
+
 migrate()
 {
     echo "Migrate select assembly file (if input file exists)" 
@@ -28,9 +30,15 @@ migrate()
         mkdir $result_path
     fi
     cp ${coreutils_src_path}/${input} ${coreutils_src_path}/${input}.def
-    mv ${coreutils_src_path}/${input} $result_path/${input}.out
+    cp ${coreutils_src_path}/${input} $result_path/${input}.out
     cp ${coreutils_src_path}/${input}.s $result_path
-    rm $result_path/list.out
+
+    if [ ! -e ${result_path}/list.out ] 
+	then 
+		echo "Doesn't exist" 
+	else
+		rm ${result_path}/list.out
+	fi 
     printf "main" >> $result_path/list.out
 }
 
