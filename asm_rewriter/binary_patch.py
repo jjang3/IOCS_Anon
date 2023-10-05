@@ -138,14 +138,14 @@ def conv_expr(expr):
 
 def conv_suffix(suffix):
     match suffix:
-        case "b":
-            return "BYTE PTR" # 8-bit
-        case "w":
-            return "WORD PTR" #16-bit
-        case "l":
-            return "DWORD PTR" # 32-bit
-        case "q":
-            return "QWORD PTR" # 64-bit
+        case "byte ptr":
+            return "b" # 8-bit
+        case "word ptr":
+            return "w" #16-bit
+        case "dword ptr":
+            return "l" # 32-bit
+        case "qword ptr":
+            return "q" # 64-bit
         
 def conv_imm(imm):
     imm_pattern = r"(\$)(.*)"
@@ -249,6 +249,7 @@ class PatchingInst:
     src: Optional[str] = None
     dest: Optional[str] = None
     offset: Optional[str] = None
+    suffix: Optional[str] = None
 
 var_count = 0
 dwarf_var_count = 0
@@ -282,21 +283,29 @@ def dwarf_analysis(funlist, filename, target_dir):
         off_regex = r"(?<=\(DW_OP_plus_uconst:\s)(.*)(?=\))"
         temp_struct = None
         funname = None
+        curr_fun = None
         var_list = list()
         for CU in dwarfinfo.iter_CUs():
             for DIE in CU.iter_DIEs():
                 # Check if this attribute contains location information
-                if (DIE.tag == None and DIE.size == 1 and len(var_list) != 0 and funname is not None):
-                    print("Store var_list for", funname)
-                    pprint(var_list)
+               
+                #     print("----------------------------------------------------------------------------\n")
+                # Store the variable for the function if finihsed
+                if DIE.is_null() and len(var_list) != 0:
+                    # print("Store")
                     dwarf_var_count += len(var_list)
                     fun_var_info[funname] = var_list.copy()
                     var_list.clear()
-                    print("----------------------------------------------------------------------------\n")
                 if (DIE.tag == "DW_TAG_subprogram"):
+                    if (len(var_list) != 0 and funname is not None):
+                        # if for some reason, first store doesn't work, backup plan
+                        print("Store var_list for", funname)
+                        pprint(var_list)
+                        dwarf_var_count += len(var_list)
+                        fun_var_info[funname] = var_list.copy()
+                        var_list.clear()
                     target_fun = False
                     fun_frame_base = None
-                    # print("Target fun: ", target_fun)
                     for attr in DIE.attributes.values():
                         if loc_parser.attribute_has_location(attr, CU['version']):
                             lowpc = DIE.attributes['DW_AT_low_pc'].value
@@ -313,8 +322,8 @@ def dwarf_analysis(funlist, filename, target_dir):
                             funname = DIE.attributes["DW_AT_name"].value.decode()
                             if funname in funlist:
                                 target_fun = True
-                                print("Target fun: ", target_fun)
-                                print("Function name:", funname, "\t| Begin: ", hex(lowpc), "\t| End:", hex(highpc))
+                                # print("Target fun: ", target_fun)
+                                # print("Function name:", funname, "\t| Begin: ", hex(lowpc), "\t| End:", hex(highpc))
                             # print('  Found a compile unit at offset %s, length %s' % (
                                 # CU.cu_offset, CU['unit_length']))
                             loc = loc_parser.parse_from_attribute(attr, CU['version'])
@@ -326,6 +335,7 @@ def dwarf_analysis(funlist, filename, target_dir):
                                             if rbp_offset := re.search(rbp_regex, offset):
                                                 fun_frame_base = int(rbp_offset.group(1))
                                                 # print(fun_frame_base)
+                    print("Target fun: ", target_fun, " ", funname)
                     
                 if (DIE.tag == "DW_TAG_variable"):
                     var_name = None
@@ -345,25 +355,25 @@ def dwarf_analysis(funlist, filename, target_dir):
                                     var_offset = int(offset_regex.group(1))
                                     var_offset += fun_frame_base
                                     reg_offset = str(var_offset) + "(%rbp)" 
-                                    print("\t\tStarting offset: ", reg_offset)
+                                    # print("\t\tStarting offset: ", reg_offset)
                         if (attr.name == "DW_AT_type" and target_fun == True):
                             try:
                                 refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
                                 type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
-                                print(type_die)
+                                # print(type_die)
                                 if type_die.tag == "DW_TAG_structure_type":
                                     if 'DW_AT_name' in type_die.attributes:
                                         struct_name = type_die.attributes['DW_AT_name'].value.decode()
-                                        print("\t\tStruct type found: ", struct_name)
+                                        # print("\t\tStruct type found: ", struct_name)
                                         for struct_item in struct_set:
                                             if struct_name == struct_item.name:
                                                 # dwarf_var_count += len(struct_item.member_list)
                                                 None
                                 if type_die.tag == "DW_TAG_pointer_type":
-                                    print(hex(type_die.attributes['DW_AT_type'].value))
+                                    # print(hex(type_die.attributes['DW_AT_type'].value))
                                     ptr_ref = type_die.attributes['DW_AT_type'].value + type_die.cu.cu_offset
                                     ptr_type_die = dwarfinfo.get_DIE_from_refaddr(ptr_ref, type_die.cu)
-                                    print("Pointer:", ptr_type_die.tag)
+                                    # print("Pointer:", ptr_type_die.tag)
                                     if 'DW_AT_name' in ptr_type_die.attributes:
                                         struct_name = ptr_type_die.attributes['DW_AT_name'].value.decode()
                                         print("\t\tPointer type found: ", struct_name)
@@ -379,7 +389,7 @@ def dwarf_analysis(funlist, filename, target_dir):
                             except Exception  as err:
                                 print(err)
                     temp_var = VarData(var_name, struct_name, reg_offset)
-                    if temp_var.name is not None:
+                    if temp_var.name is not None and temp_var.struct_type is None:
                         print(temp_var)
                         var_list.append(temp_var)
                 
@@ -444,7 +454,6 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
         store_or_load = None
 
     if temp.inst_type == "mov":
-        # print(temp, store_or_load)
         if store_or_load == "store":
             new_inst_type = "mov_set_gs"
             log.info("Patching with mov_set_gs")
@@ -458,11 +467,20 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
         log.info("Patching with lea_gs")
         line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
     elif temp.inst_type == "cmp":
-        new_inst_type = "cmp_gs"
+        # print(temp, store_or_load)
+        if temp.suffix == "l":
+            new_inst_type = "cmpl_gs"
+        elif temp.suffix == "q":
+            new_inst_type = "cmpq_gs"
         if store_or_load == "store":
             line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
         elif store_or_load == "load":
             line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
+    elif temp.inst_type == "add":
+        new_inst_type = "add_gs"
+        log.info("Patching with add_gs")
+        line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
+    log.info(line)
     return line
     
 def process_file(funlist, target_dir, target_file):
@@ -485,8 +503,7 @@ def process_file(funlist, target_dir, target_file):
             for line in f:
                 # print('\t.file\t"%s.c"' % target_file.rsplit('.', maxsplit=1)[0])
                 if line.startswith('\t.file\t"%s.c"' % target_file.rsplit('.', maxsplit=1)[0]):
-                    print("""
-    .macro mov_set_gs src offset
+                    print("""   .macro mov_set_gs src offset
         rdgsbase %r11
         mov \offset(%r11),	%r11
         mov \src, (%r11)
@@ -506,14 +523,21 @@ def process_file(funlist, target_dir, target_file):
         mov	\offset(%r11), %r11
         mov (%r11), %r11
         add \\value, %r11
-        mov	\offset(%r11), %r12 
+		rdgsbase %r12
+        mov	\offset(%r12), %r12 
         mov %r11, (%r12)
     .endm
-    .macro cmp_gs value, offset
+    .macro cmpl_gs value, offset
         rdgsbase %r11
         mov	\offset(%r11), %r11
-		mov (%r11), %r11
-        cmp \\value, %r11
+		mov (%r11), %r12d
+        cmpl \\value, %r12d
+    .endm
+	.macro cmpq_gs value, offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+		mov (%r11), %r12
+        cmpq \\value, %r12
     .endm
 """, end='')
                 fun_begin = re.search(fun_begin_regex, line)
@@ -555,7 +579,7 @@ def process_file(funlist, target_dir, target_file):
                             expr = None
                         # print("Inst Type: ", inst_type, "\t|\tSuffix: ", conv_suffix(suffix), "\t| src: ", src,"\t| dest: ", dest)
                         
-                        temp_inst = PatchingInst(inst_type, src, dest, expr)
+                        temp_inst = PatchingInst(inst_type, src, dest, expr, suffix)
                         log.debug("Temp: %s", temp_inst)
                     
                     
@@ -852,14 +876,21 @@ class BinAnalysis:
         # Either source or dest can be ptr, so whichever one passes through, find offset in the set
         tgt_inst = None
         expr = None
+        suffix = None
         if re.search(r'(\b[qword ptr|dword ptr]+\b)', src):
+            suffix_regex = re.search(r'(\b[qword ptr|dword ptr]+\b)', src)
+            if suffix_regex != None:
+                suffix = suffix_regex.group(1)
             result, expr = self.find_off(src)
             if result:
-                tgt_inst = PatchingInst(inst_type=inst_type, dest=conv_imm(dest), src=conv_imm(expr), offset=expr) # expr -> None
+                tgt_inst = PatchingInst(inst_type=inst_type, dest=conv_imm(dest), src=conv_imm(expr), offset=expr, suffix=conv_suffix(suffix)) # expr -> None
         else:
+            suffix_regex = re.search(r'(\b[qword ptr|dword ptr]+\b)', dest)
+            if suffix_regex != None:
+                suffix = suffix_regex.group(1)
             result, expr = self.find_off(dest)
             if result:
-                tgt_inst = PatchingInst(inst_type=inst_type, dest=conv_imm(expr), src=conv_imm(src), offset=expr) # expr -> None
+                tgt_inst = PatchingInst(inst_type=inst_type, dest=conv_imm(expr), src=conv_imm(src), offset=expr, suffix=conv_suffix(suffix)) # expr -> None
         
         
         if tgt_inst != None:
