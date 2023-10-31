@@ -497,6 +497,10 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
         new_inst_type = "add_gs"
         log.info("Patching with add_gs")
         line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
+    elif temp.inst_type == "sub":
+        new_inst_type = "sub_gs"
+        log.info("Patching with sub_gs")
+        line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
     log.info(line)
     return line
     
@@ -540,6 +544,15 @@ def process_file(funlist, target_dir, target_file):
         mov	\offset(%r11), %r11
         mov (%r11), %r11
         add \\value, %r11
+		rdgsbase %r12
+        mov	\offset(%r12), %r12 
+        mov %r11, (%r12)
+    .endm
+    .macro sub_gs value, offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+        mov (%r11), %r11
+        sub \\value, %r11
 		rdgsbase %r12
         mov	\offset(%r12), %r12 
         mov %r11, (%r12)
@@ -593,7 +606,7 @@ def process_file(funlist, target_dir, target_file):
                         src         = dis_regex.group(3)
                         dest        = dis_regex.group(4)
                         expr        = str()
-                        off_regex   = r"(-|)([0-9].*\(%r..\))"
+                        off_regex   = r"(-|)([a-z,0-9].*\(%r..\))"
                         if re.search(off_regex, src):
                             expr = src
                         elif re.search(off_regex, dest):
@@ -636,16 +649,23 @@ def process_file(funlist, target_dir, target_file):
             log.critical("Patch count %d", patch_count)
                                 
 # Debug options here
+debug_level = logging.DEBUG
+ch = logging.StreamHandler()
+ch.setLevel(debug_level) 
+ch.setFormatter(CustomFormatter())
+
 log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
+log.setLevel(debug_level)
 
 # create console handler with a higher log level
-ch = logging.StreamHandler()
-# ch.setLevel(logging.DEBUG) 
-ch.setLevel(logging.DEBUG) 
-ch.setFormatter(CustomFormatter())
+log_disable = False
 log.addHandler(ch)
-log.disabled = False
+log.disabled = log_disable
+
+spec_log = logging.getLogger('speclogger')
+spec_log.addHandler(ch)
+spec_log.setLevel(logging.INFO)
+spec_log.disabled = (not log_disable)
 
 class BinAnalysis:
     # Patch targets resulting from analysis of the current working function
@@ -663,7 +683,7 @@ class BinAnalysis:
         
     def search_var_tgts(self, expr, var_targets):
         log.debug("Searching %s", expr)
-        # pprint(var_targets)
+        pprint(var_targets)
         for item in var_targets:
             if expr == item.offset:
                 # print(expr, item.offset)
@@ -687,7 +707,7 @@ class BinAnalysis:
 
     def find_off(self, offset, var_targets, ignore_targets):
         try:
-            offset_pattern = r'(\b[qword ptr|dword ptr]+\b)\s\[(%.*)([*+\/-]0x[0-9].*)\]'
+            offset_pattern = r'(\b[qword ptr|dword ptr]+\b)\s\[(%.*)([*+\/-]0x[a-z,0-9].*)\]'
             offset_regex = re.search(offset_pattern, offset)
             expr = str()
             expr = str(int(offset_regex.group(3),base=16)) + "(" + offset_regex.group(2) + ")"
@@ -718,7 +738,7 @@ class BinAnalysis:
                 if inst_ssa.src_memory != None:
                     try:
                         if inst_ssa.src.left.src.reg == "fsbase": 
-                            log.warning("Found segment %s %s %s", inst_ssa.src.left, inst_ssa.src.right, inst_ssa.src.left.src.reg)
+                            # log.warning("Found segment %s %s %s", inst_ssa.src.left, inst_ssa.src.right, inst_ssa.src.left.src.reg)
                             reg = inst_ssa.src.left.src.reg.__str__().split('base')
                             reg = ''.join(reg)
                             expr = str()
@@ -822,7 +842,7 @@ class BinAnalysis:
                     fun_off_to_table[func.name] = self.off_to_table.copy()
                     for item in self.off_to_table:
                         total_var_count += 1
-                        log.warning("Fun: %s | %s", func.name, item)
+                        # log.warning("Fun: %s | %s", func.name, item)
                     self.off_to_table.clear()
                     self.cur_fun_tgts.clear()
                 except Exception as error:
@@ -909,11 +929,13 @@ class BinAnalysis:
                 
     # This function is the one that is used to add patch targets to be found in disassembly file
     def find_patch_tgts(self, addr, var_targets, ignore_targets):
+        # pprint(var_targets)
         global table_offset
         dis_inst = self.bv.get_disassembly(addr)
         if dis_inst == None:
             return None
-        log.debug("%s | Find patching tgt: %s", self.fun, dis_inst)
+        log.warning("%s | Find patching tgt: %s", self.fun, dis_inst)
+        spec_log.info("%s | Find patching tgt: %s", self.fun, dis_inst)
         # Example: mov     qword [rbp-0x8], rax 
         dis_inst_pattern    = re.search(r"(\b[a-z]+\b)\s*(.*),\s(.*)", dis_inst)
         inst_type           = str()
@@ -959,7 +981,8 @@ class BinAnalysis:
                         # print(offset)
                         if offset[0] == tgt_inst.offset:
                             cur_offset = offset[1]
-                    print(colored("Offset should not be updated", 'red', attrs=['reverse']))
+                    if not log_disable:
+                        print(colored("Offset should not be updated", 'red', attrs=['reverse']))
                     break
                 else:
                     cur_offset = table_offset
@@ -973,17 +996,20 @@ class BinAnalysis:
             if tgt_inst not in self.cur_fun_tgts:    
                 log.critical(("Target inst not in cur fun target"))        
                 if update:
-                    print(colored("Offset is updating", 'green', attrs=['reverse']))
-                    print(colored("Adding %s | Next table offset %s" % (tgt_inst, str(tgt_inst.offset)), 'blue', attrs=['reverse']))
+                    if not log_disable:
+                        print(colored("Offset is updating", 'green', attrs=['reverse']))
+                        print(colored("Adding %s | Next table offset %s" % (tgt_inst, str(tgt_inst.offset)), 'blue', attrs=['reverse']))
                     self.cur_fun_tgts.append(tgt_inst)
                     self.off_to_table.add((tgt_inst.offset, table_offset))
                     table_offset += 8
                 else:
                     # tgt_inst.offset = cur_offset
-                    print(colored("Adding %s | Next table offset %s" % (tgt_inst, str(tgt_inst.offset)), 'blue', attrs=['reverse']))
+                    if not log_disable:
+                        print(colored("Adding %s | Next table offset %s" % (tgt_inst, str(tgt_inst.offset)), 'blue', attrs=['reverse']))
                     self.cur_fun_tgts.append(tgt_inst)
             else:
-                print(colored("Overlap %s" % (tgt_inst), 'red', 
+                if not log_disable:
+                    print(colored("Overlap %s" % (tgt_inst), 'red', 
                 attrs=['reverse']))
 
                 
