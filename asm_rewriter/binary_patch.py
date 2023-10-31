@@ -220,16 +220,16 @@ def process_binary(filename, funfile, dirloc):
             bn = BinAnalysis(bv)
             bn.analyze_binary(funlist)
 
-        # var_count += dwarf_var_count
-        # # Based on variable counts found by static analysis + dwarf analysis, generate table.
-        # generate_table(var_count, target_dir)
+        var_count += dwarf_var_count
+        # Based on variable counts found by static analysis + dwarf analysis, generate table.
+        generate_table(var_count, target_dir)
 
-        # if dirloc != '':
-        #     for dir_file in dir_list:
-        #         if (dir_file.endswith('.s')):
-        #             process_file(funlist, target_dir, dir_file)
-        # else:
-        #     process_file(funlist, target_dir, target_file)
+        if dirloc != '':
+            for dir_file in dir_list:
+                if (dir_file.endswith('.s')):
+                    process_file(funlist, target_dir, dir_file)
+        else:
+            process_file(funlist, target_dir, target_file)
             
 
 struct_set = list()
@@ -487,6 +487,8 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
             new_inst_type = "cmpl_gs"
         elif temp.suffix == "q":
             new_inst_type = "cmpq_gs"
+        elif temp.suffix == "b":
+            new_inst_type = "cmpb_gs"
         if store_or_load == "store":
             line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
         elif store_or_load == "load":
@@ -553,6 +555,12 @@ def process_file(funlist, target_dir, target_file):
         mov	\offset(%r11), %r11
 		mov (%r11), %r12
         cmpq \\value, %r12
+    .endm
+	.macro cmpb_gs value, offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+		mov (%r11), %r12b
+        cmpb \\value, %r12b
     .endm
 """, end='')
                 fun_begin = re.search(fun_begin_regex, line)
@@ -633,7 +641,8 @@ log.setLevel(logging.DEBUG)
 
 # create console handler with a higher log level
 ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
+# ch.setLevel(logging.DEBUG) 
+ch.setLevel(logging.DEBUG) 
 ch.setFormatter(CustomFormatter())
 log.addHandler(ch)
 log.disabled = False
@@ -654,16 +663,16 @@ class BinAnalysis:
         
     def search_var_tgts(self, expr, var_targets):
         log.debug("Searching %s", expr)
-        pprint(var_targets)
+        # pprint(var_targets)
         for item in var_targets:
             if expr == item.offset:
-                print(expr, item.offset)
+                # print(expr, item.offset)
                 return True
         return False
     
     def search_var(self, inst_ssa):
         mapped_MLLIL = inst_ssa.mapped_medium_level_il 
-        print(mapped_MLLIL)
+        # print(mapped_MLLIL)
         if mapped_MLLIL.operation != MediumLevelILOperation.MLIL_VAR:
             return self.search_var(inst_ssa.src)
         else:
@@ -791,6 +800,7 @@ class BinAnalysis:
         
     def analyze_binary(self, funlist):
         print("Step: Binary Ninja")
+        total_var_count = 0
         for func in self.bv.functions:
             self.fun = func.name
             if func.name in funlist:            
@@ -811,11 +821,13 @@ class BinAnalysis:
                         log.debug(item)
                     fun_off_to_table[func.name] = self.off_to_table.copy()
                     for item in self.off_to_table:
-                        log.debug("Fun: %s | %s", func.name, item)
+                        total_var_count += 1
+                        log.warning("Fun: %s | %s", func.name, item)
                     self.off_to_table.clear()
                     self.cur_fun_tgts.clear()
                 except Exception as error:
                     log.error("No variable targets: %s", error)
+        log.info("Total variable count: %d", total_var_count)
                 
     def backward_slice(self, name, medium, low, instr, var_targets, ignore_targets):
         """
@@ -841,7 +853,7 @@ class BinAnalysis:
                         log.debug("Patch target: %s", patch_tgt)
                     else:
                         for param_var in inst_ssa.params:
-                            print(param_var)
+                            # print(param_var)
                             patch_tgt = self.analyze_params(inst_ssa, param_var, medium, var_targets, ignore_targets)
                             # if patch_tgt != None:
                             #     self.patch_tgts.add(patch_tgt)
@@ -850,22 +862,25 @@ class BinAnalysis:
                 elif inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_SSA or \
                      inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED:
                     # Check if variable name exists for this MLIL instruction, and see whether it has been already checked
-                    # print(inst_ssa, inst_ssa.operation)
+                    # print(inst_ssa, inst_ssa.operation, inst_ssa.vars_address_taken, inst_ssa.vars_written[0].var, len(inst_ssa.vars_read), inst_ssa.vars_written[0].var.core_variable.source_type)
                     try:
                         var = None
                         if len(inst_ssa.vars_address_taken) != 0:
                             # Ex: %rsi#1 = &var_1c
                             var = inst_ssa.vars_address_taken[0]
-                        elif len(inst_ssa.vars_read) == 0:
-                            continue
+                        # elif len(inst_ssa.vars_read) == 0:
+                        #     continue
                         elif inst_ssa.vars_written[0].var.core_variable.source_type == VariableSourceType.StackVariableSourceType:
                             # Ex: var_18#1 = %rax_1#2
                             var = inst_ssa.vars_written[0].var
                         elif inst_ssa.vars_read[0].var.core_variable.source_type == VariableSourceType.StackVariableSourceType:
                             # Ex: %rax_7#8 = var_1c
                             var = inst_ssa.vars_read[0].var
+                        elif len(inst_ssa.vars_read) == 0:
+                            continue
                             
                         # If variable is not found, then analyze the instruction
+                        # print("Variable: ", var)
                         if self.find_var(var):
                             log.error("Found variable %s, skip", var)
                             continue
@@ -917,6 +932,7 @@ class BinAnalysis:
         suffix = None
         # if re.search(r'(\b[qword ptr|dword ptr|byte ptr]+\b)', src):
         if re.search(r'(qword ptr|dword ptr|byte ptr)', src):
+            log.debug("ptr Source")
             suffix_regex = re.search(r'(qword ptr|dword ptr|byte ptr)', src)
             if suffix_regex != None:
                 suffix = suffix_regex.group(1)
@@ -924,6 +940,7 @@ class BinAnalysis:
             if result:
                 tgt_inst = PatchingInst(inst_type=inst_type, dest=conv_imm(dest), src=conv_imm(expr), offset=expr, suffix=conv_suffix(suffix)) # expr -> None
         else:
+            log.debug("ptr Dest")
             suffix_regex = re.search(r'(qword ptr|dword ptr|byte ptr)', dest)
             if suffix_regex != None:
                 suffix = suffix_regex.group(1)
