@@ -45,6 +45,12 @@ migrate()
 patch()
 {
     echo "Patch"
+    if [ -f ${result_path}/${input}.s.bak ]
+    then 
+        echo "Original file found, overwrite the existing asm file"
+        cp ${result_path}/${input}.s.bak ${result_path}/${input}.s
+    fi
+    sleep 1.5
     python3 binary_patch.py --binary ${input}.out --fun list.out --dir=tests/${input}
 }
 

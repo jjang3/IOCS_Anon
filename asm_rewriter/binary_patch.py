@@ -16,6 +16,7 @@ else:
     import queue as Queue
 from collections import deque
 import sys, getopt
+import time
 from pprint import pprint
 import fileinput
 from dataclasses import dataclass, field
@@ -76,6 +77,9 @@ class SizeType(Enum):
     
 def generate_table(varcount, target_dir):
     varlist = list()
+    if varcount % 2 != 0:
+        # This is to avoid malloc(): corrupted top size error, malloc needs to happen in mod 2
+        varcount += 1
     # ptr = "%p\n".strip()    printf("%s", addr_%d);
     include_lib_flags="""
 #include <sys/auxv.h>
@@ -298,7 +302,7 @@ def dwarf_analysis(funlist, filename, target_dir):
                     if (len(var_list) != 0 and funname is not None):
                         # Store the variable for the function if finihsed
                         # print("Store var_list for", funname, len(var_list))
-                        print(colored("Store var_list for %s | Next table offset %d" % (funname, len(var_list)), 'blue', attrs=['reverse']))
+                        print(colored("Store var_list for %s | Var count: %d" % (funname, len(var_list)), 'blue', attrs=['reverse']))
                         pprint(var_list)
                         dwarf_var_count += len(var_list)
                         fun_var_info[funname] = var_list.copy()
@@ -452,7 +456,7 @@ def dwarf_analysis(funlist, filename, target_dir):
 def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
     log.critical("Patch the instruction %s", disassembly)
     log.debug(temp)
-    # This regex is used to find offset (e.g., -16(%rbp)) to determine  or load
+    # This regex is used to find offset (e.g., -16(%rbp)) to determine or load
     off_regex       = r"(-|\$|)([0-9].*\(%r..\))"
     tgt_offset      = int()
     for offset in offset_targets:
@@ -469,7 +473,12 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
 
     if temp.inst_type == "mov":
         if store_or_load == "store":
-            new_inst_type = "mov_set_gs"
+            if temp.suffix == "l":
+                new_inst_type = "movl_set_gs"
+            elif temp.suffix == "q":
+                new_inst_type = "movq_set_gs"
+            elif temp.suffix == "b":
+                new_inst_type = "movb_set_gs"
             log.info("Patching with mov_set_gs")
             line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
         elif store_or_load == "load":
@@ -494,13 +503,28 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
         elif store_or_load == "load":
             line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
     elif temp.inst_type == "add":
-        new_inst_type = "add_gs"
         log.info("Patching with add_gs")
-        line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
+        if store_or_load == "store":
+            # new_inst_type = "add_store_gs"
+            if temp.suffix == "l":
+                new_inst_type = "addl_store_gs"
+            elif temp.suffix == "q":
+                new_inst_type = "addq_store_gs"
+            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
+        elif store_or_load == "load":
+            new_inst_type = "add_load_gs"
+            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
     elif temp.inst_type == "sub":
-        new_inst_type = "sub_gs"
         log.info("Patching with sub_gs")
-        line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
+        if store_or_load == "store":
+            if temp.suffix == "l":
+                new_inst_type = "subl_store_gs"
+            elif temp.suffix == "q":
+                new_inst_type = "subq_store_gs"
+            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
+        elif store_or_load == "load":
+            new_inst_type = "sub_load_gs"
+            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
     log.info(line)
     return line
     
@@ -524,10 +548,21 @@ def process_file(funlist, target_dir, target_file):
             for line in f:
                 # print('\t.file\t"%s.c"' % target_file.rsplit('.', maxsplit=1)[0])
                 if line.startswith('\t.file\t"%s.c"' % target_file.rsplit('.', maxsplit=1)[0]):
-                    print("""   .macro mov_set_gs src offset
+                    print("""# ASM Rewriting Macros:
+    .macro movb_set_gs src offset
         rdgsbase %r11
         mov \offset(%r11),	%r11
-        mov \src, (%r11)
+        movb \src, (%r11)
+    .endm
+    .macro movl_set_gs src offset
+        rdgsbase %r11
+        mov \offset(%r11),	%r11
+        movl \src, (%r11)
+    .endm
+    .macro movq_set_gs src offset
+        rdgsbase %r11
+        mov \offset(%r11),	%r11
+        movq \src, (%r11)
     .endm
     .macro mov_load_gs dest, offset
         rdgsbase %r11
@@ -539,7 +574,7 @@ def process_file(funlist, target_dir, target_file):
         mov	\offset(%r11), %r11
         lea (%r11), \dest
     .endm
-    .macro add_gs value, offset
+    .macro addq_store_gs value, offset
         rdgsbase %r11
         mov	\offset(%r11), %r11
         mov (%r11), %r11
@@ -548,7 +583,16 @@ def process_file(funlist, target_dir, target_file):
         mov	\offset(%r12), %r12 
         mov %r11, (%r12)
     .endm
-    .macro sub_gs value, offset
+    .macro addl_store_gs value, offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+        mov (%r11), %r11
+        add \\value, %r11d
+		rdgsbase %r12
+        mov	\offset(%r12), %r12 
+        mov %r11d, (%r12)
+    .endm
+    .macro subq_store_gs value, offset
         rdgsbase %r11
         mov	\offset(%r11), %r11
         mov (%r11), %r11
@@ -556,6 +600,27 @@ def process_file(funlist, target_dir, target_file):
 		rdgsbase %r12
         mov	\offset(%r12), %r12 
         mov %r11, (%r12)
+    .endm
+    .macro subl_store_gs value, offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+        mov (%r11), %r11
+        sub \\value, %r11d
+		rdgsbase %r12
+        mov	\offset(%r12), %r12 
+        mov %r11d, (%r12)
+    .endm
+	.macro add_load_gs dest, offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+        mov (%r11), %r11
+        add %r11, \dest
+    .endm
+    .macro sub_load_gs dest, offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+        mov (%r11), %r11
+        sub %r11, \dest
     .endm
     .macro cmpl_gs value, offset
         rdgsbase %r11
@@ -664,7 +729,7 @@ log.disabled = log_disable
 
 spec_log = logging.getLogger('speclogger')
 spec_log.addHandler(ch)
-spec_log.setLevel(logging.INFO)
+spec_log.setLevel(logging.DEBUG)
 spec_log.disabled = (not log_disable)
 
 class BinAnalysis:
@@ -683,7 +748,7 @@ class BinAnalysis:
         
     def search_var_tgts(self, expr, var_targets):
         log.debug("Searching %s", expr)
-        pprint(var_targets)
+        # pprint(var_targets)
         for item in var_targets:
             if expr == item.offset:
                 # print(expr, item.offset)
@@ -840,14 +905,16 @@ class BinAnalysis:
                     for item in self.cur_fun_tgts:
                         log.debug(item)
                     fun_off_to_table[func.name] = self.off_to_table.copy()
+                    spec_log.debug("Offset to table count: %d", len(self.off_to_table))
                     for item in self.off_to_table:
                         total_var_count += 1
-                        # log.warning("Fun: %s | %s", func.name, item)
+                        spec_log.info("Fun: %s | %s", func.name, item)
                     self.off_to_table.clear()
                     self.cur_fun_tgts.clear()
                 except Exception as error:
                     log.error("No variable targets: %s", error)
         log.info("Total variable count: %d", total_var_count)
+        time.sleep(3)
                 
     def backward_slice(self, name, medium, low, instr, var_targets, ignore_targets):
         """
@@ -935,7 +1002,7 @@ class BinAnalysis:
         if dis_inst == None:
             return None
         log.warning("%s | Find patching tgt: %s", self.fun, dis_inst)
-        spec_log.info("%s | Find patching tgt: %s", self.fun, dis_inst)
+        # spec_log.info("%s | Find patching tgt: %s", self.fun, dis_inst)
         # Example: mov     qword [rbp-0x8], rax 
         dis_inst_pattern    = re.search(r"(\b[a-z]+\b)\s*(.*),\s(.*)", dis_inst)
         inst_type           = str()
@@ -1017,7 +1084,7 @@ class BinAnalysis:
     def analyze_params(self, inst_ssa, param_var, medium, var_targets, ignore_targets):
         # Takes in SSA parameters
         # pprint("analyze param: ", var_targets)
-        log.info(inst_ssa)
+        log.info("%s | %s", inst_ssa, param_var)
         if param_var.operation == MediumLevelILOperation.MLIL_VAR_SSA or \
         param_var.operation == MediumLevelILOperation.MLIL_VAR or \
         param_var.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED:
@@ -1030,15 +1097,33 @@ class BinAnalysis:
                 var = use_ref.vars_read[0]
                 # From here, we need to convert MLIL to LLIL to figure out the offset value
                 # that is stored in the "rax" register
+                print("Var", use_ref.llil.src, type(use_ref.llil.dest.src))
                 if type(use_ref.llil.src) == LowLevelILRegSsa:
                     reg = use_ref.llil.src.src # LowLevelILRegSsa type -> get reg
+                    offset = inst_ssa.llil.function.get_ssa_reg_definition(reg)
+                elif type(use_ref.llil.dest.src) == LowLevelILRegSsa:
+                    reg = use_ref.llil.dest.src # LowLevelILRegSsa type -> get reg
                     offset = inst_ssa.llil.function.get_ssa_reg_definition(reg)
                 if offset != None:
                     return (var, self.analyze_llil_inst(offset, offset.function, var_targets, ignore_targets))
             except:
                 None
             else:
-                if type(use_ref.llil.src.src) == LowLevelILRegSsaPartial:
+                # print(var, use_ref)
+                if binaryninja.commonil.Arithmetic in use_ref.__class__.__bases__:
+                    offset = self.analyze_llil_inst(use_ref.llil, use_ref.llil.function, var_targets, ignore_targets)
+                    if offset == None:
+                        return None
+                    else:
+                        log.debug(use_ref.llil)
+                        if self.find_var(var):
+                            log.info("Exists")
+                            return None
+                        else:
+                            return (var, offset)
+                elif type(use_ref.llil.src.src) == LowLevelILRegSsaPartial:
+                    # %rdi#43 = zx.q(%rdx#38.%edx) <class 'binaryninja.lowlevelil.LowLevelILZx'>
+                    print(use_ref.llil, type(use_ref.llil.src))
                     reg = use_ref.llil.src.src.full_reg
                     reg_def = inst_ssa.llil.function.get_ssa_reg_definition(reg)
                     try:
@@ -1058,6 +1143,7 @@ class BinAnalysis:
                             return None
                         else:
                             return (var, offset)
+                    
         elif param_var.operation == MediumLevelILOperation.MLIL_CONST:
             # print(param_var)
             if len(param_var.llils) > 0:
