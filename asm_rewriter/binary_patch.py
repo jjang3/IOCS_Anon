@@ -21,6 +21,7 @@ from pprint import pprint
 import fileinput
 from dataclasses import dataclass, field
 
+
 from elftools.elf.elffile import ELFFile
 from elftools.dwarf.dwarf_expr import DWARFExprParser, DWARFExprOp
 from elftools.dwarf.descriptions import (
@@ -36,6 +37,7 @@ from elftools.dwarf.descriptions import (describe_CFI_instructions,
     set_global_machine_arch)
 from elftools.dwarf.enums import DW_EH_encoding_flags
 import logging
+import re
 
 class CustomFormatter(logging.Formatter):
 
@@ -47,7 +49,7 @@ class CustomFormatter(logging.Formatter):
     bold_green = "\x1b[42;1m"
     reset = "\x1b[0m"
     # format = "%(funcName)5s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
-    format = "[%(filename)s:%(lineno)s - %(funcName)18s() ] %(levelname)9s    %(message)s "
+    format = "[%(filename)s:%(lineno)4s -%(funcName)18s()] %(levelname)9s    %(message)s "
 
     FORMATS = {
         logging.DEBUG: yellow + format + reset,
@@ -295,7 +297,13 @@ def dwarf_analysis(funlist, filename, target_dir):
         var_list = list()
         var_blacklist = list()
         for CU in dwarfinfo.iter_CUs():
+            # This is required for a program with only one function (main)
+            DIE_count = sum(1 for _ in CU.iter_DIEs()) - 1
+            DIE_index = 0
+            # print(DIE_count)
             for DIE in CU.iter_DIEs():
+                # print(DIE_index, DIE.tag)
+                DIE_index += 1
                 # Check if this attribute contains location information
                 #     print("----------------------------------------------------------------------------\n")
                 if (DIE.tag == "DW_TAG_subprogram"):
@@ -340,12 +348,14 @@ def dwarf_analysis(funlist, filename, target_dir):
                                             if rbp_offset := re.search(rbp_regex, offset):
                                                 fun_frame_base = int(rbp_offset.group(1))
                                                 # print(fun_frame_base)
-                    print("Target fun: ", target_fun, " ", funname)
+                    if target_fun == True:
+                        print("Target fun: ", funname)
                     
                 if (DIE.tag == "DW_TAG_variable"):
                     var_name = None
                     reg_offset = None
                     struct_name = None
+                    type_die = None
                     for attr in DIE.attributes.values():
                         offset = None
                         if (attr.name == "DW_AT_name" and target_fun == True):
@@ -365,11 +375,10 @@ def dwarf_analysis(funlist, filename, target_dir):
                             try:
                                 refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
                                 type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
-                                # print(type_die)
                                 if type_die.tag == "DW_TAG_structure_type":
                                     if 'DW_AT_name' in type_die.attributes:
                                         struct_name = type_die.attributes['DW_AT_name'].value.decode()
-                                        # print("\t\tStruct type found: ", struct_name)
+                                        print("\t\tStruct type found: ", struct_name)
                                         for struct_item in struct_set:
                                             if struct_name == struct_item.name:
                                                 # dwarf_var_count += len(struct_item.member_list)
@@ -378,7 +387,7 @@ def dwarf_analysis(funlist, filename, target_dir):
                                     # print(hex(type_die.attributes['DW_FORM_ref4'].value))
                                     ptr_ref = type_die.attributes['DW_AT_type'].value + type_die.cu.cu_offset
                                     ptr_type_die = dwarfinfo.get_DIE_from_refaddr(ptr_ref, type_die.cu)
-                                    print("Pointer:", ptr_type_die.tag) #, ptr_type_die.attributes)
+                                    print("Pointer:", ptr_type_die.tag, ptr_type_die.attributes)
                                     if 'DW_AT_name' in ptr_type_die.attributes:
                                         obj_name = ptr_type_die.attributes['DW_AT_name'].value.decode()
                                         if (ptr_type_die.tag == "DW_TAG_structure_type"):
@@ -387,13 +396,14 @@ def dwarf_analysis(funlist, filename, target_dir):
                                             print("\t\tPointer type found: ", obj_name)
                                         elif (ptr_type_die.tag == "DW_TAG_typedef"):
                                             print("\t\tTypedef type found: ", obj_name)
+                                        elif (ptr_type_die.tag == "DW_TAG_const_type"):
+                                            print("\t\tConst type found: ", obj_name)
                                         # dwarf_var_count += 1
                                         struct_name = obj_name
-                                        None
-                                        for struct_item in struct_set:
-                                            if struct_name == struct_item.name:
-                                                # dwarf_var_count += len(struct_item.member_list)
-                                                None
+                                        # for struct_item in struct_set:
+                                        #     if struct_name == struct_item.name:
+                                        #         # dwarf_var_count += len(struct_item.member_list)
+                                        #         None
                                     elif (ptr_type_die.tag == "DW_TAG_pointer_type"):
                                         print("\t\tDouble Pointer type found")
                                         struct_name = "double"
@@ -402,14 +412,21 @@ def dwarf_analysis(funlist, filename, target_dir):
                                     # dwarf_var_count += 1
                             except Exception  as err:
                                 print(err)
+                    
                     temp_var = VarData(var_name, struct_name, reg_offset)
                     # Avoid struct variable and variable which offset cannot be determined in compile-time
-                    if temp_var.name is not None and temp_var.struct_type is None and reg_offset != None:
-                        print(temp_var)
-                        var_list.append(temp_var)
-                    elif reg_offset != None:
-                        print("Inserting into the blacklist: ", reg_offset)
-                        var_blacklist.append(reg_offset)
+                    if type_die != None:
+                        # Question (think about whether we can / need to support these types:)
+                        # or type_die.tag == "DW_TAG_array_type" or type_die.tag == "DW_TAG_enumeration_type"
+                        # Comment: I could probably support array type, but is it necessary yet? probably not.
+                        if (type_die.tag == "DW_TAG_base_type" or type_die.tag == "DW_TAG_typedef") and reg_offset != None:
+                            print("Type:", type_die.tag)
+                            print("Inserting into the list: ", temp_var, "\n")
+                            var_list.append(temp_var)
+                        elif (type_die.tag == "DW_TAG_pointer_type" or type_die.tag == "DW_TAG_structure_type" or temp_var.struct_type != None) and reg_offset != None:
+                            print("Type:", type_die.tag)
+                            print("Inserting into the blacklist: ", reg_offset, "\n")
+                            var_blacklist.append(reg_offset)
                 
                 if (DIE.tag == "DW_TAG_structure_type"):
                     for attr in DIE.attributes.values():
@@ -437,8 +454,19 @@ def dwarf_analysis(funlist, filename, target_dir):
                     if offset != None and temp_struct != None: 
                         # print("\tMember name %s |\tOffset %s\n" % (attr_name, offset.group(1)))
                         temp_struct.member_list.add((attr_name, offset.group(1)))
+                # Struct stuff
                 if temp_struct not in struct_set and temp_struct is not None:
                     struct_set.append(temp_struct)
+
+                if (DIE.tag == None and len(var_list) != 0 and DIE_index == DIE_count):
+                    #  This is used to store the variable list for a program with only one function
+                    print(colored("Store var_list for %s | Var count: %d" % (funname, len(var_list)), 'blue', attrs=['reverse']))
+                    pprint(var_list)
+                    dwarf_var_count += len(var_list)
+                    fun_var_info[funname] = var_list.copy()
+                    fun_ignore_info[funname] = var_blacklist.copy()
+                    var_list.clear()
+                    var_blacklist.clear()
                 
             # if (target_fun == True):
             #     print("----------------------------------------------------------------------------\n")
@@ -771,6 +799,7 @@ class BinAnalysis:
         return False
 
     def find_off(self, offset, var_targets, ignore_targets):
+        # spec_log.warning("\t%s", offset)
         try:
             offset_pattern = r'(\b[qword ptr|dword ptr]+\b)\s\[(%.*)([*+\/-]0x[a-z,0-9].*)\]'
             offset_regex = re.search(offset_pattern, offset)
@@ -780,16 +809,30 @@ class BinAnalysis:
                 # print("Checking ignore: ", expr, item)
                 if expr == item:
                     log.error("Found ignore target")
+                    # spec_log.error("\tIgnore/Skip")
                     return False, None
             
             # pprint(var_targets)
-            for item in self.patch_tgts:
-                if expr == item[1]:
-                    log.critical("Found offset")
-                    for tgt in var_targets:
-                        if expr == tgt.offset:
-                            log.critical("Found the target")
-                            return True, expr
+            # What was the purpose of patch_tgts? var vs offset only
+            # Purpose was to reduce the "overapproximation" of offset that is found if I don't check for the variable. Factor -> 229 variables vs 299 variables
+            # Question: is it possible to reduce the overapproximation without relying on the variable?
+            # for item in self.patch_tgts:
+            #     if expr == item[1]:
+            #         log.critical("Found the var")
+            #         # spec_log.critical("Found the var")
+            #         for tgt in var_targets:
+            #             if expr == tgt.offset:
+            #                 log.critical("Found the offset")
+            #                 # spec_log.critical("Found the offset")
+            #                 return True, expr
+                    # return True, expr
+            #  Question to ask(?) - Do I need to do variable check or just use the offset directly?
+            for tgt in var_targets:
+                if expr == tgt.offset:
+                    log.critical("Found the offset")
+                    spec_log.critical("Found the offset")
+                    return True, expr
+            
             return False, None
         except:
             return False, None
@@ -890,7 +933,8 @@ class BinAnalysis:
             self.fun = func.name
             if func.name in funlist:            
                 log.info("Function: %s", func.name)
-                hlil_fun = func.high_level_il
+                spec_log.info("Function: %s", func.name)
+                # hlil_fun = func.high_level_il # Unused atm
                 mlil_fun = func.medium_level_il
                 llil_fun = func.low_level_il
                 instr_fun = func.instructions
@@ -898,8 +942,8 @@ class BinAnalysis:
                 try:
                     var_targets = fun_var_info[func.name]
                     ignore_targets = fun_ignore_info[func.name]
-                    # for item in var_targets:
-                    #     log.debug("\tFun: %s | %s", func.name, item)
+                    for item in var_targets:
+                        spec_log.info("\tFun: %s | %s", func.name, item)
                     self.backward_slice(func.name, mlil_fun, llil_fun, instr_fun, var_targets, ignore_targets)
                     fun_patch_tgts[func.name] = self.cur_fun_tgts.copy()
                     for item in self.cur_fun_tgts:
@@ -908,7 +952,7 @@ class BinAnalysis:
                     spec_log.debug("Offset to table count: %d", len(self.off_to_table))
                     for item in self.off_to_table:
                         total_var_count += 1
-                        spec_log.info("Fun: %s | %s", func.name, item)
+                        spec_log.debug("Fun: %s | %s", func.name, item)
                     self.off_to_table.clear()
                     self.cur_fun_tgts.clear()
                 except Exception as error:
@@ -936,20 +980,24 @@ class BinAnalysis:
                     # To-do: Is there a need to analyze parameters of call instruction? Or not necessary.
                     patch_tgt = self.analyze_call_inst(inst_ssa, medium, var_targets, ignore_targets)
                     if patch_tgt != None:
+                        # Try to find the Patch target: (<var int64_t var_28>, '-32(%rbp)') so it can be used in the find_var() to see if offset exists. Offset can be None which means it is useless.
                         self.patch_tgts.add(patch_tgt)
                         log.debug("Patch target: %s", patch_tgt)
+                        # spec_log.info("Analyze Call Inst | Patch target: %s", patch_tgt)
                     else:
                         for param_var in inst_ssa.params:
                             # print(param_var)
                             patch_tgt = self.analyze_params(inst_ssa, param_var, medium, var_targets, ignore_targets)
-                            # if patch_tgt != None:
-                            #     self.patch_tgts.add(patch_tgt)
-                            #     log.debug("Patch target: %s", patch_tgt)
+                            if patch_tgt != None:
+                                self.patch_tgts.add(patch_tgt)
+                                log.debug("Patch target: %s", patch_tgt)
+                                # spec_log.info("Analyze Params | Patch target: %s", patch_tgt)
                     None
                 elif inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_SSA or \
                      inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED:
                     # Check if variable name exists for this MLIL instruction, and see whether it has been already checked
                     # print(inst_ssa, inst_ssa.operation, inst_ssa.vars_address_taken, inst_ssa.vars_written[0].var, len(inst_ssa.vars_read), inst_ssa.vars_written[0].var.core_variable.source_type)
+                    spec_log.info(inst_ssa)
                     try:
                         var = None
                         if len(inst_ssa.vars_address_taken) != 0:
@@ -968,17 +1016,20 @@ class BinAnalysis:
                             
                         # If variable is not found, then analyze the instruction
                         # print("Variable: ", var)
+
                         if self.find_var(var):
                             log.error("Found variable %s, skip", var)
                             continue
                         else:
                             log.info("%s | Analyze inst: %s", self.fun, inst_ssa)
+                            # spec_log.info("%s | Analyze inst: %s", self.fun, inst_ssa)
                             patch_tgt = self.analyze_inst(inst_ssa, medium, var_targets, ignore_targets)
                             if patch_tgt != None:
                                 self.patch_tgts.add(patch_tgt)
                                 log.debug("Patch target: %s", patch_tgt)
                     except Exception as error:
                         log.error("%s", error)
+                        spec_log.error("%s | inst: %s", error, inst_ssa)
                         
         # After all analysis is done with the MLIL level, find patch targets by dissecting disassembly of LLIL
         for llil_bb in low:
@@ -1015,6 +1066,7 @@ class BinAnalysis:
         else:
             log.error("Regex failed %s", dis_inst)
         
+        # spec_log.warning("\t%s %s %s", inst_type, src, dest)
         # Either source or dest can be ptr, so whichever one passes through, find offset in the set
         tgt_inst = None
         expr = None
@@ -1022,6 +1074,7 @@ class BinAnalysis:
         # if re.search(r'(\b[qword ptr|dword ptr|byte ptr]+\b)', src):
         if re.search(r'(qword ptr|dword ptr|byte ptr)', src):
             log.debug("ptr Source")
+            # spec_log.warning("\tSource")
             suffix_regex = re.search(r'(qword ptr|dword ptr|byte ptr)', src)
             if suffix_regex != None:
                 suffix = suffix_regex.group(1)
@@ -1030,6 +1083,7 @@ class BinAnalysis:
                 tgt_inst = PatchingInst(inst_type=inst_type, dest=conv_imm(dest), src=conv_imm(expr), offset=expr, suffix=conv_suffix(suffix)) # expr -> None
         else:
             log.debug("ptr Dest")
+            # spec_log.warning("\tDest")
             suffix_regex = re.search(r'(qword ptr|dword ptr|byte ptr)', dest)
             if suffix_regex != None:
                 suffix = suffix_regex.group(1)
@@ -1183,6 +1237,7 @@ class BinAnalysis:
         # Only interested in instruction with the disassembly code as we gathered supposedly all necessary information from 
         # previous analysis
         log.info("%s | Analyzing inst\t%s %s", self.fun, inst_ssa, inst_ssa.operation)
+        # spec_log.info("%s | Analyzing inst\t%s %s", self.fun, inst_ssa, inst_ssa.operation)
         # log.debug(var_targets)
         if inst_ssa.operation == MediumLevelILOperation.MLIL_VAR_SSA or \
             inst_ssa.operation == MediumLevelILOperation.MLIL_VAR:
@@ -1204,7 +1259,6 @@ class BinAnalysis:
             elif type(inst_ssa.dest) == binaryninja.mediumlevelil.SSAVariable:
                 inst_var = mlil_fun.get_ssa_var_definition(inst_ssa.dest)
             
-            
             # if it turns out addr_of_var is not none, then handle the case, otherwise it will go thru
             if addr_of_var != None:
                 addr_var = addr_of_var.vars_address_taken[0]
@@ -1216,6 +1270,7 @@ class BinAnalysis:
                     return (addr_var, self.analyze_llil_inst(offset, offset.function, var_targets, ignore_targets))
             elif inst_var != None:
             # else if variable simply exists, then we analyze the LLIL to get the offset
+            # Example: %rax_131 = [%rbp_1 - 0x450].q
                 var = None
                 if inst_ssa.vars_written[0].var.core_variable.source_type == VariableSourceType.StackVariableSourceType:
                     # Ex: var_18#1 = %rax_1#2
@@ -1223,10 +1278,10 @@ class BinAnalysis:
                 elif inst_ssa.vars_read[0].var.core_variable.source_type == VariableSourceType.StackVariableSourceType:
                     # Ex: %rax_7#8 = var_1c
                     var = inst_ssa.vars_read[0].var
-                    
+                
                 if var != None:
                     return (var, self.analyze_llil_inst(inst_var.llil, inst_var.llil.function, var_targets, ignore_targets))
-
+                
         
     def analyze_llil_inst(self, inst_ssa, llil_fun, var_targets, ignore_targets):
         log.debug("%s | Analyze LLIL inst %s %s", self.fun, inst_ssa, type(inst_ssa))
