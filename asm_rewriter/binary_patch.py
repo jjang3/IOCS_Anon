@@ -312,10 +312,14 @@ def dwarf_analysis(funlist, filename, target_dir):
                         # print("Store var_list for", funname, len(var_list))
                         print(colored("Store var_list for %s | Var count: %d" % (funname, len(var_list)), 'blue', attrs=['reverse']))
                         pprint(var_list)
+                        pprint(var_blacklist)
                         dwarf_var_count += len(var_list)
                         fun_var_info[funname] = var_list.copy()
                         fun_ignore_info[funname] = var_blacklist.copy()
                         var_list.clear()
+                        var_blacklist.clear()
+                    elif (len(var_blacklist) != 0 and funname is not None):
+                        # In case if a function doesn't have local variable, but have blacklist
                         var_blacklist.clear()
                     target_fun = False
                     fun_frame_base = None
@@ -349,7 +353,7 @@ def dwarf_analysis(funlist, filename, target_dir):
                                                 fun_frame_base = int(rbp_offset.group(1))
                                                 # print(fun_frame_base)
                     if target_fun == True:
-                        print("Target fun: ", funname)
+                        print(colored("Target fun %s" % (funname), 'green', attrs=['reverse']))
                     
                 if (DIE.tag == "DW_TAG_variable"):
                     var_name = None
@@ -462,6 +466,7 @@ def dwarf_analysis(funlist, filename, target_dir):
                     #  This is used to store the variable list for a program with only one function
                     print(colored("Store var_list for %s | Var count: %d" % (funname, len(var_list)), 'blue', attrs=['reverse']))
                     pprint(var_list)
+                    pprint(var_blacklist)
                     dwarf_var_count += len(var_list)
                     fun_var_info[funname] = var_list.copy()
                     fun_ignore_info[funname] = var_blacklist.copy()
@@ -806,7 +811,7 @@ class BinAnalysis:
             expr = str()
             expr = str(int(offset_regex.group(3),base=16)) + "(" + offset_regex.group(2) + ")"
             for item in ignore_targets:
-                # print("Checking ignore: ", expr, item)
+                print("Checking ignore: ", expr, item)
                 if expr == item:
                     log.error("Found ignore target")
                     # spec_log.error("\tIgnore/Skip")
