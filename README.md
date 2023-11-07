@@ -1,5 +1,5 @@
-# Waterfall
-Repository for the Waterfall project
+# Architecture-agnostic Redirect Compartmentalization System (ARCS)
+Repository for the ARCS project
 
 ## Available branches:
 
