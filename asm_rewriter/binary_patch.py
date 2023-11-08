@@ -149,6 +149,10 @@ def conv_instr(instr):
     match instr:
         case "sal":
             return "shl"
+        case "movsbl":
+            return "movsx"
+        case "movzbl":
+            return "movzx"
     return instr
 
 def conv_suffix(suffix):
@@ -325,7 +329,7 @@ def dwarf_analysis(funlist, filename, target_dir):
                         # fun_var_info[funname] = var_list.copy()
                         
                         # -- This is used to debug specific variable --
-                        debug_var_count = 6
+                        debug_var_count = 1
                         debug_var_list = var_list[0:debug_var_count]
                         dwarf_var_count += len(debug_var_list)
                         fun_var_info[funname] = debug_var_list.copy()
@@ -535,6 +539,24 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
             new_inst_type = "mov_load_gs"
             log.info("Patching with mov_load_gs")
             line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
+    elif temp.inst_type == "movsx":
+        if store_or_load == "store":
+            if temp.suffix == "b":
+                new_inst_type = "movsxb_set_gs"
+            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
+        elif store_or_load == "load":
+            log.info("Patching with movsx_load_gs")
+            new_inst_type = "movzx_load_gs"
+            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
+    elif temp.inst_type == "movzx":
+        if store_or_load == "store":
+            if temp.suffix == "b":
+                new_inst_type = "movzxb_set_gs"
+            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
+        elif store_or_load == "load":
+            new_inst_type = "movzx_load_gs"
+            log.info("Patching with movzx_load_gs")
+            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
     elif temp.inst_type == "lea":
         new_inst_type = "lea_gs"
         log.info("Patching with lea_gs")
@@ -579,10 +601,10 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
         log.info("Patching with shl_gs")
         if store_or_load == "store":
             if temp.suffix == "l":
-                new_inst_type = "shll_store_gs"
+                new_inst_type = "shll_set_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
             elif temp.suffix == "q":
-                new_inst_type = "shlq_store_gs"
+                new_inst_type = "shlq_set_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
     log.info(line)
     return line
@@ -591,7 +613,7 @@ def process_file(funlist, target_dir, target_file):
         # if (target_file.endswith('.asm')):
         print(target_file)
         # print(os.path.join(target_dir, target_file))
-        debug = True
+        debug = False
         patch_count = 0
         with fileinput.input(os.path.join(target_dir, target_file), inplace=(not debug), encoding="utf-8", backup='.bak') as f:
             fun_begin_regex = r'(?<=.type\t)(.*)(?=,\s@function)'
@@ -629,6 +651,16 @@ def process_file(funlist, target_dir, target_file):
         rdgsbase %r11
         mov \offset(%r11), %r11
         mov (%r11), \dest
+    .endm
+    .macro movzx_load_gs dest, offset
+        rdgsbase %r11
+        mov \offset(%r11), %r11
+        movzx (%r11), \dest
+    .endm
+    .macro movsx_load_gs dest, offset
+        rdgsbase %r11
+        mov \offset(%r11), %r11
+        movsx (%r11), \dest
     .endm
     .macro lea_gs dest, offset
         rdgsbase %r11
@@ -709,7 +741,8 @@ def process_file(funlist, target_dir, target_file):
         rdgsbase %r12
         mov	\offset(%r12), %r12 
         mov %r11d, (%r12)
-    .macro shlq_set_gs dest, offset
+    .endm
+    .macro shlq_set_gs value, offset
         rdgsbase %r11
         mov	\offset(%r11), %r11
         mov (%r11), %r11
@@ -717,6 +750,7 @@ def process_file(funlist, target_dir, target_file):
         rdgsbase %r12
         mov	\offset(%r12), %r12 
         mov %r11, (%r12)
+    .endm
 """, end='')
                 fun_begin = re.search(fun_begin_regex, line)
                 if fun_begin is not None:
@@ -749,6 +783,15 @@ def process_file(funlist, target_dir, target_file):
                         src         = dis_regex.group(3)
                         dest        = dis_regex.group(4)
                         expr        = str()
+                        mov_regex   = r"mov"
+                        if re.search(mov_regex, inst_type):
+                            if suffix == "zbl":
+                                inst_type = "movzx"
+                                suffix = "b"
+                            elif suffix == "sbl":
+                                inst_type = "movsx"
+                                suffix = "b"
+                    
                         off_regex   = r"(-|)([a-z,0-9].*\(%r..\))"
                         if re.search(off_regex, src):
                             expr = src
@@ -756,12 +799,12 @@ def process_file(funlist, target_dir, target_file):
                             expr = dest
                         else:
                             expr = None
-                        # print("Inst Type: ", inst_type, "\t|\tSuffix: ", conv_suffix(suffix), "\t| src: ", src,"\t| dest: ", dest)
                         
+                        # print("Inst Type: ", inst_type, "\t|\tSuffix: ", conv_suffix(suffix), "\t| src: ", src,"\t| dest: ", dest)
                         temp_inst = PatchingInst(conv_instr(inst_type), src, dest, expr, suffix)
                         log.warning("Temp: %s", temp_inst)
                     elif sh_regex is not None:
-                        print(sh_regex)
+                        # print(sh_regex)
                         inst_type   = sh_regex.group(1)
                         suffix      = sh_regex.group(2)
                         src         = "$1"
