@@ -1,4 +1,5 @@
 from __future__ import print_function
+from pickle import FALSE
 from tkinter import N
 from termcolor import colored
 from configparser import NoSectionError
@@ -47,14 +48,15 @@ class CustomFormatter(logging.Formatter):
     yellow = "\x1b[33;20m"
     red = "\x1b[31;20m"
     bold_green = "\x1b[42;1m"
+    purp = "\x1b[38;5;13m"
     reset = "\x1b[0m"
     # format = "%(funcName)5s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
-    format = "[%(filename)s:%(lineno)4s -%(funcName)18s()] %(levelname)9s    %(message)s "
+    format = "[Line:%(lineno)4s -%(funcName)18s()] %(levelname)7s    %(message)s "
 
     FORMATS = {
         logging.DEBUG: yellow + format + reset,
         logging.INFO: blue + format + reset,
-        logging.WARNING: yellow + format + reset,
+        logging.WARNING: purp + format + reset,
         logging.ERROR: red + format + reset,
         logging.CRITICAL: bold_green + format + reset
     }
@@ -107,7 +109,7 @@ void __attribute__((constructor)) table()
     while count <= varcount: 
         varentry = "\tvoid *addr_%d;" % count
         mmapentry = """
-    addr_%d = mmap(NULL, getpagesize(), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS | MAP_32BIT, -1, 0);     
+    addr_%d = mmap(NULL, getpagesize(), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);     
     if (addr_%d == MAP_FAILED) {     
         fprintf(stderr, "mmap() failed\\n");     
         exit(EXIT_FAILURE);
@@ -142,6 +144,12 @@ def conv_expr(expr):
         new_expr = fs_regex.group(1) + ":" + str(int(fs_regex.group(2), 16))
     print("New expression: ", new_expr)
     return new_expr
+
+def conv_instr(instr):
+    match instr:
+        case "sal":
+            return "shl"
+    return instr
 
 def conv_suffix(suffix):
     log.info("Converting suffix %s", suffix)
@@ -311,10 +319,19 @@ def dwarf_analysis(funlist, filename, target_dir):
                         # Store the variable for the function if finihsed
                         # print("Store var_list for", funname, len(var_list))
                         print(colored("Store var_list for %s | Var count: %d" % (funname, len(var_list)), 'blue', attrs=['reverse']))
-                        pprint(var_list)
-                        pprint(var_blacklist)
-                        dwarf_var_count += len(var_list)
-                        fun_var_info[funname] = var_list.copy()
+                        # pprint(var_list)
+                        # pprint(var_blacklist)
+                        # dwarf_var_count += len(var_list)
+                        # fun_var_info[funname] = var_list.copy()
+                        
+                        # -- This is used to debug specific variable --
+                        debug_var_count = 6
+                        debug_var_list = var_list[0:debug_var_count]
+                        dwarf_var_count += len(debug_var_list)
+                        fun_var_info[funname] = debug_var_list.copy()
+                        pprint(debug_var_list)
+                        debug_var_list.clear()
+                        
                         fun_ignore_info[funname] = var_blacklist.copy()
                         var_list.clear()
                         var_blacklist.clear()
@@ -546,7 +563,7 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
             line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
         elif store_or_load == "load":
             new_inst_type = "add_load_gs"
-            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
+            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
     elif temp.inst_type == "sub":
         log.info("Patching with sub_gs")
         if store_or_load == "store":
@@ -557,7 +574,16 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
             line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
         elif store_or_load == "load":
             new_inst_type = "sub_load_gs"
-            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
+            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
+    elif temp.inst_type == "shl":
+        log.info("Patching with shl_gs")
+        if store_or_load == "store":
+            if temp.suffix == "l":
+                new_inst_type = "shll_store_gs"
+                line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
+            elif temp.suffix == "q":
+                new_inst_type = "shlq_store_gs"
+                line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
     log.info(line)
     return line
     
@@ -565,12 +591,14 @@ def process_file(funlist, target_dir, target_file):
         # if (target_file.endswith('.asm')):
         print(target_file)
         # print(os.path.join(target_dir, target_file))
-        debug = False
+        debug = True
         patch_count = 0
         with fileinput.input(os.path.join(target_dir, target_file), inplace=(not debug), encoding="utf-8", backup='.bak') as f:
             fun_begin_regex = r'(?<=.type\t)(.*)(?=,\s@function)'
             fun_end_regex   = r'(\t.cfi_endproc)'
-            dis_line_regex  = r'\t(mov|lea|sub|add|cmp)([a-z]*)\t(.*),\s(.*)'
+            dis_line_regex  = r'\t(mov|lea|sub|add|cmp|sal)([a-z]*)\t(.*),\s(.*)'
+            # 	salq	-40(%rbp) or shl $1, -40(%rbp), if no immediate -> $1
+            sh_line_regex   = r'\t(sal)([a-z]*)\t(.*)'
             check = False
             currFun = str()
             patch_targets = list()
@@ -673,6 +701,22 @@ def process_file(funlist, target_dir, target_file):
 		mov (%r11), %r12b
         cmpb \\value, %r12b
     .endm
+    .macro shll_set_gs value, offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+        mov (%r11), %r11
+        shl \\value, %r11d
+        rdgsbase %r12
+        mov	\offset(%r12), %r12 
+        mov %r11d, (%r12)
+    .macro shlq_set_gs dest, offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+        mov (%r11), %r11
+        shl \\value, %r11
+        rdgsbase %r12
+        mov	\offset(%r12), %r12 
+        mov %r11, (%r12)
 """, end='')
                 fun_begin = re.search(fun_begin_regex, line)
                 if fun_begin is not None:
@@ -697,6 +741,7 @@ def process_file(funlist, target_dir, target_file):
                     # mnemonic source, destination AT&T
                     log.debug(dis_line)
                     dis_regex = re.search(dis_line_regex, dis_line)
+                    sh_regex  = re.search(sh_line_regex, dis_line)
                     temp_inst = None
                     if dis_regex is not None:
                         inst_type   = dis_regex.group(1)
@@ -713,9 +758,20 @@ def process_file(funlist, target_dir, target_file):
                             expr = None
                         # print("Inst Type: ", inst_type, "\t|\tSuffix: ", conv_suffix(suffix), "\t| src: ", src,"\t| dest: ", dest)
                         
-                        temp_inst = PatchingInst(inst_type, src, dest, expr, suffix)
-                        log.debug("Temp: %s", temp_inst)
-                    
+                        temp_inst = PatchingInst(conv_instr(inst_type), src, dest, expr, suffix)
+                        log.warning("Temp: %s", temp_inst)
+                    elif sh_regex is not None:
+                        print(sh_regex)
+                        inst_type   = sh_regex.group(1)
+                        suffix      = sh_regex.group(2)
+                        src         = "$1"
+                        dest        = sh_regex.group(3)
+                        expr = str()
+                        off_regex   = r"(-|)([a-z,0-9].*\(%r..\))"
+                        if re.search(off_regex, dest):
+                            expr = dest
+                        temp_inst = PatchingInst(conv_instr(inst_type), src, dest, expr, suffix)
+                        log.warning("Temp: %s", temp_inst)
                     
                     if temp_inst != None:
                         # pprint(patch_targets)
@@ -811,7 +867,7 @@ class BinAnalysis:
             expr = str()
             expr = str(int(offset_regex.group(3),base=16)) + "(" + offset_regex.group(2) + ")"
             for item in ignore_targets:
-                print("Checking ignore: ", expr, item)
+                # print("Checking ignore: ", expr, item)
                 if expr == item:
                     log.error("Found ignore target")
                     # spec_log.error("\tIgnore/Skip")
@@ -821,6 +877,7 @@ class BinAnalysis:
             # What was the purpose of patch_tgts? var vs offset only
             # Purpose was to reduce the "overapproximation" of offset that is found if I don't check for the variable. Factor -> 229 variables vs 299 variables
             # Question: is it possible to reduce the overapproximation without relying on the variable?
+            # pprint(self.patch_tgts)
             # for item in self.patch_tgts:
             #     if expr == item[1]:
             #         log.critical("Found the var")
@@ -835,7 +892,7 @@ class BinAnalysis:
             for tgt in var_targets:
                 if expr == tgt.offset:
                     log.critical("Found the offset")
-                    spec_log.critical("Found the offset")
+                    # spec_log.critical("Found the offset")
                     return True, expr
             
             return False, None
@@ -962,6 +1019,7 @@ class BinAnalysis:
                     self.cur_fun_tgts.clear()
                 except Exception as error:
                     log.error("No variable targets: %s", error)
+        spec_log.critical("Total variable count: %d", total_var_count)
         log.info("Total variable count: %d", total_var_count)
         time.sleep(3)
                 
@@ -978,6 +1036,8 @@ class BinAnalysis:
         for mlil_bb in medium:
             for inst in mlil_bb:
                 inst_ssa = inst.ssa_form
+                log.warning("%s | %s", inst_ssa, inst_ssa.operation)
+                # print(inst_ssa, inst_ssa.operation, inst_ssa.vars_address_taken, inst_ssa.vars_written[0].var, len(inst_ssa.vars_read), inst_ssa.vars_written[0].var.core_variable.source_type)
                 # These operations are highest level of variable assignments are one we care about.
                 if inst_ssa.operation == MediumLevelILOperation.MLIL_CALL_SSA:
                     # First analyze any function call instructions (e.g., malloc/calloc) to find potential patch targets
@@ -1000,9 +1060,8 @@ class BinAnalysis:
                     None
                 elif inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_SSA or \
                      inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED:
-                    # Check if variable name exists for this MLIL instruction, and see whether it has been already checked
-                    # print(inst_ssa, inst_ssa.operation, inst_ssa.vars_address_taken, inst_ssa.vars_written[0].var, len(inst_ssa.vars_read), inst_ssa.vars_written[0].var.core_variable.source_type)
-                    spec_log.info(inst_ssa)
+                # Check if variable name exists for this MLIL instruction, and see whether it has been already checked
+                # What does it mean if it doesn't exist (e.g., arg1#83 = &var_1d1 and [%rsp#15 - 8].q = &var_1d1)
                     try:
                         var = None
                         if len(inst_ssa.vars_address_taken) != 0:
@@ -1034,7 +1093,28 @@ class BinAnalysis:
                                 log.debug("Patch target: %s", patch_tgt)
                     except Exception as error:
                         log.error("%s", error)
-                        spec_log.error("%s | inst: %s", error, inst_ssa)
+                        # spec_log.error("%s | inst: %s", error, inst_ssa)
+                elif inst_ssa.operation == MediumLevelILOperation.MLIL_STORE_SSA:
+                    # [%rsp_5#9 - 8].q = &var_1d1 @ mem#68 -> mem#69
+                    try:
+                        var = None
+                        if len(inst_ssa.vars_address_taken) != 0:
+                            var = inst_ssa.vars_address_taken[0]
+                            log.critical(var)
+                        elif len(inst_ssa.vars_read) == 0:
+                            continue
+                        if self.find_var(var):
+                            log.error("Found variable %s, skip", var)
+                            continue
+                        else:
+                            log.info("%s | Analyze inst: %s", self.fun, inst_ssa)
+                            # spec_log.info("%s | Analyze inst: %s", self.fun, inst_ssa)
+                            patch_tgt = self.analyze_inst(inst_ssa, medium, var_targets, ignore_targets)
+                            if patch_tgt != None:
+                                self.patch_tgts.add(patch_tgt)
+                                log.debug("Patch target: %s", patch_tgt)
+                    except Exception as error:
+                        log.error("%s", error)
                         
         # After all analysis is done with the MLIL level, find patch targets by dissecting disassembly of LLIL
         for llil_bb in low:
@@ -1248,7 +1328,8 @@ class BinAnalysis:
             inst_ssa.operation == MediumLevelILOperation.MLIL_VAR:
             log.debug("Instruction: %s %s %s", inst_ssa, type(inst_ssa.src), type(inst_ssa.dest))
         elif inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_SSA or \
-            inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED:
+            inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED or \
+            inst_ssa.operation == MediumLevelILOperation.MLIL_STORE_SSA:
             log.debug("Instruction: %s", inst_ssa)
             # First condition is to check whether either src or dest is address of (&var_c)
             # log.debug(inst_ssa.src.vars_address_taken[0])
