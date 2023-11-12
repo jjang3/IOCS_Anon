@@ -74,6 +74,9 @@ sys.path.insert(0, '/home/jaewon/binaryninja')
 fun_patch_tgts      = dict()
 fun_off_to_table    = dict()
 
+# This dict is for static function (numcompare (0 var): 0x658b vs numcompare (5 vars): 0x163ea)
+fun_entry_to_args   = dict()
+
 class SizeType(Enum):
     CHAR = 1
     INT = 4
@@ -238,16 +241,16 @@ def process_binary(filename, funfile, dirloc):
             bn = BinAnalysis(bv)
             bn.analyze_binary(funlist)
 
-        var_count += dwarf_var_count
-        # Based on variable counts found by static analysis + dwarf analysis, generate table.
-        generate_table(var_count, target_dir)
+        # var_count += dwarf_var_count
+        # # Based on variable counts found by static analysis + dwarf analysis, generate table.
+        # generate_table(var_count, target_dir)
 
-        if dirloc != '':
-            for dir_file in dir_list:
-                if (dir_file.endswith('.s')):
-                    process_file(funlist, target_dir, dir_file)
-        else:
-            process_file(funlist, target_dir, target_file)
+        # if dirloc != '':
+        #     for dir_file in dir_list:
+        #         if (dir_file.endswith('.s')):
+        #             process_file(funlist, target_dir, dir_file)
+        # else:
+        #     process_file(funlist, target_dir, target_file)
             
 
 struct_set = list()
@@ -305,7 +308,7 @@ def dwarf_analysis(funlist, filename, target_dir):
         off_regex = r"(?<=\(DW_OP_plus_uconst:\s)(.*)(?=\))"
         temp_struct = None
         funname = None
-        curr_fun = None
+        lowpc = None # Start address
         var_list = list()
         var_blacklist = list()
         for CU in dwarfinfo.iter_CUs():
@@ -323,18 +326,30 @@ def dwarf_analysis(funlist, filename, target_dir):
                         # Store the variable for the function if finihsed
                         # print("Store var_list for", funname, len(var_list))
                         print(colored("Store var_list for %s | Var count: %d" % (funname, len(var_list)), 'blue', attrs=['reverse']))
-                        # pprint(var_list)
-                        # pprint(var_blacklist)
-                        # dwarf_var_count += len(var_list)
-                        # fun_var_info[funname] = var_list.copy()
+                        pprint(var_list)
+                        pprint(var_blacklist)
+                        dwarf_var_count += len(var_list)
+                        for item in var_list:
+                            # For sequential sort function
+                            if item.name == "nlo" and funname == "sequential_sort":
+                                var_list.remove(item)
+                        fun_var_info[funname] = var_list.copy()
+                        fun_entry_to_args[hex(lowpc)] = len(var_list)
+                        # print(fun_entry_to_args[hex(lowpc)], hex(lowpc))
+                        # print(var_list)
                         
                         # -- This is used to debug specific variable --
-                        debug_var_count = 1
-                        debug_var_list = var_list[0:debug_var_count]
-                        dwarf_var_count += len(debug_var_list)
-                        fun_var_info[funname] = debug_var_list.copy()
-                        pprint(debug_var_list)
-                        debug_var_list.clear()
+                        # debug_var_count = 3
+                        # debug_var_list = var_list[0:debug_var_count]
+                        
+                        # for item in debug_var_list:
+                        #     if item.name == "nlo":
+                        #         debug_var_list.remove(item)
+                        # print(debug_var_list)
+                        # dwarf_var_count += len(debug_var_list)
+                        # fun_var_info[funname] = debug_var_list.copy()
+                        # pprint(debug_var_list)
+                        # debug_var_list.clear()
                         
                         fun_ignore_info[funname] = var_blacklist.copy()
                         var_list.clear()
@@ -344,6 +359,7 @@ def dwarf_analysis(funlist, filename, target_dir):
                         var_blacklist.clear()
                     target_fun = False
                     fun_frame_base = None
+                    
                     for attr in DIE.attributes.values():
                         if loc_parser.attribute_has_location(attr, CU['version']):
                             lowpc = DIE.attributes['DW_AT_low_pc'].value
@@ -360,10 +376,10 @@ def dwarf_analysis(funlist, filename, target_dir):
                             funname = DIE.attributes["DW_AT_name"].value.decode()
                             if funname in funlist:
                                 target_fun = True
-                                # print("Target fun: ", target_fun)
-                                # print("Function name:", funname, "\t| Begin: ", hex(lowpc), "\t| End:", hex(highpc))
+                                print("Target fun: ", target_fun)
+                                print("Function name:", funname, "\t| Begin: ", hex(lowpc), "\t| End:", hex(highpc))
                             # print('  Found a compile unit at offset %s, length %s' % (
-                                # CU.cu_offset, CU['unit_length']))
+                            #     CU.cu_offset, CU['unit_length']))
                             loc = loc_parser.parse_from_attribute(attr, CU['version'])
                             if isinstance(loc, list):
                                 for loc_entity in loc:
@@ -373,6 +389,10 @@ def dwarf_analysis(funlist, filename, target_dir):
                                             if rbp_offset := re.search(rbp_regex, offset):
                                                 fun_frame_base = int(rbp_offset.group(1))
                                                 # print(fun_frame_base)
+                        # if (attr.name == "DW_AT_type"):
+                        #     refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
+                        #     type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
+                        #     print(type_die)
                     if target_fun == True:
                         print(colored("Target fun %s" % (funname), 'green', attrs=['reverse']))
                     
@@ -493,7 +513,10 @@ def dwarf_analysis(funlist, filename, target_dir):
                     fun_ignore_info[funname] = var_blacklist.copy()
                     var_list.clear()
                     var_blacklist.clear()
-                
+                # elif (DIE.tag == None and funname != None and lowpc != None and target_fun is True and len(var_list) == 0):
+                #     # print(colored("Store var_list for %s | Var count: %d" % (funname, len(var_list)), 'blue', attrs=['reverse']))
+                #     fun_entry_to_args[lowpc] = len(var_list)
+                #     print(fun_entry_to_args[lowpc])
             # if (target_fun == True):
             #     print("----------------------------------------------------------------------------\n")
             # ------- After DIE ------- #  
@@ -855,7 +878,7 @@ log = logging.getLogger(__name__)
 log.setLevel(debug_level)
 
 # create console handler with a higher log level
-log_disable = False
+log_disable = True
 log.addHandler(ch)
 log.disabled = log_disable
 
@@ -1031,21 +1054,23 @@ class BinAnalysis:
         else:
             return None
         
+    # Need debug info to handle static functions
     def analyze_binary(self, funlist):
         print("Step: Binary Ninja")
         total_var_count = 0
         for func in self.bv.functions:
             self.fun = func.name
             if func.name in funlist:            
-                log.info("Function: %s", func.name)
-                spec_log.info("Function: %s", func.name)
+                log.info("Function: %s | begin: %s", func.name, hex(func.start))
+                spec_log.info("Function: %s | begin: %s", func.name, hex(func.start))
                 # hlil_fun = func.high_level_il # Unused atm
                 mlil_fun = func.medium_level_il
                 llil_fun = func.low_level_il
                 instr_fun = func.instructions
                 var_targets = None  # Variable targets obtained from DWARF
                 try:
-                    var_targets = fun_var_info[func.name]
+                    if (fun_entry_to_args[hex(func.start)] is not None):
+                        var_targets = fun_var_info[func.name]
                     ignore_targets = fun_ignore_info[func.name]
                     for item in var_targets:
                         spec_log.info("\tFun: %s | %s", func.name, item)
