@@ -1,4 +1,5 @@
 from __future__ import print_function
+from math import sin
 from pickle import FALSE
 from tkinter import N
 from termcolor import colored
@@ -112,7 +113,7 @@ void __attribute__((constructor)) table()
     while count <= varcount: 
         varentry = "\tvoid *addr_%d;" % count
         mmapentry = """
-    addr_%d = mmap(NULL, getpagesize(), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);     
+    addr_%d = mmap(NULL, getpagesize(), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS | MAP_32BIT, -1, 0);     
     if (addr_%d == MAP_FAILED) {     
         fprintf(stderr, "mmap() failed\\n");     
         exit(EXIT_FAILURE);
@@ -178,6 +179,8 @@ def conv_imm(imm):
         offset = int(imm_regex.group(2), 16)
         if offset == 4294967295:
             offset = -1
+        elif offset == 18446744073709551615:
+            offset = -1
         elif offset == 4294967165:
             offset = -130
         elif offset == 4294967166:
@@ -241,16 +244,16 @@ def process_binary(filename, funfile, dirloc):
             bn = BinAnalysis(bv)
             bn.analyze_binary(funlist)
 
-        # var_count += dwarf_var_count
-        # # Based on variable counts found by static analysis + dwarf analysis, generate table.
-        # generate_table(var_count, target_dir)
+        var_count += dwarf_var_count
+        # Based on variable counts found by static analysis + dwarf analysis, generate table.
+        generate_table(var_count, target_dir)
 
-        # if dirloc != '':
-        #     for dir_file in dir_list:
-        #         if (dir_file.endswith('.s')):
-        #             process_file(funlist, target_dir, dir_file)
-        # else:
-        #     process_file(funlist, target_dir, target_file)
+        if dirloc != '':
+            for dir_file in dir_list:
+                if (dir_file.endswith('.s')):
+                    process_file(funlist, target_dir, dir_file)
+        else:
+            process_file(funlist, target_dir, target_file)
             
 
 struct_set = list()
@@ -329,27 +332,49 @@ def dwarf_analysis(funlist, filename, target_dir):
                         pprint(var_list)
                         pprint(var_blacklist)
                         dwarf_var_count += len(var_list)
-                        for item in var_list:
-                            # For sequential sort function
-                            if item.name == "nlo" and funname == "sequential_sort":
-                                var_list.remove(item)
+                        delete_set = set()
+                        delete_list = list()
+                        
+                        # for item in var_list:
+                        #     # For sequential sort function
+                        #     if item.name == "nlo" and funname == "sequential_sort":
+                        #         var_list.remove(item)
                         fun_var_info[funname] = var_list.copy()
                         fun_entry_to_args[hex(lowpc)] = len(var_list)
-                        # print(fun_entry_to_args[hex(lowpc)], hex(lowpc))
-                        # print(var_list)
+                        print(fun_entry_to_args[hex(lowpc)], hex(lowpc))
+                        print(var_list)
                         
                         # -- This is used to debug specific variable --
                         # debug_var_count = 3
                         # debug_var_list = var_list[0:debug_var_count]
-                        
+                        # delete_list = debug_var_list.copy()
+                        # fun_entry_to_args[hex(lowpc)] = len(debug_var_list)
+                        # pprint(debug_var_list)
+                        # print(len(debug_var_list))
+                        # # Keeping specific variable
+                        # # for item in debug_var_list:
+                        # #     if item.name != "i":
+                        # #         print("Removing: ", item.name)
+                        # #         delete_set.add(item)
+                        # #     else:
+                        # #         print("Keeping: ", item.name)
+                        # # Removing specific variable
                         # for item in debug_var_list:
-                        #     if item.name == "nlo":
-                        #         debug_var_list.remove(item)
-                        # print(debug_var_list)
+                        #     if item.name == "new_column_info_alloc":
+                        #         delete_set.add(item)
+
+                        # # pprint(delete_set)
+                        # # pprint(delete_list)
+                        # for del_item in delete_list:
+                        #     if del_item in delete_set:
+                        #         print(del_item, "removed")
+                        #         debug_var_list.remove(del_item)
+
+                        # pprint(debug_var_list)
                         # dwarf_var_count += len(debug_var_list)
                         # fun_var_info[funname] = debug_var_list.copy()
-                        # pprint(debug_var_list)
                         # debug_var_list.clear()
+                        # -- End debug -- #
                         
                         fun_ignore_info[funname] = var_blacklist.copy()
                         var_list.clear()
@@ -534,7 +559,7 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
     log.critical("Patch the instruction %s", disassembly)
     log.debug(temp)
     # This regex is used to find offset (e.g., -16(%rbp)) to determine or load
-    off_regex       = r"(-|\$|)([0-9].*\(%r..\))"
+    off_regex       = r"(-|\$|)(-?[0-9].*\(%r..\))"
     tgt_offset      = int()
     for offset in offset_targets:
         if offset[0] == temp.offset:
@@ -557,11 +582,16 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
             elif temp.suffix == "b":
                 new_inst_type = "movb_set_gs"
             log.info("Patching with mov_set_gs")
-            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
+            line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d\n" % (disassembly, new_inst_type, temp.src, tgt_offset), disassembly)
         elif store_or_load == "load":
-            new_inst_type = "mov_load_gs"
+            if temp.suffix == "l":
+                new_inst_type = "movl_load_gs"
+            elif temp.suffix == "q":
+                new_inst_type = "movq_load_gs"
+            elif temp.suffix == "b":
+                new_inst_type = "movb_load_gs"
             log.info("Patching with mov_load_gs")
-            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
+            line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d\n" % (disassembly,new_inst_type, temp.dest, tgt_offset), disassembly)
     elif temp.inst_type == "movsx":
         if store_or_load == "store":
             if temp.suffix == "b":
@@ -584,19 +614,25 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
         new_inst_type = "lea_gs"
         log.info("Patching with lea_gs")
         #line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
-        line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
+        line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d\n" % (disassembly,new_inst_type, temp.dest, tgt_offset), disassembly)
     elif temp.inst_type == "cmp":
         # print(temp, store_or_load)
-        if temp.suffix == "l":
-            new_inst_type = "cmpl_gs"
-        elif temp.suffix == "q":
-            new_inst_type = "cmpq_gs"
-        elif temp.suffix == "b":
-            new_inst_type = "cmpb_gs"
         if store_or_load == "store":
-            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
-        elif store_or_load == "load":
-            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
+            if temp.suffix == "l":
+                new_inst_type = "cmpl_store_gs"
+            elif temp.suffix == "q":
+                new_inst_type = "cmpq_store_gs"
+            elif temp.suffix == "b":
+                new_inst_type = "cmpb_store_gs"
+            line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d\n" % (disassembly,new_inst_type, temp.src, tgt_offset), disassembly)
+        elif store_or_load == "load":    
+            if temp.suffix == "l":
+                new_inst_type = "cmpl_load_gs"
+            elif temp.suffix == "q":
+                new_inst_type = "cmpq_load_gs"
+            elif temp.suffix == "b":
+                new_inst_type = "cmpb_load_gs"
+            line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d\n" % (disassembly,new_inst_type, temp.dest, tgt_offset), disassembly)
     elif temp.inst_type == "add":
         log.info("Patching with add_gs")
         if store_or_load == "store":
@@ -616,10 +652,13 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
                 new_inst_type = "subl_store_gs"
             elif temp.suffix == "q":
                 new_inst_type = "subq_store_gs"
-            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
+            line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d\n" % (disassembly,new_inst_type, temp.src, tgt_offset), disassembly)
         elif store_or_load == "load":
-            new_inst_type = "sub_load_gs"
-            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.dest, tgt_offset), disassembly)
+            if temp.suffix == "l":
+                new_inst_type = "subl_load_gs"
+            elif temp.suffix == "q":
+                new_inst_type = "subq_load_gs"
+            line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d\n" % (disassembly,new_inst_type, temp.dest, tgt_offset), disassembly)
     elif temp.inst_type == "shl":
         log.info("Patching with shl_gs")
         if store_or_load == "store":
@@ -629,6 +668,28 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
             elif temp.suffix == "q":
                 new_inst_type = "shlq_set_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s, %d\n" % (new_inst_type, temp.src, tgt_offset), disassembly)
+    elif temp.inst_type == "imul":
+        log.info("Patching with imul_gs")
+        if store_or_load == "store":
+            if temp.suffix == "l":
+                new_inst_type = "imull_store_gs"
+            elif temp.suffix == "q":
+                new_inst_type = "imulq_store_gs"
+            line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d\n" % (disassembly,new_inst_type, temp.src, tgt_offset), disassembly)
+        elif store_or_load == "load":
+            if temp.suffix == "l":
+                new_inst_type = "imull_load_gs"
+            elif temp.suffix == "q":
+                new_inst_type = "imulq_load_gs"
+            line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d\n" % (disassembly,new_inst_type, temp.dest, tgt_offset), disassembly)
+    elif temp.inst_type == "div":
+        log.info("Patching with div_gs")
+        if store_or_load == "load":
+            if temp.suffix == "l":
+                new_inst_type = "divl_load_gs"
+            elif temp.suffix == "q":
+                new_inst_type = "divq_load_gs"
+            line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%d\n" % (disassembly,new_inst_type, tgt_offset), disassembly)
     log.info(line)
     return line
     
@@ -641,9 +702,10 @@ def process_file(funlist, target_dir, target_file):
         with fileinput.input(os.path.join(target_dir, target_file), inplace=(not debug), encoding="utf-8", backup='.bak') as f:
             fun_begin_regex = r'(?<=.type\t)(.*)(?=,\s@function)'
             fun_end_regex   = r'(\t.cfi_endproc)'
-            dis_line_regex  = r'\t(mov|lea|sub|add|cmp|sal)([a-z]*)\t(.*),\s(.*)'
+            dis_line_regex  = r'\t(mov|lea|sub|add|cmp|sal|imul)([a-z]*)\t(.*),\s(.*)'
             # 	salq	-40(%rbp) or shl $1, -40(%rbp), if no immediate -> $1
             sh_line_regex   = r'\t(sal)([a-z]*)\t(.*)'
+            sing_line_regex = r'\t(div)([a-z]*)\t(.*)'
             check = False
             currFun = str()
             patch_targets = list()
@@ -670,10 +732,20 @@ def process_file(funlist, target_dir, target_file):
         mov \offset(%r11),	%r11
         movq \src, (%r11)
     .endm
-    .macro mov_load_gs dest, offset
+    .macro movb_load_gs dest, offset
         rdgsbase %r11
         mov \offset(%r11), %r11
-        mov (%r11), \dest
+        movb (%r11), \dest
+    .endm
+     .macro movl_load_gs dest, offset
+        rdgsbase %r11
+        mov \offset(%r11), %r11
+        movl (%r11), \dest
+    .endm
+     .macro movq_load_gs dest, offset
+        rdgsbase %r11
+        mov \offset(%r11), %r11
+        movq (%r11), \dest
     .endm
     .macro movzx_load_gs dest, offset
         rdgsbase %r11
@@ -732,25 +804,61 @@ def process_file(funlist, target_dir, target_file):
         mov (%r11), %r11
         add %r11, \dest
     .endm
-    .macro sub_load_gs dest, offset
+    .macro subl_load_gs dest, offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+        mov (%r11), %r11d
+        subl %r11d, \dest
+    .endm
+    .macro subq_load_gs dest, offset
         rdgsbase %r11
         mov	\offset(%r11), %r11
         mov (%r11), %r11
         sub %r11, \dest
     .endm
-    .macro cmpl_gs value, offset
+    .macro imull_load_gs value, offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+		mov (%r11), %r12d
+        imull %r12d, \\value
+    .endm
+	.macro imulq_load_gs value, offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+		mov (%r11), %r12
+        imulq %r12, \\value
+    .endm
+    .macro cmpl_load_gs value, offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+		mov (%r11), %r12d
+        cmpl %r12d, \\value
+    .endm
+	.macro cmpq_load_gs value, offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+		mov (%r11), %r12
+        cmpq %r12, \\value
+    .endm
+	.macro cmpb_load_gs value, offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+		mov (%r11), %r12b
+        cmpb %r12b, \\value
+    .endm
+    .macro cmpl_store_gs value, offset
         rdgsbase %r11
         mov	\offset(%r11), %r11
 		mov (%r11), %r12d
         cmpl \\value, %r12d
     .endm
-	.macro cmpq_gs value, offset
+	.macro cmpq_store_gs value, offset
         rdgsbase %r11
         mov	\offset(%r11), %r11
 		mov (%r11), %r12
         cmpq \\value, %r12
     .endm
-	.macro cmpb_gs value, offset
+	.macro cmpb_store_gs value, offset
         rdgsbase %r11
         mov	\offset(%r11), %r11
 		mov (%r11), %r12b
@@ -774,6 +882,12 @@ def process_file(funlist, target_dir, target_file):
         mov	\offset(%r12), %r12 
         mov %r11, (%r12)
     .endm
+    .macro divq_load_gs offset
+        rdgsbase %r11
+        mov	\offset(%r11), %r11
+        mov (%r11), %r11
+        divq %r11
+    .endm
 """, end='')
                 fun_begin = re.search(fun_begin_regex, line)
                 if fun_begin is not None:
@@ -791,14 +905,16 @@ def process_file(funlist, target_dir, target_file):
                 if fun_end is not None:
                     check = False
             
-                if check == True: #and patch_count < max_patch:
+                if check == True: # and patch_count < max_patch:
                     dis_line = line.rstrip('\n')
                     # log.debug(pprint(patch_targets))
                     # log.debug(pprint(offset_targets))
                     # mnemonic source, destination AT&T
                     log.debug(dis_line)
-                    dis_regex = re.search(dis_line_regex, dis_line)
-                    sh_regex  = re.search(sh_line_regex, dis_line)
+                    dis_regex   = re.search(dis_line_regex, dis_line)
+                    sh_regex    = re.search(sh_line_regex, dis_line)
+                    sing_regex  = re.search(sing_line_regex, dis_line)
+                    # log.error("%s %s %s", dis_regex,sh_regex,sing_regex)
                     temp_inst = None
                     if dis_regex is not None:
                         inst_type   = dis_regex.group(1)
@@ -828,6 +944,7 @@ def process_file(funlist, target_dir, target_file):
                         log.warning("Temp: %s", temp_inst)
                     elif sh_regex is not None:
                         # print(sh_regex)
+                        log.debug(sh_regex)
                         inst_type   = sh_regex.group(1)
                         suffix      = sh_regex.group(2)
                         src         = "$1"
@@ -838,7 +955,17 @@ def process_file(funlist, target_dir, target_file):
                             expr = dest
                         temp_inst = PatchingInst(conv_instr(inst_type), src, dest, expr, suffix)
                         log.warning("Temp: %s", temp_inst)
-                    
+                    elif sing_regex is not None:
+                        inst_type   = sing_regex.group(1)
+                        suffix      = sing_regex.group(2)
+                        src         = sing_regex.group(3)
+                        expr = str()
+                        off_regex   = r"(-|)([a-z,0-9].*\(%r..\))"
+                        if re.search(off_regex, src):
+                            expr = src
+                        temp_inst = PatchingInst(conv_instr(inst_type), src, '', expr, suffix)
+                        log.warning("Temp: %s", temp_inst)
+                        
                     if temp_inst != None:
                         # pprint(patch_targets)
                         if temp_inst in patch_targets:
@@ -1209,6 +1336,7 @@ class BinAnalysis:
         # spec_log.info("%s | Find patching tgt: %s", self.fun, dis_inst)
         # Example: mov     qword [rbp-0x8], rax 
         dis_inst_pattern    = re.search(r"(\b[a-z]+\b)\s*(.*),\s(.*)", dis_inst)
+        s_dis_inst_pattern  = re.search(r"(\b[a-z]+\b)\s*(.*)", dis_inst)
         inst_type           = str()
         src                 = str()
         dest                = str()
@@ -1216,6 +1344,9 @@ class BinAnalysis:
             inst_type   = dis_inst_pattern.group(1)
             src         = dis_inst_pattern.group(2)
             dest        = dis_inst_pattern.group(3)
+        elif s_dis_inst_pattern != None:
+            inst_type   = s_dis_inst_pattern.group(1)
+            src         = s_dis_inst_pattern.group(2)
         else:
             log.error("Regex failed %s", dis_inst)
         
@@ -1232,7 +1363,9 @@ class BinAnalysis:
             if suffix_regex != None:
                 suffix = suffix_regex.group(1)
             result, expr = self.find_off(src, var_targets, ignore_targets)
-            if result:
+            if result and dest == None:
+                tgt_inst = PatchingInst(inst_type=inst_type, dest=None, src=conv_imm(expr), offset=expr, suffix=conv_suffix(suffix)) # 
+            elif result:
                 tgt_inst = PatchingInst(inst_type=inst_type, dest=conv_imm(dest), src=conv_imm(expr), offset=expr, suffix=conv_suffix(suffix)) # expr -> None
         else:
             log.debug("ptr Dest")
