@@ -1,8 +1,0 @@
-1) 
-# Override default settings if possible
--include .make-settings
-
-FINAL_CFLAGS=$(STD) $(WARN) $(OPT) $(DEBUG) $(CFLAGS) $(REDIS_CFLAGS) -finstrument-functions -fplugin=/home/jaewon/Downloads/instrument-attribute-gcc-plugin/instrument_attribute.so -fplugin-arg-instrument_attribute-include-function-list=processCommand,createEmbeddedStringObject,readQueryFromClient,zmalloc,processMultibulkBuffer
-FINAL_LDFLAGS=$(LDFLAGS) $(REDIS_LDFLAGS) $(DEBUG) -T linker_text.ld
-
-Then compile with PREFIX=$HOME/Downloads/redis-5.0.14/inst_build make -j4

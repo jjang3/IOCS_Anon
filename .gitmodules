@@ -1,7 +1,3 @@
-[submodule "static_analysis/SVF"]
-	path = static_analysis/SVF
-	url = https://github.com/SVF-tools/SVF.git
-	dirty = ignore
 [submodule "taint_analysis/libdft64"]
 	path = taint_analysis/libdft64
 	url = https://github.com/AngoraFuzzer/libdft64.git
