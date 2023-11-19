@@ -8,3 +8,6 @@
 [submodule "comp_analysis/instrument-attribute-gcc-plugin"]
 	path = comp_analysis/instrument-attribute-gcc-plugin
 	url = https://github.com/christophebedard/instrument-attribute-gcc-plugin.git
+[submodule "static_analysis/SVF"]
+	path = static_analysis/SVF
+	url = https://github.com/SVF-tools/SVF.git
