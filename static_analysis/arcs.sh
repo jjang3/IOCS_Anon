@@ -1,4 +1,4 @@
-# This script is used for coreutils rewriting purpose (e.g., could be expanded for other applications?)
+# This script is used for ARCS
 #!/bin/bash
 
 PS3="Select options: "
@@ -61,22 +61,7 @@ analyze()
 
 compile()
 {
-    echo "Migrate back to coreutils and compile" 
-    if [ -z ${result_path}/${input}.s ]
-    then
-        echo "No source file, please use other option"
-        exit
-    fi
-    cp ${test_path}/libMakefile ${result_path}/Makefile
-    cd ${result_path}
-    make lib
-    cp -rf ${result_path}/lib ${coreutils_src_path}
-    echo ${result_path}/${input}.s
-    as -o ${coreutils_src_path}/${input}.o ${result_path}/${input}.s
-    sleep 3
-    cd ${coreutils_build_path}
-    pwd
-    make src/${input}
+    echo "Compiling the application" 
 }
 
 while true; do

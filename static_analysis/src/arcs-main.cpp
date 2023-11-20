@@ -1,7 +1,12 @@
 #include "../include/arcs-main.h"
+#include "spdlog/spdlog.h"
 
-#include <string.h>
+#include <vector>
+#include <string>
+#include <sstream>
+#include <iostream>
 #include <fstream>
+
 
 #define DBG_FLAG 1
 
@@ -24,22 +29,18 @@ std::vector<string> parseTaintFile(std::ifstream &inputFile)
   if ( inputFile.is_open() ){
     for( std::string line; getline( inputFile, line ); )
     {
-      string word = "Summary: ";
-
-      if (strstr(line.c_str(), word.c_str()) != NULL) {  
-        
-        size_t colonPos = line.rfind(": ");
-        auto parseString = line.substr(colonPos+2);
-        string delimiter = " ";
-        size_t pos;
-        while ((pos = parseString.find(delimiter)) != std::string::npos) {
-            auto token = parseString.substr(0, pos);
-            main_dbg << token << "\n";
-            parseString.erase(0, pos + delimiter.length());
-            if (strcmp(token.c_str(), "") != 0)
-              result.push_back(token);
-        }
+      std::stringstream ss(line);
+      while( ss.good() )
+      {
+        std::string substr;
+        getline(ss, substr, ',');
+        result.push_back(substr);
       }
+      
+      #if DBG_FLAG
+      for (std::size_t i = 0; i < result.size(); i++)
+        main_dbg << result[i] << "\n";
+      #endif
     }
   }
   inputFile.close();
@@ -66,14 +67,16 @@ SetVector<Function*> buildWorklist(Module &M)
     return Result;
 }
 
-PreservedAnalyses WaterfallPass::run(Module &M, 
+PreservedAnalyses ARCSPass::run(Module &M, 
                                   ModuleAnalysisManager &MM) {
     // Parsing input list file:
     std::ifstream infile(inputTaintFile);
-    WaterfallPass waterfall;
-    waterfall.funsWorklist = buildWorklist(M);
-    waterfall.funsTainted = parseTaintFile(infile);
-    for (auto item : waterfall.funsTainted)
+    ARCSPass arcs;
+    arcs.funsWorklist = buildWorklist(M);
+    arcs.funsTainted = parseTaintFile(infile);
+    
+    spdlog::info("Welcome to spdlog!");
+    for (auto item : arcs.funsTainted)
     {
       main_dbg << item << "\n";
     }
@@ -107,7 +110,7 @@ llvmGetPassPluginInfo() {
         [](StringRef Name, ModulePassManager &MPM,
         ArrayRef<PassBuilder::PipelineElement>) {
           if(Name == "arcs"){
-            MPM.addPass(WaterfallPass());
+            MPM.addPass(ARCSPass());
             // MPM.addPass(WaterfallICFGAnalysisPass());
             return true;
           }

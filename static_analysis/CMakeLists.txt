@@ -6,6 +6,8 @@ project(ARCS)
 #===============================================================================
 set(LT_LLVM_INSTALL_DIR $ENV{LLVM_DIR} CACHE PATH "LLVM installation directory")
 
+set(SPDLOG_DIR CMAKE_CURRENT_SOURCE_DIR/spdlog "spdlog directory")
+
 # 1.1 Check the "include| directory
 set(LT_LLVM_INCLUDE_DIR "${LT_LLVM_INSTALL_DIR}/include/llvm")
 if(NOT EXISTS "${LT_LLVM_INSTALL_DIR}")
@@ -91,3 +93,4 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
 # Include subdirectories. add_subdirectory(sources)
 # add_subdirectory(SVF)
 add_subdirectory(src)
+add_subdirectory(spdlog)

@@ -18,7 +18,8 @@ find_package(LLVM REQUIRED CONFIG)
 
 # HelloWorld includes headers from LLVM - update the include paths accordingly
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS} 
-"${CMAKE_SOURCE_DIR}/SVF/include")
+"${CMAKE_SOURCE_DIR}/SVF/include"
+"${CMAKE_SOURCE_DIR}/spdlog/include")
 
 message("${CMAKE_SOURCE_DIR}/SVF/include")
 

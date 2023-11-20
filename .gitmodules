@@ -11,3 +11,6 @@
 [submodule "static_analysis/SVF"]
 	path = static_analysis/SVF
 	url = https://github.com/SVF-tools/SVF.git
+[submodule "static_analysis/spdlog"]
+	path = static_analysis/spdlog
+	url = https://github.com/gabime/spdlog.git

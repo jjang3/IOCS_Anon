@@ -16,8 +16,8 @@ namespace {
 
 SetVector<Function*> buildWorklist(Module &M);
 
-class WaterfallPass 
-    : public PassInfoMixin<WaterfallPass> {
+class ARCSPass 
+    : public PassInfoMixin<ARCSPass> {
 public:
     PreservedAnalyses run(Module &M, ModuleAnalysisManager &MM);
 
