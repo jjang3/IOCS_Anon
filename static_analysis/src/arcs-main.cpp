@@ -1,6 +1,6 @@
 #include "../include/arcs-main.h"
+#include "../include/arcs-icfg.h"
 #include "spdlog/spdlog.h"
-#include "spdlog/sinks/stdout_color_sinks.h"
 
 #include <vector>
 #include <string>
@@ -75,8 +75,7 @@ PreservedAnalyses ARCSPass::run(Module &M,
     spdlog::set_pattern("[%^%l%$] [%s:%#] [Fun: %!] %v");
     spdlog::set_level(spdlog::level::debug);
     spdlog::enable_backtrace(32);
-    auto console = spdlog::stdout_color_mt("console");      
-    auto err_logger = spdlog::stderr_color_mt("stderr");    
+
     // Parsing input list file:
     std::ifstream infile(inputTaintFile);
     ARCSPass arcs;
@@ -88,23 +87,19 @@ PreservedAnalyses ARCSPass::run(Module &M,
     {
       main_dbg << item << "\n";
     }
-    exit(1);
-    // auto waterfallAnalysisResult = MM.getResult<WaterfallICFGAnalysis>(M);
+    // auto arcsICFGResult = MM.getResult<ARCSICFGAnalysis>(M);
+    ARCSICFGAnalysis arcs_ICFG;
+    arcs_ICFG.analyzeICFG(M, MM);
     return PreservedAnalyses::all();
 }
 
 } // end of anonymous namespace
 
-
-void registerAnalyses(ModuleAnalysisManager &MAM) {
-    // MAM.registerPass([&] { return WaterfallICFGAnalysis(); });   
-}
-
 // This part is the new way of registering your pass
 extern "C" ::llvm::PassPluginLibraryInfo LLVM_ATTRIBUTE_WEAK
 llvmGetPassPluginInfo() {
   return {
-    LLVM_PLUGIN_API_VERSION, "WaterfallPass", "v0.2", [](PassBuilder &PB) 
+    LLVM_PLUGIN_API_VERSION, "ARCSPass", "v0.3", [](PassBuilder &PB) 
     {
       LoopAnalysisManager LAM;
       FunctionAnalysisManager FAM;
@@ -119,13 +114,11 @@ llvmGetPassPluginInfo() {
         ArrayRef<PassBuilder::PipelineElement>) {
           if(Name == "arcs"){
             MPM.addPass(ARCSPass());
-            // MPM.addPass(WaterfallICFGAnalysisPass());
             return true;
           }
           return false;
         }
       );
-      PB.registerAnalysisRegistrationCallback(registerAnalyses); 
     }
   };
 }

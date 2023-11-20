@@ -44,10 +44,11 @@ set(PASSES
   
 set(arcs_SOURCES
   arcs-main.cpp
+  arcs-icfg.cpp
   )
 
 file (GLOB arcs_HEADERS "../include/*.h")
-#foreach( pass ${PASSES} )
+# foreach( pass ${PASSES} )
 # Create a library corresponding to 'plugin'
 add_library( arcs MODULE
   ${arcs_HEADERS}
