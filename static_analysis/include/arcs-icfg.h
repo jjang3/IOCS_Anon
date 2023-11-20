@@ -11,6 +11,18 @@
 #include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/InstrTypes.h"
 
+
+#include "SVF-LLVM/LLVMUtil.h"
+#include "SVF-LLVM/SVFIRBuilder.h"
+#include "WPA/Andersen.h"
+#include "Util/CallGraphBuilder.h"
+#include "Util/Options.h"
+#include "Graphs/ICFG.h"
+#include "Graphs/SVFG.h"
+
+#include <iostream>
+#include <regex>
+
 using namespace llvm;
 using namespace std;
 
@@ -24,6 +36,6 @@ class ARCSICFGAnalysis : public AnalysisInfoMixin<ARCSICFGAnalysis> {
     // You need to define a result. This can also be some other class.
     // using Result = std::vector<std::pair<PTACallGraphNode*, SetVector<std::pair<int,int>>>>;
     using Result = std::vector<std::string>;
-    StringSet<>  analyzeICFG(Module &M, ModuleAnalysisManager &MAM);
+    StringSet<> analyzeICFG(Module &M, ModuleAnalysisManager &MAM);
     
 };

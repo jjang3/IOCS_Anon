@@ -18,10 +18,12 @@ find_package(LLVM REQUIRED CONFIG)
 
 # HelloWorld includes headers from LLVM - update the include paths accordingly
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS} 
-"${CMAKE_SOURCE_DIR}/SVF/include"
+"${CMAKE_SOURCE_DIR}/SVF/svf/include"
+"${CMAKE_SOURCE_DIR}/SVF/svf-llvm/include"
+"${CMAKE_SOURCE_DIR}/build/SVF/include"
 "${CMAKE_SOURCE_DIR}/spdlog/include")
 
-message("${CMAKE_SOURCE_DIR}/SVF/include")
+# message("${CMAKE_SOURCE_DIR}/SVF/svf/include")
 
 
 #===============================================================================
@@ -69,6 +71,11 @@ add_library( arcs MODULE
 # follows.
 #message(${CMAKE_SOURCE_DIR})
 target_link_libraries(arcs PUBLIC
-  "${src}"
+  # "${CMAKE_SOURCE_DIR}/build/SVF/svf/libSvfCore.a"
+  SvfLLVM
+  # SvfCore
+  # "${src}"
+  # PRIVATE
+  # SvfLLVM
 )
                                                                                                                                                                                                                                                                                                                                                                                               

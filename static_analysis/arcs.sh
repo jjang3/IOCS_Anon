@@ -19,6 +19,7 @@ arcs_i_result_path=${arcs_result_path}/$1
 arcs_ll_file=${arcs_i_result_path}/$1.ll
 arcs_bc_file=${arcs_i_result_path}/$1.bc
 arcs_out_file=${arcs_i_result_path}/${1}_arcs.out
+arcs_analysis_file=${arcs_i_result_path}/analysis.txt
 
 LLVM_BUILD_DIR=$LLVM_DIR
 
@@ -30,8 +31,9 @@ build()
         mkdir $arcs_build_path
     fi
     cd $arcs_build_path
-    cmake ..
+    cmake -DBUILD_SHARED_LIBS=on ..
     make -j ${nproc}
+    # make
 }
 
 analyze()
@@ -57,6 +59,7 @@ analyze()
         printf "main" >> ${arcs_i_result_path}/taint.in
     fi
     $LLVM_BUILD_DIR/bin/opt -load $arcs_lib_path/libarcs.so -load-pass-plugin $arcs_lib_path/libarcs.so -passes=arcs -S ${arcs_bc_file} -taint ${arcs_i_result_path}/taint.in  -o ${arcs_out_file}
+    #  &> ${arcs_analysis_file}
 }
 
 compile()

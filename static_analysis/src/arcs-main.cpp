@@ -73,14 +73,14 @@ PreservedAnalyses ARCSPass::run(Module &M,
                                   ModuleAnalysisManager &MM) {
     /* spdlog-related settings */      
     spdlog::set_pattern("[%^%l%$] [%s:%#] [Fun: %!] %v");
-    spdlog::set_level(spdlog::level::debug);
+    // spdlog::set_level(spdlog::level::debug);
     spdlog::enable_backtrace(32);
 
     // Parsing input list file:
-    std::ifstream infile(inputTaintFile);
+    // std::ifstream infile(inputTaintFile);
     ARCSPass arcs;
     arcs.funsWorklist   = buildWorklist(M);
-    arcs.funsTainted    = parseTaintFile(infile);
+    // arcs.funsTainted    = parseTaintFile(infile);
 
     SPDLOG_INFO("Welcome to ARCS!");
     for (auto item : arcs.funsTainted)
