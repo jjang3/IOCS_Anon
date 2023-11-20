@@ -1,5 +1,6 @@
 #include "../include/arcs-main.h"
 #include "spdlog/spdlog.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
 
 #include <vector>
 #include <string>
@@ -8,7 +9,7 @@
 #include <fstream>
 
 
-#define DBG_FLAG 1
+#define DBG_FLAG 0
 
 using namespace llvm;
 using namespace std;
@@ -24,8 +25,8 @@ namespace {
 
 std::vector<string> parseTaintFile(std::ifstream &inputFile)
 {
+  SPDLOG_INFO("");
   std::vector<string> result;
-  main_dbg << "Parsing taint file\n";
   if ( inputFile.is_open() ){
     for( std::string line; getline( inputFile, line ); )
     {
@@ -49,6 +50,7 @@ std::vector<string> parseTaintFile(std::ifstream &inputFile)
 
 SetVector<Function*> buildWorklist(Module &M)
 {
+    SPDLOG_INFO("");
     SetVector<Function*> Result;
     Triple Trip(M.getTargetTriple());
     TargetLibraryInfoImpl TLII(Trip);
@@ -69,13 +71,19 @@ SetVector<Function*> buildWorklist(Module &M)
 
 PreservedAnalyses ARCSPass::run(Module &M, 
                                   ModuleAnalysisManager &MM) {
+    /* spdlog-related settings */      
+    spdlog::set_pattern("[%^%l%$] [%s:%#] [Fun: %!] %v");
+    spdlog::set_level(spdlog::level::debug);
+    spdlog::enable_backtrace(32);
+    auto console = spdlog::stdout_color_mt("console");      
+    auto err_logger = spdlog::stderr_color_mt("stderr");    
     // Parsing input list file:
     std::ifstream infile(inputTaintFile);
     ARCSPass arcs;
-    arcs.funsWorklist = buildWorklist(M);
-    arcs.funsTainted = parseTaintFile(infile);
-    
-    spdlog::info("Welcome to spdlog!");
+    arcs.funsWorklist   = buildWorklist(M);
+    arcs.funsTainted    = parseTaintFile(infile);
+
+    SPDLOG_INFO("Welcome to ARCS!");
     for (auto item : arcs.funsTainted)
     {
       main_dbg << item << "\n";
