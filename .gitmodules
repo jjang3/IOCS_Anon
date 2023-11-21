@@ -14,3 +14,6 @@
 [submodule "var_c14n/static_analysis/spdlog"]
 	path = var_c14n/static_analysis/spdlog
 	url = https://github.com/gabime/spdlog.git
+[submodule "fun_c14n/comp_analysis/e9patch"]
+	path = fun_c14n/comp_analysis/e9patch
+	url = https://github.com/GJDuck/e9patch.git
