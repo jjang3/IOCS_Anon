@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/home/jaewon/ARCS/static_analysis/llvm-project-14/llvm-build/include",
+                "/home/jaewon/ARCS/static_analysis/spdlog/include",
+                "/home/jaewon/ARCS/static_analysis/SVF/svf-llvm/include",
+                "/home/jaewon/ARCS/static_analysis/SVF/svf/include",
+                "/home/jaewon/ARCS/static_analysis/build/SVF/include"
+            ],
+            "defines": [],
+            "compilerPath": "/home/jaewon/ARCS/static_analysis/llvm-project-13/llvm-build/bin/clang",
+            "cStandard": "c17",
+            "cppStandard": "c++14",
+            "intelliSenseMode": "linux-clang-x64",
+            "configurationProvider": "ms-vscode.cmake-tools"
+        }
+    ],
+    "version": 4
+}

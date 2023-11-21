@@ -1,25 +1,29 @@
-# Waterfall
-Repository for the Waterfall project
+# Automatic Redirection Compartmentalization Systems (ARCS)
+Repository for the ARCS project
 
 ## What's included
 
 ```
 ./
-├── e9patch (sudmodule)
-├── e9stuff
-├── include
-├── pku
-├── sources
-├── SVF (submodule)
-├── taint_analysis (submodule)
-└── waterfall.sh
+├── taint_analysis (used for both fun_c14n and var_c14n)
+├── fun_c14n
+|       ├── comp_analysis
+|       |       ├── e9stuff         (script files for e9patch)
+|       |       ├── pku             (PKU-related files)
+|       |       ├── e9patch         (submodule)
+|       |       ├── inst-gcc-plugin (submodule)
+|       |       └── scripts/comp_analysis.sh
+|       └── OR_analysis (OR = Overprivilege)
+└── var_c14n
+        ├── asm_rewriter
+        |       ├── binary_patch.py (for individual source file)
+        |       └── core.sh         (for coreutils)
+        └── static_analysis (for alias analysis)
+                ├── include         (header files for LLVM ARCS pass)
+                ├── src             (source files for LLVM ARCS pass)
+                ├── spdlog          (submodule)
+                └── SVF             (submodule)
 ```
-- `e9stuff` = contains script files for the `e9patch`-related binary rewriting.
-- `include` = contains header files for the waterfall LLVM pass
-- `pku` = contains necessary files for the Intel Memory Protection Key (MPK)
-- `sources` = contains source files for the waterfall LLVM pass
-- `taint_analysis` = contains files for the taint analysis using Intel PIN
-- `waterfall.sh` = a script that will `waterfall` a source code
 
 ## How to use (To-do)
 1) `git submodule init && git submodule update`

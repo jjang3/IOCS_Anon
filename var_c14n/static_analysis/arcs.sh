@@ -53,7 +53,7 @@ analyze()
     fi
     if [ ! -f "$arcs_bc_file" ]; then
         echo "LLVM IR (.bc) file doesn't exist"
-        $LLVM_BUILD_DIR/bin/clang -emit-llvm -S -o ${arcs_bc_file} ${arcs_input_path}/${input}.c
+        $LLVM_BUILD_DIR/bin/clang -emit-llvm -c -o ${arcs_bc_file} ${arcs_input_path}/${input}.c
     fi
     if [ ! -f "${arcs_i_result_path}/taint.in" ]; then
         printf "main" >> ${arcs_i_result_path}/taint.in

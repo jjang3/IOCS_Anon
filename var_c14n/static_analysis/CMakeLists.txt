@@ -34,9 +34,9 @@ endif()
 #===============================================================================
 list(APPEND CMAKE_PREFIX_PATH "${LT_LLVM_INSTALL_DIR}/lib/cmake/llvm/")
 
-find_package(LLVM 13.0.0 REQUIRED CONFIG)
+find_package(LLVM 14.0.0 REQUIRED CONFIG)
 # Another sanity check
-if(NOT "13" VERSION_EQUAL "${LLVM_VERSION_MAJOR}")
+if(NOT "14" VERSION_EQUAL "${LLVM_VERSION_MAJOR}")
   message(FATAL_ERROR "Found LLVM ${LLVM_VERSION_MAJOR}, but need LLVM 13")
 endif()
 
@@ -91,6 +91,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
 
 # Include subdirectories. add_subdirectory(sources)
-add_subdirectory(SVF)
+# add_subdirectory(SVF)
 add_subdirectory(src)
 add_subdirectory(spdlog)

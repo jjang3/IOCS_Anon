@@ -94,5 +94,7 @@
         "thread": "cpp",
         "cfenv": "cpp",
         "cinttypes": "cpp"
-    }
+    },
+    "cmake.configureOnOpen": true,
+    "cmake.sourceDirectory": "/home/jaewon/ARCS/static_analysis"
 }

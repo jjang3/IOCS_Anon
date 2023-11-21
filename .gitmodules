@@ -2,15 +2,15 @@
 	path = taint_analysis/libdft64
 	url = https://github.com/AngoraFuzzer/libdft64.git
 	dirty = ignore
-[submodule "e9patch"]
-	path = comp_analysis/e9patch
+[submodule "fun_c14n/comp_analyiss/e9patch"]
+	path = fun_c14n/comp_analysis/e9patch
 	url = https://github.com/GJDuck/e9patch.git
-[submodule "comp_analysis/instrument-attribute-gcc-plugin"]
-	path = comp_analysis/instrument-attribute-gcc-plugin
+[submodule "fun_c14n/comp_analysis/instrument-attribute-gcc-plugin"]
+	path = fun_c14n/comp_analysis/instrument-attribute-gcc-plugin
 	url = https://github.com/christophebedard/instrument-attribute-gcc-plugin.git
-[submodule "static_analysis/SVF"]
-	path = static_analysis/SVF
+[submodule "var_c14n/static_analysis/SVF"]
+	path = var_c14n/static_analysis/SVF
 	url = https://github.com/SVF-tools/SVF.git
-[submodule "static_analysis/spdlog"]
-	path = static_analysis/spdlog
+[submodule "var_c14n/static_analysis/spdlog"]
+	path = var_c14n/static_analysis/spdlog
 	url = https://github.com/gabime/spdlog.git

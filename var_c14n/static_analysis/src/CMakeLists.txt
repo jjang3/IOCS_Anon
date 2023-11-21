@@ -20,7 +20,7 @@ find_package(LLVM REQUIRED CONFIG)
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS} 
 "${CMAKE_SOURCE_DIR}/SVF/svf/include"
 "${CMAKE_SOURCE_DIR}/SVF/svf-llvm/include"
-"${CMAKE_SOURCE_DIR}/build/SVF/include"
+"${CMAKE_SOURCE_DIR}/SVF/Release-build/include"
 "${CMAKE_SOURCE_DIR}/spdlog/include")
 
 # message("${CMAKE_SOURCE_DIR}/SVF/svf/include")
@@ -72,9 +72,11 @@ add_library( arcs MODULE
 #message(${CMAKE_SOURCE_DIR})
 target_link_libraries(arcs PUBLIC
   # "${CMAKE_SOURCE_DIR}/build/SVF/svf/libSvfCore.a"
-  SvfLLVM
+  "${CMAKE_SOURCE_DIR}/SVF/Release-build/svf-llvm/libSvfLLVM.so"
+  "${CMAKE_SOURCE_DIR}/SVF/Release-build/svf/libSvfCore.so"
+  # "${CMAKE_SOURCE_DIR}/SVF/svf/Release-build/svf-llvm/libSvfLLVM.so"
   # SvfCore
-  # "${src}"
+  "${src}"
   # PRIVATE
   # SvfLLVM
 )

@@ -1,8 +1,12 @@
 ROOT_DIR=$(shell pwd)
-LLVM=llvm-project-13.0.1
-LLVM_BUILD=${ROOT_DIR}/llvm-project-13.0.1.src
-LLVM_DIR=${ROOT_DIR}/llvm-project-13
-SRC="https://github.com/llvm/llvm-project/releases/download/llvmorg-13.0.1/llvm-project-13.0.1.src.tar.xz"
+# LLVM=llvm-project-13.0.1
+LLVM=llvm-project-14.0.0
+# LLVM_BUILD=${ROOT_DIR}/llvm-project-13.0.1.src
+LLVM_BUILD=${ROOT_DIR}/llvm-project-14.0.0.src
+# LLVM_DIR=${ROOT_DIR}/llvm-project-13
+LLVM_DIR=${ROOT_DIR}/llvm-project-14
+# SRC="https://github.com/llvm/llvm-project/releases/download/llvmorg-13.0.1/llvm-project-13.0.1.src.tar.xz"
+SRC="https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.0/llvm-project-14.0.0.src.tar.xz"
 
 all: build 
 
