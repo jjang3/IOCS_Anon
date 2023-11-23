@@ -19,6 +19,7 @@ make
 
 # Fun c14n preparation - e9patch
 cd ${current_path}/fun_c14n && cd comp_analysis/e9patch && bash build.sh
+cd ${current_path}/fun_c14n && cd comp_analysis/instrument-attribute-gcc-plugin && make
 
 # Modifying the SVF-related files to preapre to build the SVF
 echo ${current_path}
