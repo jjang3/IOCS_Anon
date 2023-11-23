@@ -7,6 +7,8 @@ input=$1
 options=("Build" "Analyze" "Compile")
 
 # This is used to setup test path
+grandp_path=$( cd ../../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
+parent_path=$( cd ../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 current_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 
 arcs_build_path=${current_path}/build
@@ -31,8 +33,9 @@ build()
         mkdir $arcs_build_path
     fi
     cd $arcs_build_path
-    cmake -DBUILD_SHARED_LIBS=on ..
-    make -j ${nproc}
+    cmake ..
+    make
+    # make -j ${nproc}
     # make
 }
 

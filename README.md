@@ -26,17 +26,19 @@ Repository for the ARCS project
 ```
 
 ## How to use (To-do)
-1) `git submodule init && git submodule update`
-2) `cd e9patch && bash build.sh` - This will build `e9patch` to be used later
-3) `cd taint_analysis && make all`  
-    - Sanity check: `cd scripts && bash execute.sh hello`
-4) `export LLVM_DIR="/location/"` with your LLVM directory location.
-5) From the `Waterfall` root directory, `mkdir build && cd build`
-6) Install Z3 version by `wget`ing: `https://github.com/Z3Prover/z3/archive/refs/tags/z3-4.8.8.zip` and then build using `cmake`.
+1) `git submodule init && git submodule update` - This will load all submodules per respective folders
+2) `bash prepare.sh` - This will prepare several things such as `Z3` and modifying few `CMakeLists.txt` files in the `SVF` to support dynamic library + linking
+<!-- 2) Install Z3 version by `wget`ing: `https://github.com/Z3Prover/z3/archive/refs/tags/z3-4.8.8.zip` and then build using `cmake`.
      - Make sure to `EXPORT Z3_DIR=/path/to/z3-build`
-7) `cmake .. && make -j4`, this will first build the `SVF` library, then `waterfall`.
-8) Insert an input file to `./inputs`
-9) `bash waterfall.sh <source code name> waterfall (e.g., `bash waterfall.sh vuln_srv waterfall`)
+1) `cd e9patch && bash build.sh` - This will build `e9patch` to be used later
+2) `cd taint_analysis && make all`  
+    - Sanity check: `cd scripts && bash execute.sh hello`
+3) `export LLVM_DIR="/location/"` with your LLVM directory location.
+4) From the `Waterfall` root directory, `mkdir build && cd build`
+
+5) `cmake .. && make -j4`, this will first build the `SVF` library, then `waterfall`.
+6) Insert an input file to `./inputs`
+7) `bash waterfall.sh <source code name> waterfall (e.g., `bash waterfall.sh vuln_srv waterfall`) -->
 
 --- 
 ## LLVM build direction:
