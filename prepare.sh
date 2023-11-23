@@ -13,6 +13,9 @@ current_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 # echo "Make sure to set ${grandp_path} as Z3_BUILD variable!"
 # cd ${grandp_path}
 
+cd ${current_path}/taint_analysis
+make
+
 # Modifying the SVF-related files to preapre to build the SVF
 echo ${current_path}
 sed -i 's/off/on/g' ${current_path}/var_c14n/static_analysis/SVF/build.sh

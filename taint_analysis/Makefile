@@ -2,7 +2,7 @@ ROOT_DIR=$(shell pwd)
 PARENT_DIR=$(basename $(dir ${ROOT_DIR}))
 LIB_DIR=${ROOT_DIR}/lib
 LIBDFT_DIR=${ROOT_DIR}/libdft64
-SOURCE_DIR=${ROOT_DIR}/libdft64_files
+# SOURCE_DIR=${ROOT_DIR}/libdft64_files
 #PIN_BUILD=${ROOT_DIR}/pin-3.20_build
 PIN_BUILD=${PARENT_DIR}pin-3.27_build
 #PIN_VER=pin-3.20
@@ -48,7 +48,7 @@ ${LIBDFT}_build:
 		make update && \
 		echo ${PIN_ROOT} && \
 		cd ${LIBDFT_DIR} && make && \
-		echo ${SOURCE_DIR} \
+		cd .. && rm pin-3.27-98718-gbeaa5d51e-gcc-linux.tar.gz
 		
 		
 clean:
