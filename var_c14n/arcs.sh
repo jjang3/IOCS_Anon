@@ -11,7 +11,9 @@ grandp_path=$( cd ../../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 parent_path=$( cd ../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 current_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 
-arcs_build_path=${current_path}/build
+static_path=${current_path}/static_analysis
+
+arcs_build_path=${static_path}/build
 arcs_lib_path=${arcs_build_path}/lib
 
 arcs_input_path=${current_path}/input
