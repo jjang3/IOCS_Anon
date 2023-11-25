@@ -40,6 +40,9 @@ from elftools.dwarf.descriptions import (describe_CFI_instructions,
 from elftools.dwarf.enums import DW_EH_encoding_flags
 import logging
 import re
+import shutil
+
+from pathlib import Path
 
 class CustomFormatter(logging.Formatter):
 
@@ -194,7 +197,7 @@ def conv_imm(imm):
 def process_argument(argv):
     inputfile = ''
     funfile = ''
-    dirloc = ''
+    dirloc = None
     try:
         opts, args = getopt.getopt(argv,"hfic:",["binary=","fun=","dir="])
     except getopt.GetoptError:
@@ -217,43 +220,57 @@ prog_offset_set     = dict()
 struct_offset_set   = dict()
 table_offset        = 0
 def process_binary(filename, funfile, dirloc):
-        global var_count
-        global dwarf_var_count
-        target_dir = None        
-        if dirloc != None:
-            target_dir = os.path.join(os.path.dirname(os.path.abspath(filename)), dirloc)
-            filename = os.path.join(target_dir, filename)
-            funfile = os.path.join(target_dir, funfile)
-        else:
-            target_dir= os.path.dirname(os.path.abspath(filename))
-        target_file = os.path.splitext((os.path.basename(filename)))[0] + ".s"
+    global var_count
+    global dwarf_var_count
+    target_dir = None        
+    print("Dirloc", dirloc)
+    if dirloc != None:
+        print("Here")
+        target_dir = os.path.join(os.path.dirname(os.path.abspath(filename)), dirloc)
+        # filename = os.path.join(target_dir, filename)
+        # funfile = os.path.join(target_dir, funfile)
+        # target_dir = Path(os.path.abspath(filename))
+    else:
+        target_dir = Path(os.path.abspath(filename))
+        target_dir = target_dir.parent.parent.joinpath("result", os.path.splitext((os.path.basename(filename)))[0])
+        funfile = target_dir.joinpath("taint.in")
+        filename = target_dir.joinpath(os.path.splitext((os.path.basename(filename)))[0] + ".out")
+        # target_dir= (os.path.abspath(filename)) #os.path.abspath(os.path.abspath(os.path.dirname))
 
-        if funfile != "":
-            with open(funfile) as c:
-                for line in c:
-                    funlist = line.split(",")
-                    
-        dir_list = os.listdir(target_dir)
-        print(filename, funfile, target_dir)
-        # --- DWARF analysis --- #
-        dwarf_analysis(funlist, filename, target_dir)
-        
-        #--- Binary Ninja Analysis --- #
-        with load(filename, options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:                  
-            arch = Architecture['x86_64']
-            bn = BinAnalysis(bv)
-            bn.analyze_binary(funlist)
+    print("\tTarget dir:", target_dir)
+    print(funfile)
 
-        var_count += dwarf_var_count
-        # Based on variable counts found by static analysis + dwarf analysis, generate table.
-        generate_table(var_count, target_dir)
+    target_file = target_dir.joinpath(os.path.splitext((os.path.basename(filename)))[0] + ".s")
+    print("\tTarget file: ", target_file, "\n\tTaint file: ", funfile)
+    # print(target_file, funfile)
+    if funfile != "":
+        with open(funfile) as c:
+            for line in c:
+                funlist = line.split(",")
+                
+    dir_list = os.listdir(target_dir)
+    print(filename, funfile, target_dir)
+    # --- DWARF analysis --- #
+    dwarf_analysis(funlist, filename)
+    
+    #--- Binary Ninja Analysis --- #
+    print("Binary ninja input:", filename)
+    with load(filename.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
+        print("Here")                  
+        arch = Architecture['x86_64']
+        bn = BinAnalysis(bv)
+        bn.analyze_binary(funlist)
 
-        if dirloc != '':
-            for dir_file in dir_list:
-                if (dir_file.endswith('.s')):
-                    process_file(funlist, target_dir, dir_file)
-        else:
-            process_file(funlist, target_dir, target_file)
+    var_count += dwarf_var_count
+    # Based on variable counts found by static analysis + dwarf analysis, generate table.
+    generate_table(var_count, target_dir)
+
+    if dirloc != '':
+        for dir_file in dir_list:
+            if (dir_file.endswith('.s')):
+                process_file(funlist, target_dir, dir_file)
+    else:
+        process_file(funlist, target_dir, target_file)
             
 
 struct_set = list()
@@ -281,7 +298,7 @@ class PatchingInst:
 
 var_count = 0
 dwarf_var_count = 0
-def dwarf_analysis(funlist, filename, target_dir):
+def dwarf_analysis(funlist, filename):
     global dwarf_var_count
     with open(filename, 'rb') as f:
         elffile = ELFFile(f)
@@ -695,8 +712,17 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
     
 def process_file(funlist, target_dir, target_file):
         # if (target_file.endswith('.asm')):
-        print(target_file)
-        # print(os.path.join(target_dir, target_file))
+        # print(target_file)
+        
+        print(os.path.join(target_dir, target_file))
+        debug_file = target_file + ".bak"
+        if os.path.isfile(os.path.join(target_dir, debug_file)):
+            print("Copying debug file")
+            shutil.copyfile(os.path.join(target_dir, debug_file), os.path.join(target_dir, target_file))
+        else:
+            print("No debug file exists")
+        # print(debug_file)
+        # exit()
         debug = False
         patch_count = 0
         with fileinput.input(os.path.join(target_dir, target_file), inplace=(not debug), encoding="utf-8", backup='.bak') as f:
