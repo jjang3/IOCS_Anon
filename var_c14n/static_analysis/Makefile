@@ -36,7 +36,7 @@ ${LLVM}: ${LLVM}.src.tar.xz
 		mv ${LLVM_BUILD} ${LLVM_PROJ};  \
 		rm ${LLVM}.src.tar.xz; \
 	elif [ -f ${LLVM}.src.tar.xz ]; then \
-		rm ${LLVM}.src.tar.xz;
+		rm ${LLVM}.src.tar.xz; \
 	fi
 
 ${LLVM}_build: ${LLVM}
