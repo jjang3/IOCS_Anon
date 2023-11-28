@@ -21,4 +21,5 @@ backup*.cpp
 #test.out#
 tests/results
 tests
+result
 !Makefile
