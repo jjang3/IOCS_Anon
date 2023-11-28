@@ -13,13 +13,18 @@ current_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 
 comp_path=${current_path}/comp_analysis
 e9stuff_path=${comp_path}/e9stuff
+instru_path=${comp_path}/instrument-attribute-gcc-plugin
+pku_path=${comp_path}/pku
 
 or_path=${current_path}/OR_analysis
 
 fun_input_path=${current_path}/input
 
+fun_lib_path=${current_path}/lib
+
 fun_result_path=${current_path}/result
 fun_i_result_path=${fun_result_path}/$1
+fun_i_file=${fun_i_result_path}/$1
 
 
 # lib_path=${parent_path}/lib
@@ -32,15 +37,28 @@ fun_i_result_path=${fun_result_path}/$1
 compile()
 {
   echo "Compile file (if input file exists)" 
-   if [ ! -d "$fun_result_path" ]; then
-        echo "Result directory doesn't exist"
-        mkdir $fun_result_path
-    fi
-  if [ -z ${input} ]
-  then
-    echo "No source file, please use other option"
-    exit
+  if [ ! -d "$fun_lib_path" ]; then
+      echo "Input result directory doesn't exist"
+      mkdir $fun_lib_path
   fi
+  cd $pku_path && make lib
+  if [ ! -d "$fun_result_path" ]; then
+      echo "Result directory doesn't exist"
+      mkdir $fun_result_path
+    fi
+  if [ ! -d "$fun_i_result_path" ]; then
+      echo "Input result directory doesn't exist"
+      mkdir $fun_i_result_path
+  fi
+  if [ ! -f "$fun_i_file" ]; then
+      echo "Input file doesn't exist"
+      # $LLVM_BUILD_DIR/bin/clang -emit-llvm -S -o ${arcs_ll_file} ${arcs_input_path}/${input}.c
+  fi
+  # if [ -z ${input} ]
+  # then
+  #   echo "No source file, please use other option"
+  #   exit
+  # fi
   
   # if [ ! -d "$result_path" ]; then
   #   mkdir $result_path

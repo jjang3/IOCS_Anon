@@ -1,4 +1,4 @@
-GAS LISTING /tmp/ccC35f60.s 			page 1
+GAS LISTING /tmp/ccUflKJ5.s 			page 1
 
 
    1              		.file	"pkuapi.c"
@@ -58,7 +58,7 @@ GAS LISTING /tmp/ccC35f60.s 			page 1
   39 002d C3       		ret
   40              		.cfi_endproc
   41              	.LFE6:
-GAS LISTING /tmp/ccC35f60.s 			page 2
+GAS LISTING /tmp/ccUflKJ5.s 			page 2
 
 
   42              		.size	wrpkru, .-wrpkru
@@ -118,7 +118,7 @@ GAS LISTING /tmp/ccC35f60.s 			page 1
   83              		.loc 1 25 1
   84              		.cfi_startproc
   85 0061 55       		pushq	%rbp
-GAS LISTING /tmp/ccC35f60.s 			page 3
+GAS LISTING /tmp/ccUflKJ5.s 			page 3
 
 
   86              		.cfi_def_cfa_offset 16
@@ -178,7 +178,7 @@ GAS LISTING /tmp/ccC35f60.s 			page 1
  127 00b3 B8000000 		movl	$0, %eax
  127      00
  128 00b8 E8000000 		call	syscall@PLT
-GAS LISTING /tmp/ccC35f60.s 			page 4
+GAS LISTING /tmp/ccUflKJ5.s 			page 4
 
 
  128      00
@@ -238,7 +238,7 @@ GAS LISTING /tmp/ccC35f60.s 			page 1
   41:src/pkuapi.c  **** void pkey_disable_access()
   42:src/pkuapi.c  **** {
  170              		.loc 1 42 1
-GAS LISTING /tmp/ccC35f60.s 			page 5
+GAS LISTING /tmp/ccUflKJ5.s 			page 5
 
 
  171              		.cfi_startproc
@@ -298,7 +298,7 @@ GAS LISTING /tmp/ccC35f60.s 			page 1
  210 0122 BE000000 		movl	$0, %esi
  210      00
  211 0127 89C7     		movl	%eax, %edi
-GAS LISTING /tmp/ccC35f60.s 			page 6
+GAS LISTING /tmp/ccUflKJ5.s 			page 6
 
 
  212 0129 E8000000 		call	pkey_set@PLT
@@ -358,7 +358,7 @@ GAS LISTING /tmp/ccC35f60.s 			page 1
  262 0057 02       		.uleb128 0x2
  263 0058 08       		.byte	0x8
  264 0059 05       		.byte	0x5
-GAS LISTING /tmp/ccC35f60.s 			page 7
+GAS LISTING /tmp/ccUflKJ5.s 			page 7
 
 
  265 005a 00000000 		.long	.LASF5
@@ -418,7 +418,7 @@ GAS LISTING /tmp/ccC35f60.s 			page 1
  315 00c9 00000000 		.long	.LASF12
  316 00cd 01       		.byte	0x1
  317 00ce 24       		.byte	0x24
-GAS LISTING /tmp/ccC35f60.s 			page 8
+GAS LISTING /tmp/ccUflKJ5.s 			page 8
 
 
  318 00cf 01       		.byte	0x1
@@ -478,7 +478,7 @@ GAS LISTING /tmp/ccC35f60.s 			page 1
  366 014a 00000000 		.long	.LASF15
  367 014e 01       		.byte	0x1
  368 014f 17       		.byte	0x17
-GAS LISTING /tmp/ccC35f60.s 			page 9
+GAS LISTING /tmp/ccUflKJ5.s 			page 9
 
 
  369 0150 21       		.byte	0x21
@@ -538,7 +538,7 @@ GAS LISTING /tmp/ccC35f60.s 			page 1
  421 01b6 50       		.sleb128 -48
  422 01b7 09       		.uleb128 0x9
  423 01b8 00000000 		.long	.LASF19
-GAS LISTING /tmp/ccC35f60.s 			page 10
+GAS LISTING /tmp/ccUflKJ5.s 			page 10
 
 
  424 01bc 01       		.byte	0x1
@@ -598,7 +598,7 @@ GAS LISTING /tmp/ccC35f60.s 			page 1
  476 021f 91       		.byte	0x91
  477 0220 68       		.sleb128 -24
  478 0221 0E       		.uleb128 0xe
-GAS LISTING /tmp/ccC35f60.s 			page 11
+GAS LISTING /tmp/ccUflKJ5.s 			page 11
 
 
  479 0222 65647800 		.string	"edx"
@@ -658,7 +658,7 @@ GAS LISTING /tmp/ccC35f60.s 			page 1
  533 002a 0F       		.uleb128 0xf
  534 002b 00       		.byte	0
  535 002c 0B       		.uleb128 0xb
-GAS LISTING /tmp/ccC35f60.s 			page 12
+GAS LISTING /tmp/ccUflKJ5.s 			page 12
 
 
  536 002d 0B       		.uleb128 0xb
@@ -718,7 +718,7 @@ GAS LISTING /tmp/ccC35f60.s 			page 1
  590 0063 40       		.uleb128 0x40
  591 0064 18       		.uleb128 0x18
  592 0065 9642     		.uleb128 0x2116
-GAS LISTING /tmp/ccC35f60.s 			page 13
+GAS LISTING /tmp/ccUflKJ5.s 			page 13
 
 
  593 0067 19       		.uleb128 0x19
@@ -778,7 +778,7 @@ GAS LISTING /tmp/ccC35f60.s 			page 1
  647 009e 03       		.uleb128 0x3
  648 009f 0E       		.uleb128 0xe
  649 00a0 3A       		.uleb128 0x3a
-GAS LISTING /tmp/ccC35f60.s 			page 14
+GAS LISTING /tmp/ccUflKJ5.s 			page 14
 
 
  650 00a1 0B       		.uleb128 0xb
@@ -838,7 +838,7 @@ GAS LISTING /tmp/ccC35f60.s 			page 1
  704 00d8 2E       		.uleb128 0x2e
  705 00d9 01       		.byte	0x1
  706 00da 3F       		.uleb128 0x3f
-GAS LISTING /tmp/ccC35f60.s 			page 15
+GAS LISTING /tmp/ccUflKJ5.s 			page 15
 
 
  707 00db 19       		.uleb128 0x19
@@ -898,7 +898,7 @@ GAS LISTING /tmp/ccC35f60.s 			page 1
  758      00000000 
  759 0028 00000000 		.quad	0
  759      00000000 
-GAS LISTING /tmp/ccC35f60.s 			page 16
+GAS LISTING /tmp/ccUflKJ5.s 			page 16
 
 
  760              		.section	.debug_line,"",@progbits
@@ -911,141 +911,141 @@ GAS LISTING /tmp/ccC35f60.s 			page 1
  763              	.LASF24:
  764 0000 73697A65 		.string	"size_t"
  764      5F7400
- 765              	.LASF23:
- 766 0007 2F686F6D 		.string	"/home/jaewon/Waterfall/comp_analysis/pku"
- 766      652F6A61 
- 766      65776F6E 
- 766      2F576174 
- 766      65726661 
- 767              	.LASF3:
- 768 0030 73686F72 		.string	"short unsigned int"
- 768      7420756E 
+ 765              	.LASF3:
+ 766 0007 73686F72 		.string	"short unsigned int"
+ 766      7420756E 
+ 766      7369676E 
+ 766      65642069 
+ 766      6E7400
+ 767              	.LASF6:
+ 768 001a 6C6F6E67 		.string	"long long unsigned int"
+ 768      206C6F6E 
+ 768      6720756E 
  768      7369676E 
  768      65642069 
- 768      6E7400
- 769              	.LASF6:
- 770 0043 6C6F6E67 		.string	"long long unsigned int"
- 770      206C6F6E 
- 770      6720756E 
- 770      7369676E 
- 770      65642069 
- 771              	.LASF25:
- 772 005a 706B6579 		.string	"pkey_alloc"
- 772      5F616C6C 
- 772      6F6300
- 773              	.LASF7:
- 774 0065 6C6F6E67 		.string	"long unsigned int"
- 774      20756E73 
- 774      69676E65 
- 774      6420696E 
- 774      7400
- 775              	.LASF20:
- 776 0077 706B7275 		.string	"pkru"
- 776      00
- 777              	.LASF1:
- 778 007c 756E7369 		.string	"unsigned char"
- 778      676E6564 
- 778      20636861 
- 778      7200
- 779              	.LASF11:
- 780 008a 706B6579 		.string	"pkey_disable_access"
- 780      5F646973 
- 780      61626C65 
- 780      5F616363 
- 780      65737300 
- 781              	.LASF17:
- 782 009e 706B6579 		.string	"pkey_set"
- 782      5F736574 
- 782      00
- 783              	.LASF26:
-GAS LISTING /tmp/ccC35f60.s 			page 17
+ 769              	.LASF25:
+ 770 0031 706B6579 		.string	"pkey_alloc"
+ 770      5F616C6C 
+ 770      6F6300
+ 771              	.LASF7:
+ 772 003c 6C6F6E67 		.string	"long unsigned int"
+ 772      20756E73 
+ 772      69676E65 
+ 772      6420696E 
+ 772      7400
+ 773              	.LASF20:
+ 774 004e 706B7275 		.string	"pkru"
+ 774      00
+ 775              	.LASF1:
+ 776 0053 756E7369 		.string	"unsigned char"
+ 776      676E6564 
+ 776      20636861 
+ 776      7200
+ 777              	.LASF11:
+ 778 0061 706B6579 		.string	"pkey_disable_access"
+ 778      5F646973 
+ 778      61626C65 
+ 778      5F616363 
+ 778      65737300 
+ 779              	.LASF17:
+ 780 0075 706B6579 		.string	"pkey_set"
+ 780      5F736574 
+ 780      00
+ 781              	.LASF26:
+ 782 007e 7772706B 		.string	"wrpkru"
+ 782      727500
+ 783              	.LASF12:
+ 784 0085 706B6579 		.string	"pkey_free"
+ 784      5F667265 
+ 784      6500
+GAS LISTING /tmp/ccUflKJ5.s 			page 17
 
 
- 784 00a7 7772706B 		.string	"wrpkru"
- 784      727500
- 785              	.LASF12:
- 786 00ae 706B6579 		.string	"pkey_free"
- 786      5F667265 
- 786      6500
- 787              	.LASF4:
- 788 00b8 756E7369 		.string	"unsigned int"
- 788      676E6564 
- 788      20696E74 
- 788      00
- 789              	.LASF19:
- 790 00c5 666C6167 		.string	"flags"
- 790      7300
+ 785              	.LASF4:
+ 786 008f 756E7369 		.string	"unsigned int"
+ 786      676E6564 
+ 786      20696E74 
+ 786      00
+ 787              	.LASF19:
+ 788 009c 666C6167 		.string	"flags"
+ 788      7300
+ 789              	.LASF15:
+ 790 00a2 73697A65 		.string	"size"
+ 790      00
  791              	.LASF9:
- 792 00cb 63686172 		.string	"char"
+ 792 00a7 63686172 		.string	"char"
  792      00
  793              	.LASF21:
- 794 00d0 474E5520 		.string	"GNU C17 10.2.1 20210110 -mtune=generic -march=x86-64 -g -fPIC -fasynchronous-unwind-table
+ 794 00ac 474E5520 		.string	"GNU C17 10.2.1 20210110 -mtune=generic -march=x86-64 -g -fPIC -fasynchronous-unwind-table
  794      43313720 
  794      31302E32 
  794      2E312032 
  794      30323130 
  795              	.LASF5:
- 796 012b 6C6F6E67 		.string	"long long int"
+ 796 0107 6C6F6E67 		.string	"long long int"
  796      206C6F6E 
  796      6720696E 
  796      7400
  797              	.LASF22:
- 798 0139 7372632F 		.string	"src/pkuapi.c"
+ 798 0115 7372632F 		.string	"src/pkuapi.c"
  798      706B7561 
  798      70692E63 
  798      00
  799              	.LASF18:
- 800 0146 72696768 		.string	"rights"
+ 800 0122 72696768 		.string	"rights"
  800      747300
  801              	.LASF2:
- 802 014d 73686F72 		.string	"short int"
+ 802 0129 73686F72 		.string	"short int"
  802      7420696E 
  802      7400
  803              	.LASF8:
- 804 0157 6C6F6E67 		.string	"long int"
+ 804 0133 6C6F6E67 		.string	"long int"
  804      20696E74 
  804      00
  805              	.LASF0:
- 806 0160 7369676E 		.string	"signed char"
+ 806 013c 7369676E 		.string	"signed char"
  806      65642063 
  806      68617200 
  807              	.LASF13:
- 808 016c 706B6579 		.string	"pkey_mprotect"
+ 808 0148 706B6579 		.string	"pkey_mprotect"
  808      5F6D7072 
  808      6F746563 
  808      7400
- 809              	.LASF15:
- 810 017a 73697A65 		.string	"size"
- 810      00
+ 809              	.LASF23:
+ 810 0156 2F686F6D 		.string	"/home/jaewon/ARCS_Test/fun_c14n/comp_analysis/pku"
+ 810      652F6A61 
+ 810      65776F6E 
+ 810      2F415243 
+ 810      535F5465 
  811              	.LASF10:
-GAS LISTING /tmp/ccC35f60.s 			page 18
+GAS LISTING /tmp/ccUflKJ5.s 			page 18
 
 
- 812 017f 706B6579 		.string	"pkey_all_access"
+ 812 0188 706B6579 		.string	"pkey_all_access"
  812      5F616C6C 
  812      5F616363 
  812      65737300 
  813              	.LASF16:
- 814 018f 6F726967 		.string	"orig_prot"
+ 814 0198 6F726967 		.string	"orig_prot"
  814      5F70726F 
  814      7400
  815              	.LASF14:
- 816 0199 706B6579 		.string	"pkey"
+ 816 01a2 706B6579 		.string	"pkey"
  816      00
  817              		.ident	"GCC: (Debian 10.2.1-6) 10.2.1 20210110"
  818              		.section	.note.GNU-stack,"",@progbits
-GAS LISTING /tmp/ccC35f60.s 			page 19
+GAS LISTING /tmp/ccUflKJ5.s 			page 19
 
 
 DEFINED SYMBOLS
                             *ABS*:0000000000000000 pkuapi.c
-     /tmp/ccC35f60.s:6      .text:0000000000000000 wrpkru
-     /tmp/ccC35f60.s:45     .text:000000000000002e pkey_set
-     /tmp/ccC35f60.s:81     .text:0000000000000061 pkey_mprotect
-     /tmp/ccC35f60.s:114    .text:00000000000000a0 pkey_alloc
-     /tmp/ccC35f60.s:138    .text:00000000000000bf pkey_free
-     /tmp/ccC35f60.s:168    .text:00000000000000e3 pkey_disable_access
-     /tmp/ccC35f60.s:197    .text:0000000000000110 pkey_all_access
+     /tmp/ccUflKJ5.s:6      .text:0000000000000000 wrpkru
+     /tmp/ccUflKJ5.s:45     .text:000000000000002e pkey_set
+     /tmp/ccUflKJ5.s:81     .text:0000000000000061 pkey_mprotect
+     /tmp/ccUflKJ5.s:114    .text:00000000000000a0 pkey_alloc
+     /tmp/ccUflKJ5.s:138    .text:00000000000000bf pkey_free
+     /tmp/ccUflKJ5.s:168    .text:00000000000000e3 pkey_disable_access
+     /tmp/ccUflKJ5.s:197    .text:0000000000000110 pkey_all_access
 
 UNDEFINED SYMBOLS
 _GLOBAL_OFFSET_TABLE_
