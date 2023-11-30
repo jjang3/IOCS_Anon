@@ -6,7 +6,9 @@ Repository for the ARCS project
 ```
 ./
 ├── taint_analysis (used for both fun_c14n and var_c14n)
+├── prepare.sh
 ├── fun_c14n
+|       ├── taint.sh
 |       ├── comp_analysis
 |       |       ├── e9stuff         (script files for e9patch)
 |       |       ├── pku             (PKU-related files)
@@ -15,6 +17,8 @@ Repository for the ARCS project
 |       |       └── scripts/comp_analysis.sh
 |       └── OR_analysis (OR = Overprivilege)
 └── var_c14n
+        ├── taint.sh
+        ├── arcs.sh
         ├── asm_rewriter
         |       ├── binary_patch.py (for individual source file)
         |       └── core.sh         (for coreutils)
@@ -27,21 +31,8 @@ Repository for the ARCS project
 
 ## How to use (To-do)
 1) `git submodule init && git submodule update` - This will load all submodules per respective folders
-2) `bash prepare.sh` - This will prepare several things such as `Z3` and modifying few `CMakeLists.txt` files in the `SVF` to support dynamic library + linking
-<!-- 2) Install Z3 version by `wget`ing: `https://github.com/Z3Prover/z3/archive/refs/tags/z3-4.8.8.zip` and then build using `cmake`.
-     - Make sure to `EXPORT Z3_DIR=/path/to/z3-build`
-1) `cd e9patch && bash build.sh` - This will build `e9patch` to be used later
-2) `cd taint_analysis && make all`  
-    - Sanity check: `cd scripts && bash execute.sh hello`
-3) `export LLVM_DIR="/location/"` with your LLVM directory location.
-4) From the `Waterfall` root directory, `mkdir build && cd build`
+2) `bash prepare.sh` - This will prepare everything needed for `fun_c14n` and `var_c14n`
+3) `cd fun_c14n && cd comp_analysis && bash comp_analysis.sh epoll` - This will apply `fun_c14n` on the `epoll`
+4) `cd var_c14n && bash arcs.sh epoll` - This will apply `ARCS` static pass on the `epoll`
 
-5) `cmake .. && make -j4`, this will first build the `SVF` library, then `waterfall`.
-6) Insert an input file to `./inputs`
-7) `bash waterfall.sh <source code name> waterfall (e.g., `bash waterfall.sh vuln_srv waterfall`) -->
-
---- 
-## LLVM build direction:
-```
-CC=gcc CXX=g++ cmake -DCMAKE_INSTALL_PREFIX=$HOME/llvm-project-13/llvm-arm-build -DLLVM_TARGETS_TO_BUILD="ARM;X86;AArch64" -DLLVM_ENABLE_PROJECTS="clang" -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" -DLLVM_ENABLE_ASSERTIONS=True -DCMAKE_BUILD_TYPE=Release -Wno-dev -G Ninja ../llvm
-```
+---

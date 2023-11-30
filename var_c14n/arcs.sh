@@ -4,12 +4,16 @@
 PS3="Select options: "
 input=$1
 
-options=("Build" "Analyze" "Rewrite")
+options=("Build" "Taint" "Analyze" "Rewrite")
 
 # This is used to setup test path
 grandp_path=$( cd ../../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 parent_path=$( cd ../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 current_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
+
+PIN_ROOT=$parent_path/pin-3.27_build
+
+taint_path=$parent_path/taint_analysis
 
 static_path=${current_path}/static_analysis
 
@@ -22,6 +26,7 @@ arcs_result_path=${current_path}/result
 arcs_i_result_path=${arcs_result_path}/$1
 arcs_ll_file=${arcs_i_result_path}/$1.ll
 arcs_bc_file=${arcs_i_result_path}/$1.bc
+arcs_bin_file=${arcs_i_result_path}/$1.out
 arcs_out_file=${arcs_i_result_path}/${1}_arcs.out
 arcs_analysis_file=${arcs_i_result_path}/analysis.txt
 
@@ -43,9 +48,8 @@ build()
     # make
 }
 
-analyze()
+taint()
 {
-    echo "Analyze using the ARCS pass"
     if [ ! -d "$arcs_result_path" ]; then
         echo "Result directory doesn't exist"
         mkdir $arcs_result_path
@@ -62,6 +66,19 @@ analyze()
         echo "LLVM IR (.bc) file doesn't exist"
         $LLVM_BUILD_DIR/bin/clang -emit-llvm -c -o ${arcs_bc_file} ${arcs_input_path}/${input}.c
     fi
+    if [ ! -f "$arcs_bin_file" ]; then
+        echo "Input binary file doesn't exist"
+        $LLVM_BUILD_DIR/bin/clang -o ${arcs_bin_file} ${arcs_input_path}/${input}.c
+    fi
+    # $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file}
+    # mv dft.out ${arcs_i_result_path}
+    echo "$taint_path/scripts/function_analysis.py"
+    python3 $taint_path/scripts/function_analysis.py --dft ${arcs_i_result_path}/dft.out --bin ${arcs_bin_file}
+}
+
+analyze()
+{
+    echo "Analyze using the ARCS pass"
     if [ ! -f "${arcs_i_result_path}/taint.in" ]; then
         printf "main" >> ${arcs_i_result_path}/taint.in
     fi
@@ -83,8 +100,9 @@ while true; do
     do
         case $REPLY in
             1) echo "Selected $option"; build; break;;
-            2) echo "Selected $option"; analyze; break;;
-            3) echo "Selected $option"; rewrite; break;;
+            2) echo "Selected $option"; taint; break;;
+            3) echo "Selected $option"; analyze; break;;
+            4) echo "Selected $option"; rewrite; break;;
             $((${#options[@]}+1))) echo "Finished!"; break 2;;
             *) echo "Wrong input"; break;
         esac;

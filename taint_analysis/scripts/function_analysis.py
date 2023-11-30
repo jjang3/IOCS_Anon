@@ -13,8 +13,8 @@ class fun_dataclass:
 
 parser = argparse.ArgumentParser(description="Running reassembly tool for the example")
 # ----- Parser arguments ----- #
-parser.add_argument('-i', '--input', required=True)             # testing application to rewrite
-parser.add_argument('-b', '--binary', required=True)             # testing application to rewrite
+parser.add_argument('-d', '--dft', required=True)             # testing application to rewrite
+parser.add_argument('-b', '--bin', required=True)             # testing application to rewrite
 args                = parser.parse_args()
 
 tainted_vars_local      = set()
@@ -22,7 +22,7 @@ tainted_vars_global     = set()
 sink_funs               = set()
 
 def main():
-    fun_analysis(args.input, args.binary)
+    fun_analysis(args.dft, args.bin)
 
 def find_taint_variables(bbs, src_addrs, bv):
     for bb in bbs:
@@ -95,22 +95,15 @@ def forward_taint_analysis(currFun, trace_list):
             #             print(refs)
             # #print(trace_var.function)
             
-def fun_analysis(input_name, binary_name):
+def fun_analysis(dft_path, bin_path):
     # ----- Setup file name ------ #
-    cwd             = os.path.dirname(__file__)
-    parent          = os.path.dirname(cwd)
-    test_folder     = os.path.join(parent, "tests/results")
-    in_folder       = os.path.join(test_folder, input_name)
-    bin_file        = os.path.join(in_folder, input_name)
-    in_file         = os.path.join(in_folder, "dft.out")
-    out_file        = os.path.join(in_folder, "list.out")
-    #print(cwd, parent, test_folder, in_folder)
-    #exit()
-    #nm_file         = os.path.join(in_folder, input_name+".nm")
+    work_dir            = os.path.dirname(dft_path)
+    out_file            = os.path.join(work_dir, "taint.in")
+    print(dft_path, bin_path, work_dir)
+    
+    out_file_open       = open(out_file, "w")
 
-    out_file_open   = open(out_file, "w")
-
-    # ----- Start of binary ninja ----- #
+    # # ----- Start of binary ninja ----- #
     fun_class_set = set()
 
     tainted_srcs_addr   = set()
@@ -121,13 +114,12 @@ def fun_analysis(input_name, binary_name):
     tainted_total_funs  = set()
     exclude_funs        = set() # This is list of functions that will be excluded
     
-    with open(in_file, "r") as infile:
-        for line in infile:
+    with open(dft_path, "r") as dft_file:
+        for line in dft_file:
             taint_type_regex = re.search(r'(?<=Taint\s).*(?=\s[a-z,0-9].*\(.*\))', line)
             taint_addr_regex =  re.search(r'(?<=:\s)(.*)', line)
             taint_type = taint_type_regex.group(0)
             addr_int = int(taint_addr_regex.group(0), base=16)
-            #print(taint_fun_regex.group(0))
             # print(addr.start, addr.end)
             if taint_type == "source" and addr_int not in tainted_srcs_addr:
                 #tainted_sources[addr_int] = taint_fun
@@ -137,129 +129,17 @@ def fun_analysis(input_name, binary_name):
                 #tainted_sinks[addr_int] = taint_fun
                 print(taint_type, "addr: ", addr_int)
                 tainted_sinks_addr.add(addr_int)
-                
-    if (binary_name != None):
-        with open_view(bin_file) as bv:                
-            print("Step: Binary Ninja")
-            print("Number of functions: ", len(bv.functions))
-            # Initialization of function classes to analyze with dft.out
-            for item in tainted_sinks_addr:
-                for item_fun in bv.get_functions_containing(item):
-                    sink_funs.add(item_fun.name)
-            for (fun_index, fun) in enumerate(bv.functions):
-                fun_class = fun_dataclass(fun.name, fun.address_ranges, set(), set()) # initializing 
-                fun_class_set.add(fun_class)  # Adding dataclass to a set
-                # find_taint_variables(fun.mlil_basic_blocks, tainted_srcs_addr, bv)
-                # potential_sinks = set()
-                # print("Analyzing at function:", fun.name)
-                # for callee_fun in fun.callees:
-                #     symbol = bv.symbols[callee_fun.name]
-                #     #print(callee_fun.name)
-                #     if len(symbol) <= 1 and callee_fun.name not in sink_funs:
-                #         potential_sinks.add(callee_fun)
-                #         for index, param in enumerate(callee_fun.parameter_vars):
-                #             if param.type is not None and param.type.type_class == TypeClass.PointerTypeClass:
-                #                 print(param.index)
-                #                 #check_taint_param(callee_fun, param.index)
-                #                 #print(callee_fun.get_mlil_var_refs(param))
-                #                 #call_instr = callee_fun.get_low_level_il_at(callee_fun.start).mlil
-                #                 #print(call_instr)
-                
-                # for mlil_bb in fun.mlil_basic_blocks:
-                #     for mlil_inst in mlil_bb:
-                #         inst_ssa = mlil_inst.ssa_form
-                #         if inst_ssa.operation == MediumLevelILOperation.MLIL_CALL_SSA or inst_ssa.operation == MediumLevelILOperation.MLIL_CALL:
-                #             call_addr   = inst_ssa.dest.operands[0]
-                #             #call_fun    = bv.get_function_at(call_addr)
-                #             #print("Call found", mlil_inst, mlil_inst.params, mlil_inst.operation)
-                #             if type(call_addr) == int:
-                #                 call_fun = bv.get_function_at(call_addr)
-                #                 if call_fun != None:
-                #                     if call_fun in potential_sinks:
-                #                         param_list = call_fun.parameter_vars
-                #                         #print(inst_ssa.params)
-                #                         for param in inst_ssa.params:
-                #                             print(param.operation)
-                #                             if  param.operation == MediumLevelILOperation.MLIL_VAR or param.operation == MediumLevelILOperation.MLIL_VAR_SSA:
-                #                                 cand = param.function.get_ssa_var_definition(param.src)
-                #                                 #print(call_fun, cand.src.src, cand.src, hex(cand.address))
-                #                                 if cand.src.src in tainted_vars_local or cand.src.src in tainted_vars_global:
-                #                                     print("Found taint variable, adding function: ", call_fun.start)
-                #                                     tainted_sinks_funs.add(call_fun.name)
-                #                             elif param.operation == MediumLevelILOperation.MLIL_CONST_PTR or \
-                #                                 param.operation == MediumLevelILOperation.MLIL_CONST: 
-                #                                 global_var = bv.get_data_var_at(param.constant)
-                #                                 if global_var != None:
-                #                                     if global_var.address in tainted_vars_global:
-                #                                         tainted_sinks_funs.add(call_fun.name)
-                #             for param in mlil_inst.params:
-                #                 if param.operation == MediumLevelILOperation.MLIL_CONST_PTR or \
-                #                     param.operation == MediumLevelILOperation.MLIL_CONST: 
-                #                     global_var = bv.get_data_var_at(param.constant)
-                #                     if global_var != None:
-                #                         if global_var.address in tainted_vars_global:
-                #                             tainted_sinks_funs.add(fun.name)
-                # for bb in fun.basic_blocks:
-                #     for inst in bb:
-                #         print(inst)
-                                        # for param_var in param_list:
-                                        #     print(param_var)
-                                            #for ref in call_fun.get_mlil_var_refs(param_var):
-                                            #    print(ref)
-                                                        # for mlil_param in mlil_inst.params:
-                            #     if mlil_param.operation == MediumLevelILOperation.MLIL_VAR:
-                            #         ssa_var = SSAVariable(mlil_param.src, 0) 
-                            #         print(fun.mlil.ssa_form.get_ssa_var_definition(ssa_var))
-                                    
-
-                        # if  param_var.operation == MediumLevelILOperation.MLIL_VAR_SSA or \
-                        #     param_var.operation == MediumLevelILOperation.MLIL_VAR:
-                        #         cand = param_var.function.get_ssa_var_definition(param_var.src)
-                    # else:
-                    #     print(callee_fun)
-                # for reg_bb in fun.llil_basic_blocks:
-                #     for reg_inst in reg_bb:
-                #         print(reg_inst)
-                #print(type(fun.mlil_basic_blocks))
-                
-                                    
-                                # src_fun = bv.get_function_at(ssa.dest.operands[0])
-                                # print(ssa.dest.operands[0])
-                                # param_list = src_fun.parameter_vars
-                                # print(param_list)
-                                # # call_taint_list = set()
-                                # for param_var in ssa.params:
-                                #     if  param_var.operation == MediumLevelILOperation.MLIL_VAR or \
-                                #         param_var.operation == MediumLevelILOperation.MLIL_VAR_SSA:
-                                #             var = param_var.operation
-                                #             print(var_src = var.src)
-                                #print(call_taint_list)
-                        #         print(src_fun)
-                        #         trace_list = set()
-                        #         for trace_candidate in ssa.params:
-                        #             print(trace_candidate.operation)
-                        #             trace_list.add(trace_candidate)
-                        # #         trace_list = set()
-                        # #         for trace_candidate in ssa.params:
-                        #         forward_taint_analysis(fun, trace_list)
-                        #         # """
-                                # param_list = src_fun.parameter_vars
-                                # for param_var in param_list:
-                                #     print(type(param_var.operation))
-                                #                                 for ref in src_fun.get_mlil_var_refs(param_var):
-                                #         call_taint_list.add(src_fun.get_low_level_il_at(ref.address).mlil.ssa_form)
-                                # """
-                                # #print(call_taint_list)
-                                # #forward_taint_analysis(call_taint_list)
-                
-                
-    # print(tainted_srcs_addr)
-
-    # ----- Parsing dft.out file to organize everything ----- #
-    #tainted_sources = dict()    # if routine name (w/ @plt) is available
-    #tainted_sinks = dict()      # if routine name (w/ @plt) is available
-
-
+                    
+    print("Step: Binary Ninja")
+    with open_view(bin_path) as bv:        
+        print("Number of functions: ", len(bv.functions))
+        # Initialization of function classes to analyze with dft.out
+        for item in tainted_sinks_addr:
+            for item_fun in bv.get_functions_containing(item):
+                sink_funs.add(item_fun.name)
+        for (fun_index, fun) in enumerate(bv.functions):
+            fun_class = fun_dataclass(fun.name, fun.address_ranges, set(), set()) # initializing 
+            fun_class_set.add(fun_class)  # Adding dataclass to a set
 
     for fun_class in fun_class_set:
         for addr in fun_class.addr_range:
@@ -278,63 +158,21 @@ def fun_analysis(input_name, binary_name):
 
     tainted_total_funs = tainted_sinks_funs.union(tainted_srcs_funs)
 
-    #nm_funs         = set()
-    #nm_file_open    = open(nm_file, "r")
-    #for line in nm_file_open:
-    #    nm_regex = re.search(r'(?<=[0-9,a-z]\s[a-z,A-Z]\s)(.*)(?!=)', line)
-    #    if(nm_regex):
-    #        #print(nm_regex.group(0))
-    #        if (str(nm_regex.group(0)) not in exclude_funs):
-    #            exclude_funs.add(str(nm_regex.group(0)))
-
     for item in exclude_funs:
         if str(item) in tainted_total_funs:
             print("Found")
             
     uniq_funs = exclude_funs.difference(tainted_total_funs)
-    #uniq_funs = exclude_funs
-    #for item in uniq_funs:
-    #    if str(item) in tainted_total_funs:
-    #        print("Removed") # Need to not show
 
     sum_iterator = 0
-    #total_write = "Summary: ["
     total_write = ""
     for item in tainted_total_funs:
         sum_iterator += 1
         if (sum_iterator == len(tainted_total_funs)):
-            #total_write += "\""+item+"\""
             total_write += item
             break
         total_write += item+","
     out_file_open.write(total_write)
-
-    """
-    src_write = "Sources: { " 
-    for item in tainted_srcs_funs:
-        print("Source: ", item)
-        src_write += item + " "
-    src_write += "}" + "\n\n"
-    out_file_open.write(src_write)
-
-    sink_write = "Sinks: { " 
-    for item in tainted_sinks_funs:
-        print("Sink: ", item)
-        sink_write += item + " "
-    sink_write += "}" + "\n\n"
-    out_file_open.write(sink_write)
-    
-    exclude_write="Exclude: "
-    iterator = 0
-    for item in uniq_funs:
-        iterator += 1
-        if (iterator == len(uniq_funs)):
-            exclude_write += item + "\n"
-            break
-        exclude_write += item + ","
-    out_file_open.write(exclude_write)
-    """
-    
     out_file_open.close()
 
 if __name__ == "__main__":

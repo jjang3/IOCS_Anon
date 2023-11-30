@@ -51,7 +51,9 @@ compile()
   if [ ! -d "$fun_i_result_path" ]; then
       echo "Input result directory doesn't exist"
       mkdir $fun_i_result_path
-      printf "main" >> ${fun_i_result_path}/taint.in
+      if [ ! -f "${fun_i_result_path}/taint.in" ]; then
+        printf "main" >> ${fun_i_result_path}/taint.in
+      fi
   fi
   # if [ ! -f "$fun_i_file" ]; then
       # echo "Input file doesn't exist"
