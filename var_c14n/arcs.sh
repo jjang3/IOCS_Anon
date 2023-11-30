@@ -70,8 +70,8 @@ taint()
         echo "Input binary file doesn't exist"
         $LLVM_BUILD_DIR/bin/clang -o ${arcs_bin_file} ${arcs_input_path}/${input}.c
     fi
-    # $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file}
-    # mv dft.out ${arcs_i_result_path}
+    $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file}
+    mv dft.out ${arcs_i_result_path}
     echo "$taint_path/scripts/function_analysis.py"
     python3 $taint_path/scripts/function_analysis.py --dft ${arcs_i_result_path}/dft.out --bin ${arcs_bin_file}
 }

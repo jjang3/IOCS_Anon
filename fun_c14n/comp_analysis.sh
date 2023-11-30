@@ -4,12 +4,16 @@
 PS3="Select options: "
 input=$1
 
-options=("Compile" "Instrument")
+options=("Taint" "Compile" "Instrument")
 
 # This is used to setup test path
 grandp_path=$( cd ../../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 parent_path=$( cd ../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 current_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
+
+PIN_ROOT=$parent_path/pin-3.27_build
+
+taint_path=$parent_path/taint_analysis
 
 comp_path=${current_path}/comp_analysis
 e9stuff_path=${comp_path}/e9stuff
@@ -25,9 +29,11 @@ fun_lib_path=${current_path}/lib
 
 fun_result_path=${current_path}/result
 fun_i_result_path=${fun_result_path}/$1
+fun_bin_file=${fun_i_result_path}/$1.out
 fun_i_file=${fun_i_result_path}/$1
-fun_o_file=${fun_i_result_path}/$1"_fun_c14n"
+fun_o_file=${fun_i_result_path}/$1"_fun_c14n".out
 
+LLVM_BUILD_DIR=$LLVM_DIR
 
 # lib_path=${parent_path}/lib
 # test_path=${parent_path}/tests
@@ -35,6 +41,25 @@ fun_o_file=${fun_i_result_path}/$1"_fun_c14n"
 # source_output_path=${test_path}/sources/${input}
 # result_path=${test_path}/results
 # result_input_path=${result_path}/${input}
+
+taint()
+{
+  if [ ! -d "$fun_result_path" ]; then
+      echo "Result directory doesn't exist"
+      mkdir $fun_result_path
+    fi
+  if [ ! -d "$fun_i_result_path" ]; then
+      echo "Input result directory doesn't exist"
+      mkdir $fun_i_result_path
+  fi
+  if [ ! -f "$fun_bin_file" ]; then
+      echo "Input binary file doesn't exist"
+      $LLVM_BUILD_DIR/bin/clang -o ${fun_bin_file} ${fun_input_path}/${input}.c
+  fi
+  $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${fun_bin_file}
+  mv dft.out ${fun_i_result_path}
+  python3 $taint_path/scripts/function_analysis.py --dft ${fun_i_result_path}/dft.out --bin ${fun_bin_file}
+}
 
 compile()
 {
@@ -44,17 +69,7 @@ compile()
       mkdir $fun_lib_path
   fi
   cd $pku_path && make lib
-  if [ ! -d "$fun_result_path" ]; then
-      echo "Result directory doesn't exist"
-      mkdir $fun_result_path
-    fi
-  if [ ! -d "$fun_i_result_path" ]; then
-      echo "Input result directory doesn't exist"
-      mkdir $fun_i_result_path
-      if [ ! -f "${fun_i_result_path}/taint.in" ]; then
-        printf "main" >> ${fun_i_result_path}/taint.in
-      fi
-  fi
+  
   # if [ ! -f "$fun_i_file" ]; then
       # echo "Input file doesn't exist"
   cd $fun_input_path && make ${input} INPUT=${input} && mv ${input} ${fun_i_file} 
@@ -80,8 +95,9 @@ while true; do
     select option in "${options[@]}" Quit
     do
         case $REPLY in
-            1) echo "Selected $option"; compile; break;;
-            2) echo "Selected $option"; e9patch; break;;
+            1) echo "Selected $option"; taint; break;;
+            2) echo "Selected $option"; compile; break;;
+            3) echo "Selected $option"; e9patch; break;;
             $((${#options[@]}+1))) echo "Finished!"; break 2;;
             *) echo "Wrong input"; break;
         esac;
