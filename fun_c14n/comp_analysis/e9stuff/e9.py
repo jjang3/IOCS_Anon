@@ -72,7 +72,11 @@ def e9_rewrite(input_name, patch_name, taint_name):
     #home            = os.getcwd()
     home            = os.path.dirname(__file__)
     input_dir       = os.path.dirname(input_name)
-    taint_file      = os.path.join(input_dir, "list.out")
+    taint_file      = None
+    if taint_name == None:
+        taint_file      = os.path.join(input_dir, "taint.in")
+    else:
+        taint_file      = os.path.join(input_dir, taint_file)
     patch_dir       = os.path.join(home, "e9bin")
     log.debug("\ninput:\t%s\npatch:\t%s\ntaint:\t%s", input_dir, patch_dir, taint_file)
 
