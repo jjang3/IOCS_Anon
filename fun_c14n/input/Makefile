@@ -7,7 +7,7 @@ export INPUT
 CURR_DIR=${PWD}
 GPARENT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../)
 PARENT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../)
-FUN_LIST := ${PARENT_DIR}/result/$(INPUT)/list.out
+FUN_LIST := ${PARENT_DIR}/result/$(INPUT)/taint.in
 FUN_VAR := $(shell cat ${FUN_LIST})
 # Patching-related
 
