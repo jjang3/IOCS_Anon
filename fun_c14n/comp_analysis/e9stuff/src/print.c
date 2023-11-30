@@ -4,6 +4,7 @@
 
 
 #include "../include/stdlib.c"
+#include "sub.c"
 
 #define RED     "\33[31m"
 #define GREEN   "\33[32m"
@@ -18,18 +19,20 @@
 void entry(const void *addr, const uint8_t *instr, size_t size,
     const char *_asm)
 {
+    global_var = 1;
+    sub_fun();
     static mutex_t mutex = MUTEX_INITIALIZER;
     if (mutex_lock(&mutex) < 0)
         return;
 
     clearerr_unlocked(stderr);
-    fprintf_unlocked(stderr, RED "%.16lx" WHITE ": " YELLOW, addr);
+    fprintf_unlocked(stderr, RED "Testing: %.16lx" WHITE ": " YELLOW, addr);
     int i;
     for (i = 0; i < size; i++)
     {
-        fprintf_unlocked(stderr, "%.2x ", instr[i]);
+        fprintf_unlocked(stderr, "Testing: %.2x ", instr[i]);
         if (i == 7 && size > 8)
-            fprintf_unlocked(stderr, GREEN "%s" WHITE "\n                  "
+            fprintf_unlocked(stderr, GREEN "%s test" WHITE "\n                  "
                 YELLOW, _asm);
     }
     if (i <= 8)
@@ -46,6 +49,7 @@ void entry(const void *addr, const uint8_t *instr, size_t size,
 
 void init(void)
 {
+    // printf("What\n");
     setvbuf(stderr, NULL, _IOFBF, 0);
 }
 

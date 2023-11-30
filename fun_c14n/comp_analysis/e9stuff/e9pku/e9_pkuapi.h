@@ -32,23 +32,17 @@
 #define errExit(msg)    do { perror(msg); exit(EXIT_FAILURE); \
                             } while (0)
 
+int wrpkru(unsigned int pkru);
 
+int pkey_set(int pkey, unsigned long rights, unsigned long flags);
 
-// int
-// wrpkru(unsigned int pkru);
-
-// int
-// pkey_set(int pkey, unsigned long rights, unsigned long flags);
-
-// int
-// pkey_mprotect(void *ptr, size_t size, unsigned long orig_prot,
-//                 unsigned long pkey);
+int pkey_mprotect(void *ptr, size_t size, unsigned long orig_prot,
+                unsigned long pkey);
 
 int pkey_alloc(void);
 
-// int
-// pkey_free(unsigned long pkey);
+int pkey_free(unsigned long pkey);
 
-// void pkey_disable_access();
+void pkey_disable_access();
 
-// void pkey_all_access();
+void pkey_all_access();

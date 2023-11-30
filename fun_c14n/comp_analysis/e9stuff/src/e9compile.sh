@@ -15,6 +15,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+# This is used to setup test path
+grandp_path=$( cd ../../"$(dirname "$$0")" ; pwd -P )
+parent_path=$( cd ../"$(dirname "$$0")" ; pwd -P )
+current_path=$( cd "$(dirname "$0")" ; pwd -P )
+
 if [ -t 1 ]
 then
     RED="\033[31m"
@@ -65,10 +70,12 @@ CFLAGS="-fno-stack-protector \
     -fpie -O2 -Wno-unused-function \
     -mno-mmx -mno-sse -mno-avx -mno-avx2 -mno-avx512f -msoft-float \
     -fno-tree-vectorize -fomit-frame-pointer \
-    -I examples/"
-COMPILE="$CC $CFLAGS -c -Wall $@ $HOME/Waterfall/comp_analysis/pku/src/pkuapi.c \"$DIRNAME/$BASENAME.$EXTENSION\""
+    -I examples/ "
 
+COMPILE="$CC $CFLAGS -c -Wall $@ \"$DIRNAME/$BASENAME.$EXTENSION\""
 echo "$COMPILE" | xargs
+
+
 if ! eval "$COMPILE"
 then
     echo >&2
@@ -84,7 +91,8 @@ CFLAGS="-pie -nostdlib \
     -Wl,--export-dynamic \
     -Wl,--entry=0x0 \
     -Wl,--strip-all"
-COMPILE="$CC \"$BASENAME.o\" $HOME/Waterfall/comp_analysis/e9stuff/src/pkuapi.o -o \"$BASENAME\" $CFLAGS"
+COMPILE="$CC \"$BASENAME.o\" -o \"$BASENAME\"  $CFLAGS" 
+# ${grandp_path}/lib/pkuapi.o
 
 echo "$COMPILE" | xargs
 if ! eval "$COMPILE"
