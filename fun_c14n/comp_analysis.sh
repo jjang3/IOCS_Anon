@@ -34,14 +34,9 @@ fun_i_file=${fun_i_result_path}/$1
 fun_o_file=${fun_i_result_path}/$1"_fun_c14n".out
 
 LLVM_BUILD_DIR=$LLVM_DIR
-
-# lib_path=${parent_path}/lib
-# test_path=${parent_path}/tests
-# source_path=${test_path}/sources
-# source_output_path=${test_path}/sources/${input}
-# result_path=${test_path}/results
-# result_input_path=${result_path}/${input}
-
+int_trap() {
+  echo "Ctrl-C pressed"
+}
 taint()
 {
   if [ ! -d "$fun_result_path" ]; then
@@ -57,6 +52,7 @@ taint()
       $LLVM_BUILD_DIR/bin/clang -o ${fun_bin_file} ${fun_input_path}/${input}.c
   fi
   $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${fun_bin_file}
+  trap int_trap INT
   mv dft.out ${fun_i_result_path}
   python3 $taint_path/scripts/function_analysis.py --dft ${fun_i_result_path}/dft.out --bin ${fun_bin_file}
 }

@@ -44,8 +44,6 @@ build()
     cd $arcs_build_path
     cmake ..
     make
-    # make -j ${nproc}
-    # make
 }
 
 taint()
