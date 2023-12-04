@@ -146,17 +146,20 @@ def fun_analysis(dft_path, bin_path):
             # print(fun_class.name + ": " + str(addr.start) + " - " + str(addr.end))
             for srcs_addr in tainted_srcs_addr:
                 if (srcs_addr > addr.start) and (srcs_addr < addr.end):
-                    # print("added: " + str(srcs_addr))
+                    print("added: " + str(srcs_addr))
                     tainted_srcs_funs.add(fun_class.name)
             for sinks_addr in tainted_sinks_addr:
                 if (sinks_addr > addr.start) and (sinks_addr < addr.end):
-                    # print("added: " + str(sinks_addr))
+                    print("added: " + str(sinks_addr))
                     tainted_sinks_funs.add(fun_class.name)
         if (fun_class.name not in (tainted_sinks_funs or tainted_srcs_funs)):
             if ("sub_" not in fun_class.name):
+                print("Excluded: ", fun_class.name)
                 exclude_funs.add(fun_class.name)
 
+    print(tainted_srcs_funs, tainted_sinks_funs)
     tainted_total_funs = tainted_sinks_funs.union(tainted_srcs_funs)
+    
 
     for item in exclude_funs:
         if str(item) in tainted_total_funs:

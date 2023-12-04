@@ -2,7 +2,8 @@
 SHELL 		= /bin/zsh
 CC			= gcc
 FLAGS		= -std=gnu99
-CFLAGS		= -gdwarf-2
+CFLAGS		= -gdwarf-2 -z noexecstack -fno-stack-protector
+#  -z noexecstack -fno-stack-protector
 export INPUT
 CURR_DIR=${PWD}
 GPARENT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../)

@@ -3,6 +3,7 @@
 
 PS3="Select options: "
 input=$1
+CFLAGS="-gdwarf-2 -z noexecstack -fno-stack-protector"
 
 options=("Taint" "Compile" "Instrument")
 
@@ -49,7 +50,7 @@ taint()
   fi
   if [ ! -f "$fun_bin_file" ]; then
       echo "Input binary file doesn't exist"
-      $LLVM_BUILD_DIR/bin/clang -o ${fun_bin_file} ${fun_input_path}/${input}.c
+      $LLVM_BUILD_DIR/bin/clang $CFLAGS -o ${fun_bin_file} ${fun_input_path}/${input}.c
   fi
   $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${fun_bin_file}
   trap int_trap INT
