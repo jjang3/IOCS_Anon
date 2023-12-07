@@ -61,11 +61,13 @@ log_disable = False
 log.addHandler(ch)
 log.disabled = log_disable
 
+struct_list = list()
 @dataclass(unsafe_hash = True)
 class StructData:
     name: Optional[str] = None
     size: int = None
     line: int = None
+    member_list: Optional[list] = None
 
 def dwarf_analysis(input_binary):
     target_dir = Path(os.path.abspath(input_binary))
@@ -111,6 +113,9 @@ def dwarf_analysis(input_binary):
         for CU in dwarfinfo.iter_CUs():
 
             # print(DIE_count)
+            last_die_tag = []
+            temp_struct = None
+            temp_struct_members = list()
             for DIE in CU.iter_DIEs():
                 if (DIE.tag == "DW_TAG_subprogram"):
                     for attr in DIE.attributes.values():
@@ -178,15 +183,21 @@ def dwarf_analysis(input_binary):
                                         # print(typedef_ref_type_die.tag, typedef_ref_type_die)
                                         if (typedef_ref_type_die.tag == "DW_TAG_structure_type"):
                                             log.debug("\tStruct type found: %s", typedef_name)
-                                            print(typedef_ref_type_die)
+                                            byte_size   = typedef_ref_type_die.attributes['DW_AT_byte_size'].value
+                                            line_num    = typedef_ref_type_die.attributes['DW_AT_decl_line'].value
+                                            print(byte_size, line_num)
+                                            for item in struct_list:
+                                                if item.size == byte_size and item.line == line_num:
+                                                    if typedef_name != None:
+                                                        item.name = typedef_name
                             except Exception  as err:
                                     print(err)
                 # This is used to catch struct name in a global fashion.
                 if DIE.tag == "DW_TAG_structure_type":
                     pprint.pprint(DIE.attributes, width=1)
-                    if 'DW_AT_name' in DIE.attributes:
-                        struct_name = DIE.attributes['DW_AT_name'].value.decode()
-                        log.debug("\tStruct type found: %s", struct_name)
+                    byte_size   = DIE.attributes['DW_AT_byte_size'].value
+                    line_num    = DIE.attributes['DW_AT_decl_line'].value
+                    temp_struct = StructData(None, byte_size, line_num, None)
                 # This is used to catch member variables of a struct 
                 if (DIE.tag == "DW_TAG_member"):
                     attr_name = None
@@ -194,7 +205,7 @@ def dwarf_analysis(input_binary):
                     for attr in DIE.attributes.values():
                         if(attr.name == "DW_AT_name"):
                             attr_name = DIE.attributes["DW_AT_name"].value.decode()
-                            log.debug("\tStruct member found: %s", attr_name)
+                            # log.debug("\tStruct member found: %s", attr_name)
                         if loc_parser.attribute_has_location(attr, CU['version']):
                             loc = loc_parser.parse_from_attribute(attr,
                                                                 CU['version'])
@@ -202,7 +213,27 @@ def dwarf_analysis(input_binary):
                                 print(attr)
                                 if isinstance(loc, LocationExpr):
                                     offset = re.search(off_regex, describe_DWARF_expr(loc.loc_expr, dwarfinfo.structs, CU.cu_offset))
-                                    log.debug(offset.group(1))
+                                    # log.debug(offset.group(1))
+                        # if(attr.name == "DW_AT_type"):
+                        #     print(attr
+                    # log.debug("Struct member name: %s\t| Offset: %s\n", attr_name, offset.group(1))
+                    temp_struct_members.append((attr_name, offset.group(1)))
+                if (DIE.tag == None):
+                    last_tag = last_die_tag.pop()
+                    if (last_tag == "DW_TAG_member"):
+                         # Put members into the struct object
+                        temp_struct.member_list = temp_struct_members.copy()
+                        # log.debug("Inserting temp_struct")
+                        # print(temp_struct)
+                        struct_list.append(temp_struct)
+                        temp_struct_members.clear()
+                        temp_struct = None
+                last_die_tag.append(DIE.tag)
+    
+    print("Struct list")
+    for item in struct_list:
+        print(item)
+                        
                         
     fp.close()
     
