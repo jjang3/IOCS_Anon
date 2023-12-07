@@ -174,18 +174,18 @@ VOID getMetadata(IMG img, void *v)
  * @ins:	address of the offending instruction
  * @bt:		address of the branch target
  */
-static void PIN_FAST_ANALYSIS_CALL
-alert(ADDRINT ins, ADDRINT bt)
-{
-	/* log file */
-	FILE *logfile;
-	/* auditing */
-	if (likely((logfile = fopen(logpath.Value().c_str(), "a")) != NULL)) {
-		(void)fprintf(logfile, " ____ ____ ____ ____\n");
-	}
-	/* terminate */
-	exit(EXIT_FAILURE);
-}
+// static void PIN_FAST_ANALYSIS_CALL
+// alert(ADDRINT ins, ADDRINT bt)
+// {
+// 	/* log file */
+// 	FILE *logfile;
+// 	/* auditing */
+// 	if (likely((logfile = fopen(logpath.Value().c_str(), "a")) != NULL)) {
+// 		(void)fprintf(logfile, " ____ ____ ____ ____\n");
+// 	}
+// 	/* terminate */
+// 	exit(EXIT_FAILURE);
+// }
 
 /*
  * 64-bit register assertion (taint-sink, DFT-sink)
@@ -431,13 +431,13 @@ dta_instrument_jmp_call(INS ins)
 		 * instrument alert() before branch;
 		 * conditional instrumentation -- then
 		 */
-		INS_InsertThenCall(ins,
-			IPOINT_BEFORE,
-			(AFUNPTR)alert,
-			IARG_FAST_ANALYSIS_CALL,
-			IARG_INST_PTR,
-			IARG_BRANCH_TARGET_ADDR,
-			IARG_END);
+		// INS_InsertThenCall(ins,
+		// 	IPOINT_BEFORE,
+		// 	(AFUNPTR)alert,
+		// 	IARG_FAST_ANALYSIS_CALL,
+		// 	IARG_INST_PTR,
+		// 	IARG_BRANCH_TARGET_ADDR,
+		// 	IARG_END);
 	}
 }
 
@@ -497,13 +497,13 @@ dta_instrument_ret(INS ins)
 	 * instrument alert() before ret;
 	 * conditional instrumentation -- then
 	 */
-	INS_InsertThenCall(ins,
-		IPOINT_BEFORE,
-		(AFUNPTR)alert,
-		IARG_FAST_ANALYSIS_CALL,
-		IARG_INST_PTR,
-		IARG_BRANCH_TARGET_ADDR,
-		IARG_END);
+	// INS_InsertThenCall(ins,
+	// 	IPOINT_BEFORE,
+	// 	(AFUNPTR)alert,
+	// 	IARG_FAST_ANALYSIS_CALL,
+	// 	IARG_INST_PTR,
+	// 	IARG_BRANCH_TARGET_ADDR,
+	// 	IARG_END);
 }
 
 

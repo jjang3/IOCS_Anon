@@ -3,7 +3,8 @@
 
 PS3="Select options: "
 input=$1
-CFLAGS="-gdwarf-2 -z noexecstack -fno-stack-protector"
+CFLAGS="-O0 -gdwarf-2 "
+# -z noexecstack -fno-stack-protector"
 
 options=("Taint" "Compile" "Instrument")
 
@@ -30,8 +31,8 @@ fun_lib_path=${current_path}/lib
 
 fun_result_path=${current_path}/result
 fun_i_result_path=${fun_result_path}/$1
-fun_bin_file=${fun_i_result_path}/$1.out
-fun_i_file=${fun_i_result_path}/$1
+fun_bin_file=${fun_i_result_path}/$1"_init".out
+fun_i_file=${fun_i_result_path}/$1"_e9_in".out
 fun_o_file=${fun_i_result_path}/$1"_fun_c14n".out
 
 LLVM_BUILD_DIR=$LLVM_DIR
@@ -50,7 +51,10 @@ taint()
   fi
   if [ ! -f "$fun_bin_file" ]; then
       echo "Input binary file doesn't exist"
-      $LLVM_BUILD_DIR/bin/clang $CFLAGS -o ${fun_bin_file} ${fun_input_path}/${input}.c
+      # $LLVM_BUILD_DIR/bin/clang $CFLAGS -o ${fun_bin_file} ${fun_input_path}/${input}.c
+      gcc $CFLAGS -o ${fun_bin_file} ${fun_input_path}/${input}.c
+      echo "Generating info file ${fun_i_result_path}/${input}.info"
+      objdump --dwarf=info ${fun_bin_file} &> ${fun_i_result_path}/${input}.info
   fi
   $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${fun_bin_file}
   trap int_trap INT

@@ -10,7 +10,6 @@ from binaryninja.binaryview import BinaryViewType
 from binaryninja.architecture import Architecture, ArchitectureHook
 from typing import NamedTuple
 from typing import Optional
-import sys
 from enum import Enum
 if (sys.version[0] == '2'):
     import Queue 

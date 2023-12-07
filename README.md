@@ -7,6 +7,8 @@ Repository for the ARCS project
 ./
 ├── taint_analysis (used for both fun_c14n and var_c14n)
 ├── prepare.sh
+├── useful_scripts
+|       ├── dwarf_analysis.py
 ├── fun_c14n
 |       ├── taint.sh
 |       ├── comp_analysis
