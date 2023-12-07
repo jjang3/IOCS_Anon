@@ -8,6 +8,10 @@ typedef struct {
     size_t end;
 } myStruct;
 
+typedef struct {
+    int test;
+} test;
+
 
 int main()
 {

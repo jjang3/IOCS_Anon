@@ -1,6 +1,7 @@
 import sys, getopt
 import logging, os
 import re
+import pprint
 
 from elftools.elf.elffile import ELFFile
 from elftools.dwarf.dwarf_expr import DWARFExprParser, DWARFExprOp
@@ -17,6 +18,8 @@ from elftools.dwarf.descriptions import (describe_CFI_instructions,
     set_global_machine_arch)
 from elftools.dwarf.enums import DW_EH_encoding_flags
 from pathlib import Path
+from typing import Optional
+from dataclasses import dataclass, field
 
 class CustomFormatter(logging.Formatter):
 
@@ -58,6 +61,11 @@ log_disable = False
 log.addHandler(ch)
 log.disabled = log_disable
 
+@dataclass(unsafe_hash = True)
+class StructData:
+    name: Optional[str] = None
+    size: int = None
+    line: int = None
 
 def dwarf_analysis(input_binary):
     target_dir = Path(os.path.abspath(input_binary))
@@ -131,6 +139,7 @@ def dwarf_analysis(input_binary):
                                                 fun_frame_base = int(rbp_offset.group(1))
                 
                 if (DIE.tag == "DW_TAG_variable"):
+                    # This is used for variable that is declared within the function
                     var_name = None
                     reg_offset = None   
                     for attr in DIE.attributes.values():
@@ -147,7 +156,7 @@ def dwarf_analysis(input_binary):
                                 if offset_regex := re.search(reg_regex, offset):
                                     var_offset = int(offset_regex.group(1))
                                     var_offset += fun_frame_base
-                                    print(offset_regex.group(1))
+                                    # print(offset_regex.group(1))
                                     hex_var_offset = hex(var_offset)
                                     reg_offset = str(var_offset) + "(%rbp)" 
                                     log.debug("\tOffset:\t%s (hex: %s)", reg_offset, hex_var_offset)
@@ -166,11 +175,34 @@ def dwarf_analysis(input_binary):
                                         typedef_name = type_die.attributes['DW_AT_name'].value.decode()
                                         typedef_ref = type_die.attributes['DW_AT_type'].value + type_die.cu.cu_offset
                                         typedef_ref_type_die = dwarfinfo.get_DIE_from_refaddr(typedef_ref, type_die.cu)
-                                        print(typedef_ref_type_die.tag, typedef_ref_type_die)
+                                        # print(typedef_ref_type_die.tag, typedef_ref_type_die)
                                         if (typedef_ref_type_die.tag == "DW_TAG_structure_type"):
                                             log.debug("\tStruct type found: %s", typedef_name)
+                                            print(typedef_ref_type_die)
                             except Exception  as err:
                                     print(err)
+                # This is used to catch struct name in a global fashion.
+                if DIE.tag == "DW_TAG_structure_type":
+                    pprint.pprint(DIE.attributes, width=1)
+                    if 'DW_AT_name' in DIE.attributes:
+                        struct_name = DIE.attributes['DW_AT_name'].value.decode()
+                        log.debug("\tStruct type found: %s", struct_name)
+                # This is used to catch member variables of a struct 
+                if (DIE.tag == "DW_TAG_member"):
+                    attr_name = None
+                    offset = None
+                    for attr in DIE.attributes.values():
+                        if(attr.name == "DW_AT_name"):
+                            attr_name = DIE.attributes["DW_AT_name"].value.decode()
+                            log.debug("\tStruct member found: %s", attr_name)
+                        if loc_parser.attribute_has_location(attr, CU['version']):
+                            loc = loc_parser.parse_from_attribute(attr,
+                                                                CU['version'])
+                            if(attr.name == "DW_AT_data_member_location"):
+                                print(attr)
+                                if isinstance(loc, LocationExpr):
+                                    offset = re.search(off_regex, describe_DWARF_expr(loc.loc_expr, dwarfinfo.structs, CU.cu_offset))
+                                    log.debug(offset.group(1))
                         
     fp.close()
     
