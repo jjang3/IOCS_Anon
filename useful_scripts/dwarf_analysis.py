@@ -195,9 +195,14 @@ def dwarf_analysis(input_binary):
                 # This is used to catch struct name in a global fashion.
                 if DIE.tag == "DW_TAG_structure_type":
                     pprint.pprint(DIE.attributes, width=1)
-                    byte_size   = DIE.attributes['DW_AT_byte_size'].value
-                    line_num    = DIE.attributes['DW_AT_decl_line'].value
-                    temp_struct = StructData(None, byte_size, line_num, None)
+                    byte_size = None
+                    line_num = None
+                    if 'DW_AT_byte_size' in DIE.attributes:
+                        byte_size   = DIE.attributes['DW_AT_byte_size'].value
+                    if 'DW_AT_decl_line' in DIE.attributes:
+                        line_num    = DIE.attributes['DW_AT_decl_line'].value
+                    if byte_size != None and line_num != None:
+                        temp_struct = StructData(None, byte_size, line_num, None)
                 # This is used to catch member variables of a struct 
                 if (DIE.tag == "DW_TAG_member"):
                     attr_name = None

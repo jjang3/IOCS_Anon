@@ -253,32 +253,35 @@ def process_binary(filename, funfile, dirloc):
     dwarf_analysis(funlist, filename)
     
     #--- Binary Ninja Analysis --- #
-    print("Binary ninja input:", filename)
-    with load(filename.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
-        print("Here")                  
-        arch = Architecture['x86_64']
-        bn = BinAnalysis(bv)
-        bn.analyze_binary(funlist)
+    # print("Binary ninja input:", filename)
+    # with load(filename.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
+    #     print("Here")                  
+    #     arch = Architecture['x86_64']
+    #     bn = BinAnalysis(bv)
+    #     bn.analyze_binary(funlist)
 
-    var_count += dwarf_var_count
-    # Based on variable counts found by static analysis + dwarf analysis, generate table.
-    generate_table(var_count, target_dir)
+    # var_count += dwarf_var_count
+    # # Based on variable counts found by static analysis + dwarf analysis, generate table.
+    # generate_table(var_count, target_dir)
 
-    if dirloc != '':
-        for dir_file in dir_list:
-            if (dir_file.endswith('.s')):
-                process_file(funlist, target_dir, dir_file)
-    else:
-        process_file(funlist, target_dir, target_file)
+    # if dirloc != '':
+    #     for dir_file in dir_list:
+    #         if (dir_file.endswith('.s')):
+    #             process_file(funlist, target_dir, dir_file)
+    # else:
+    #     process_file(funlist, target_dir, target_file)
             
 
-struct_set = list()
 fun_var_info = dict()
 fun_ignore_info = dict()
+struct_list = list()
+
 @dataclass(unsafe_hash = True)
 class StructData:
-    name: str = None
-    member_list: Optional[set] = None
+    name: Optional[str] = None
+    size: int = None
+    line: int = None
+    member_list: Optional[list] = None
     
 @dataclass(unsafe_hash = True)
 class VarData:
@@ -335,6 +338,9 @@ def dwarf_analysis(funlist, filename):
             DIE_count = sum(1 for _ in CU.iter_DIEs()) - 1
             DIE_index = 0
             # print(DIE_count)
+            last_die_tag = []
+            temp_struct = None
+            temp_struct_members = list()
             for DIE in CU.iter_DIEs():
                 # print(DIE_index, DIE.tag)
                 DIE_index += 1
@@ -465,11 +471,23 @@ def dwarf_analysis(funlist, filename):
                                     if 'DW_AT_name' in type_die.attributes:
                                         struct_name = type_die.attributes['DW_AT_name'].value.decode()
                                         print("\t\tStruct type found: ", struct_name)
-                                        for struct_item in struct_set:
-                                            if struct_name == struct_item.name:
-                                                # dwarf_var_count += len(struct_item.member_list)
-                                                None
-                                if type_die.tag == "DW_TAG_pointer_type":
+                                        log.debug("\tStruct type found: %s", struct_name)
+                                elif type_die.tag == "DW_TAG_typedef":
+                                    if 'DW_AT_name' in type_die.attributes:
+                                        typedef_name = type_die.attributes['DW_AT_name'].value.decode()
+                                        typedef_ref = type_die.attributes['DW_AT_type'].value + type_die.cu.cu_offset
+                                        typedef_ref_type_die = dwarfinfo.get_DIE_from_refaddr(typedef_ref, type_die.cu)
+                                        # print(typedef_ref_type_die.tag, typedef_ref_type_die)
+                                        if (typedef_ref_type_die.tag == "DW_TAG_structure_type"):
+                                            log.debug("\tStruct type found: %s", typedef_name)
+                                            byte_size   = typedef_ref_type_die.attributes['DW_AT_byte_size'].value
+                                            line_num    = typedef_ref_type_die.attributes['DW_AT_decl_line'].value
+                                            print(byte_size, line_num)
+                                            for item in struct_list:
+                                                if item.size == byte_size and item.line == line_num:
+                                                    if typedef_name != None:
+                                                        item.name = typedef_name
+                                elif type_die.tag == "DW_TAG_pointer_type":
                                     # print(hex(type_die.attributes['DW_FORM_ref4'].value))
                                     ptr_ref = type_die.attributes['DW_AT_type'].value + type_die.cu.cu_offset
                                     ptr_type_die = dwarfinfo.get_DIE_from_refaddr(ptr_ref, type_die.cu)
@@ -477,13 +495,13 @@ def dwarf_analysis(funlist, filename):
                                     if 'DW_AT_name' in ptr_type_die.attributes:
                                         obj_name = ptr_type_die.attributes['DW_AT_name'].value.decode()
                                         if (ptr_type_die.tag == "DW_TAG_structure_type"):
-                                            print("\t\tStruct type found: ", obj_name)
+                                            print("\t\tStruct ptr type found: ", obj_name)
                                         elif (ptr_type_die.tag == "DW_TAG_base_type"):
                                             print("\t\tPointer type found: ", obj_name)
                                         elif (ptr_type_die.tag == "DW_TAG_typedef"):
-                                            print("\t\tTypedef type found: ", obj_name)
+                                            print("\t\tTypedef ptr type found: ", obj_name)
                                         elif (ptr_type_die.tag == "DW_TAG_const_type"):
-                                            print("\t\tConst type found: ", obj_name)
+                                            print("\t\tConst ptr type found: ", obj_name)
                                         # dwarf_var_count += 1
                                         struct_name = obj_name
                                         # for struct_item in struct_set:
@@ -514,35 +532,40 @@ def dwarf_analysis(funlist, filename):
                             print("Inserting into the blacklist: ", reg_offset, "\n")
                             var_blacklist.append(reg_offset)
                 
+                # This is used to catch struct name in a global fashion.
                 if (DIE.tag == "DW_TAG_structure_type"):
-                    for attr in DIE.attributes.values():
-                        if (attr.name == "DW_AT_name"):
-                            struct_name = DIE.attributes["DW_AT_name"].value.decode()
-                            # print("Struct name: ", struct_name)
-                            temp_struct = StructData(struct_name, set())
+                    print(DIE.attributes)
+                    byte_size = None
+                    line_num = None
+                    if 'DW_AT_byte_size' in DIE.attributes:
+                        byte_size   = DIE.attributes['DW_AT_byte_size'].value
+                    if 'DW_AT_decl_line' in DIE.attributes:
+                        line_num    = DIE.attributes['DW_AT_decl_line'].value
+                    if byte_size != None and line_num != None:
+                        temp_struct = StructData(None, byte_size, line_num, None)
+                
+                # This is used to catch member variables of a struct 
                 if (DIE.tag == "DW_TAG_member"):
                     attr_name = None
                     offset = None
                     for attr in DIE.attributes.values():
                         if(attr.name == "DW_AT_name"):
                             attr_name = DIE.attributes["DW_AT_name"].value.decode()
+                            # log.debug("\tStruct member found: %s", attr_name)
                         if loc_parser.attribute_has_location(attr, CU['version']):
                             loc = loc_parser.parse_from_attribute(attr,
                                                                 CU['version'])
                             if(attr.name == "DW_AT_data_member_location"):
-                                # print(attr)
+                                print(attr)
                                 if isinstance(loc, LocationExpr):
                                     offset = re.search(off_regex, describe_DWARF_expr(loc.loc_expr, dwarfinfo.structs, CU.cu_offset))
-                            if(attr.form == "DW_FORM_block1"):
-                                # print(describe_form_class(attr.form))
-                                # print(attr.udata_value())
-                                None
-                    if offset != None and temp_struct != None: 
-                        # print("\tMember name %s |\tOffset %s\n" % (attr_name, offset.group(1)))
-                        temp_struct.member_list.add((attr_name, offset.group(1)))
+                                    # log.debug(offset.group(1))
+                        # if(attr.name == "DW_AT_type"):
+                        #     print(attr
+                    # log.debug("Struct member name: %s\t| Offset: %s\n", attr_name, offset.group(1))
+                    temp_struct_members.append((attr_name, offset.group(1)))
                 # Struct stuff
-                if temp_struct not in struct_set and temp_struct is not None:
-                    struct_set.append(temp_struct)
+
 
                 if (DIE.tag == None and len(var_list) != 0 and DIE_index == DIE_count):
                     #  This is used to store the variable list for a program with only one function
@@ -554,6 +577,18 @@ def dwarf_analysis(funlist, filename):
                     fun_ignore_info[funname] = var_blacklist.copy()
                     var_list.clear()
                     var_blacklist.clear()
+                elif (DIE.tag == None):
+                    last_tag = last_die_tag.pop()
+                    if (last_tag == "DW_TAG_member"):
+                        # Put members into the struct object
+                        if temp_struct != None: 
+                            temp_struct.member_list = temp_struct_members.copy()
+                            # log.debug("Inserting temp_struct")
+                            # print(temp_struct)
+                            struct_list.append(temp_struct)
+                        temp_struct_members.clear()
+                        temp_struct = None
+                last_die_tag.append(DIE.tag)
                 # elif (DIE.tag == None and funname != None and lowpc != None and target_fun is True and len(var_list) == 0):
                 #     # print(colored("Store var_list for %s | Var count: %d" % (funname, len(var_list)), 'blue', attrs=['reverse']))
                 #     fun_entry_to_args[lowpc] = len(var_list)

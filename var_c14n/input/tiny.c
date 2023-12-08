@@ -57,11 +57,11 @@ mime_map meme_types [] = {
     {NULL, NULL},
 };
 
-static ssize_t rio_read(rio_t *rp, char *usrbuf, size_t n) __attribute__ ((section (".isolate_target")));
-void log_access(int status, struct sockaddr_in *c_addr, http_request *req) __attribute__ ((section (".isolate_target")));
-void parse_request(int fd, http_request *req) __attribute__ ((section (".isolate_target")));
-void client_error(int fd, int status, char *msg, char *longmsg) __attribute__ ((section (".isolate_target")));
-void process(int fd, struct sockaddr_in *clientaddr) __attribute__ ((section (".isolate_target")));
+// static ssize_t rio_read(rio_t *rp, char *usrbuf, size_t n) __attribute__ ((section (".isolate_target")));
+// void log_access(int status, struct sockaddr_in *c_addr, http_request *req) __attribute__ ((section (".isolate_target")));
+// void parse_request(int fd, http_request *req) __attribute__ ((section (".isolate_target")));
+// void client_error(int fd, int status, char *msg, char *longmsg) __attribute__ ((section (".isolate_target")));
+// void process(int fd, struct sockaddr_in *clientaddr) __attribute__ ((section (".isolate_target")));
 
 char *default_mime_type = "text/plain";
 
@@ -350,7 +350,7 @@ void serve_static(int out_fd, int in_fd, http_request *req,
 }
 
 void process(int fd, struct sockaddr_in *clientaddr){
-    printf("0x%hhx\n", *(int*)main);
+    // printf("0x%hhx\n", *(int*)main);
     printf("accept request, fd is %d, pid is %d\n", fd, getpid());
     http_request req;
     parse_request(fd, &req);
