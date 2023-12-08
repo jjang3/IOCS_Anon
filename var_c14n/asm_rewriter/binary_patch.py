@@ -534,7 +534,7 @@ def dwarf_analysis(funlist, filename):
                 
                 # This is used to catch struct name in a global fashion.
                 if (DIE.tag == "DW_TAG_structure_type"):
-                    print(DIE.attributes)
+                    # print(DIE.attributes)
                     byte_size = None
                     line_num = None
                     if 'DW_AT_byte_size' in DIE.attributes:
@@ -543,7 +543,7 @@ def dwarf_analysis(funlist, filename):
                         line_num    = DIE.attributes['DW_AT_decl_line'].value
                     if byte_size != None and line_num != None:
                         temp_struct = StructData(None, byte_size, line_num, None)
-                
+                    print(temp_struct)
                 # This is used to catch member variables of a struct 
                 if (DIE.tag == "DW_TAG_member"):
                     attr_name = None
@@ -556,13 +556,15 @@ def dwarf_analysis(funlist, filename):
                             loc = loc_parser.parse_from_attribute(attr,
                                                                 CU['version'])
                             if(attr.name == "DW_AT_data_member_location"):
-                                print(attr)
+                                # print(attr)
                                 if isinstance(loc, LocationExpr):
                                     offset = re.search(off_regex, describe_DWARF_expr(loc.loc_expr, dwarfinfo.structs, CU.cu_offset))
                                     # log.debug(offset.group(1))
-                        # if(attr.name == "DW_AT_type"):
-                        #     print(attr
-                    # log.debug("Struct member name: %s\t| Offset: %s\n", attr_name, offset.group(1))
+                        if (attr.name == "DW_AT_type"):
+                            refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
+                            type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
+                            print(refaddr)
+                    log.debug("Struct member name: %s\t| Offset: %s\n", attr_name, offset.group(1))
                     temp_struct_members.append((attr_name, offset.group(1)))
                 # Struct stuff
 
@@ -1065,7 +1067,7 @@ log = logging.getLogger(__name__)
 log.setLevel(debug_level)
 
 # create console handler with a higher log level
-log_disable = True
+log_disable = False
 log.addHandler(ch)
 log.disabled = log_disable
 

@@ -2,8 +2,9 @@ import sys, getopt
 import logging, os
 import re
 import pprint
+from elftools.dwarf.die import DIE
 
-from elftools.elf.elffile import ELFFile
+from elftools.elf.elffile import DWARFInfo, ELFFile
 from elftools.dwarf.dwarf_expr import DWARFExprParser, DWARFExprOp
 from elftools.dwarf.descriptions import (
     describe_DWARF_expr, set_global_machine_arch)
@@ -69,6 +70,30 @@ class StructData:
     line: int = None
     member_list: Optional[list] = None
 
+@dataclass(unsafe_hash = True)
+class StructMember:
+    name: str = None
+    offset: str = None
+    type: str = None
+    base_type: Optional[str] = None
+
+def get_dwarf_type(dwarfinfo: DWARFInfo, dwarf_die_atts, dwarf_die_cu, dwarf_die_cu_offset):
+    # print(dwarf_die_atts)
+    dwarf_name = None
+    if 'DW_AT_type' in dwarf_die_atts:
+        refaddr = dwarf_die_atts['DW_AT_type'].value + dwarf_die_cu_offset
+        type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, dwarf_die_cu)
+        dwarf_name = get_dwarf_type(dwarfinfo, type_die.attributes, dwarf_die_cu, dwarf_die_cu_offset)
+        if dwarf_name != None:
+            return dwarf_name
+        else:
+            get_dwarf_type(dwarfinfo, type_die.attributes, dwarf_die_cu, dwarf_die_cu_offset)
+    else:
+        if 'DW_AT_name' in dwarf_die_atts:
+            dwarf_name = dwarf_die_atts['DW_AT_name'].value.decode()
+            # print("Returning", dwarf_name)
+            return dwarf_name
+
 def dwarf_analysis(input_binary):
     target_dir = Path(os.path.abspath(input_binary))
     c14n_regex = r"(fun\_c14n|var\_c14n)"
@@ -82,8 +107,8 @@ def dwarf_analysis(input_binary):
             log.error("c14n type unknown")
             exit()    
     # log.info(target_dir.parent)
-    dwarf_outfile = target_dir.parent.joinpath("dwarf.out")
-    fp = open(dwarf_outfile, "w") 
+    # dwarf_outfile = target_dir.parent.joinpath("dwarf.out")
+    # fp = open(dwarf_outfile, "w") 
     
     with open(input_binary, 'rb') as f:
         elffile = ELFFile(f)
@@ -133,7 +158,7 @@ def dwarf_analysis(input_binary):
                                 continue
                             funname = DIE.attributes["DW_AT_name"].value.decode()
                             log.info("Function name: %s", funname)
-                            fp.write("Function name: %s\n" % funname)
+                            # fp.write("Function name: %s\n" % funname)
                             loc = loc_parser.parse_from_attribute(attr, CU['version'])
                             if isinstance(loc, list):
                                 for loc_entity in loc:
@@ -152,7 +177,7 @@ def dwarf_analysis(input_binary):
                         if (attr.name == "DW_AT_name"):
                             var_name = DIE.attributes["DW_AT_name"].value.decode()
                             log.debug("\tVar name: %s", var_name)
-                            fp.write("\tVar name: %s\n" % var_name)
+                            # fp.write("\tVar name: %s\n" % var_name)
                         if (loc_parser.attribute_has_location(attr, CU['version'])):
                             loc = loc_parser.parse_from_attribute(attr,
                                                                 CU['version'])
@@ -165,7 +190,7 @@ def dwarf_analysis(input_binary):
                                     hex_var_offset = hex(var_offset)
                                     reg_offset = str(var_offset) + "(%rbp)" 
                                     log.debug("\tOffset:\t%s (hex: %s)", reg_offset, hex_var_offset)
-                                    fp.write("\tOffset:\t%s (hex: %s)\n\n" % (reg_offset, hex_var_offset))
+                                    # fp.write("\tOffset:\t%s (hex: %s)\n\n" % (reg_offset, hex_var_offset))
                             print()
                         if (attr.name == "DW_AT_type"):
                             try:
@@ -203,26 +228,48 @@ def dwarf_analysis(input_binary):
                         line_num    = DIE.attributes['DW_AT_decl_line'].value
                     if byte_size != None and line_num != None:
                         temp_struct = StructData(None, byte_size, line_num, None)
-                # This is used to catch member variables of a struct 
+                # This is used to catch member variables of a struct =
                 if (DIE.tag == "DW_TAG_member"):
+                    temp_member = StructMember(None, None, None, None)
                     attr_name = None
                     offset = None
                     for attr in DIE.attributes.values():
                         if(attr.name == "DW_AT_name"):
                             attr_name = DIE.attributes["DW_AT_name"].value.decode()
                             # log.debug("\tStruct member found: %s", attr_name)
+                            temp_member.name = attr_name
                         if loc_parser.attribute_has_location(attr, CU['version']):
                             loc = loc_parser.parse_from_attribute(attr,
                                                                 CU['version'])
                             if(attr.name == "DW_AT_data_member_location"):
-                                print(attr)
+                                # print(attr)
                                 if isinstance(loc, LocationExpr):
                                     offset = re.search(off_regex, describe_DWARF_expr(loc.loc_expr, dwarfinfo.structs, CU.cu_offset))
+                                    temp_member.offset = offset.group(1)
                                     # log.debug(offset.group(1))
-                        # if(attr.name == "DW_AT_type"):
-                        #     print(attr
-                    # log.debug("Struct member name: %s\t| Offset: %s\n", attr_name, offset.group(1))
-                    temp_struct_members.append((attr_name, offset.group(1)))
+                        if (attr.name == "DW_AT_type"):
+                            refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
+                            type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
+                            print(type_die.tag)
+                            # typedef_ref = type_die.attributes['DW_AT_type'].value + type_die.cu.cu_offset
+                            # typedef_ref_type_die = dwarfinfo.get_DIE_from_refaddr(typedef_ref, type_die.cu)
+                            # print(typedef_ref_type_die)
+                            # if (type_die.tag == 'DW_TAG_array_type'):
+                            #     struct_type = type_die.tag
+                            #     log.debug("Array")
+                            # elif (type_die.tag == 'DW_TAG_typedef'):
+                            #     struct_type = type_die.tag
+                            #     log.debug("Typedef")
+                            # struct_type = typedef_ref_type_die.attributes['DW_AT_name'].value.decode()
+                            type_name = get_dwarf_type(dwarfinfo, DIE.attributes, DIE.cu, DIE.cu.cu_offset)
+                            # print(type_name)
+                            temp_member.type = type_name
+                            temp_member.base_type = type_die.tag
+                            
+                        # print(struct_type, attr.name)
+                    # log.debug("Struct member: %s\t| Offset: %s | Type: %s", attr_name, offset.group(1), struct_type)
+                    log.debug(temp_member)
+                    temp_struct_members.append(temp_member)
                 if (DIE.tag == None):
                     last_tag = last_die_tag.pop()
                     if (last_tag == "DW_TAG_member"):
@@ -240,7 +287,7 @@ def dwarf_analysis(input_binary):
         print(item)
                         
                         
-    fp.close()
+    # fp.close()
     
 
 def process_argument(argv):

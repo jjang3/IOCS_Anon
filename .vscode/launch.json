@@ -13,7 +13,7 @@
             "console": "integratedTerminal",
             "cwd": "${fileDirname}",
             "justMyCode": true,
-            "args": ["--binary", "arg.out", "--fun", "list.out", "--dir=tests/arg"]
+            "args": ["--binary", "/home/jaewon/ARCS_Final/var_c14n/result/struct/struct.out"]
         }
     ]
 }
