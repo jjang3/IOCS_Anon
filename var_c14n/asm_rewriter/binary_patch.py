@@ -253,23 +253,23 @@ def process_binary(filename, funfile, dirloc):
     dwarf_analysis(funlist, filename)
     
     #--- Binary Ninja Analysis --- #
-    # print("Binary ninja input:", filename)
-    # with load(filename.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
-    #     print("Here")                  
-    #     arch = Architecture['x86_64']
-    #     bn = BinAnalysis(bv)
-    #     bn.analyze_binary(funlist)
+    print("Binary ninja input:", filename)
+    with load(filename.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
+        print("Here")                  
+        arch = Architecture['x86_64']
+        bn = BinAnalysis(bv)
+        bn.analyze_binary(funlist)
 
-    # var_count += dwarf_var_count
-    # # Based on variable counts found by static analysis + dwarf analysis, generate table.
-    # generate_table(var_count, target_dir)
+    var_count += dwarf_var_count
+    # Based on variable counts found by static analysis + dwarf analysis, generate table.
+    generate_table(var_count, target_dir)
 
-    # if dirloc != '':
-    #     for dir_file in dir_list:
-    #         if (dir_file.endswith('.s')):
-    #             process_file(funlist, target_dir, dir_file)
-    # else:
-    #     process_file(funlist, target_dir, target_file)
+    if dirloc != '':
+        for dir_file in dir_list:
+            if (dir_file.endswith('.s')):
+                process_file(funlist, target_dir, dir_file)
+    else:
+        process_file(funlist, target_dir, target_file)
             
 
 fun_var_info = dict()

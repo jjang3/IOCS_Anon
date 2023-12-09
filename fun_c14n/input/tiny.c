@@ -351,6 +351,7 @@ void serve_static(int out_fd, int in_fd, http_request *req,
 
 void process(int fd, struct sockaddr_in *clientaddr){
     // printf("0x%hhx\n", *(int*)main);
+    // printf("0x%hhx\n", *(int*)client_error);
     printf("accept request, fd is %d, pid is %d\n", fd, getpid());
     http_request req;
     parse_request(fd, &req);
