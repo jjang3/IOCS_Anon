@@ -1,6 +1,7 @@
 # This script is used for ARCS
 #!/bin/bash
 
+
 PS3="Select options: "
 input=$1
 
@@ -46,6 +47,8 @@ build()
     cd $arcs_build_path
     cmake ..
     make
+
+    cd ${taint_path}/sources && bash compile.sh
 }
 
 taint()
@@ -71,11 +74,15 @@ taint()
         # $LLVM_BUILD_DIR/bin/clang
         gcc ${CFLAGS} -o ${arcs_bin_file} ${arcs_input_path}/${input}.c
     fi
+
     sleep 1
+    # $PIN_ROOT/pin -follow-execv -t $taint_path/lib/var-access.so -- ${arcs_bin_file}
+    # mv dft.out ${arcs_i_result_path}
+
     $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file}
     mv dft.out ${arcs_i_result_path}
-    echo "$taint_path/scripts/function_analysis.py"
-    python3 $taint_path/scripts/function_analysis.py --dft ${arcs_i_result_path}/dft.out --bin ${arcs_bin_file}
+    # echo "$taint_path/scripts/function_analysis.py"
+    # python3 $taint_path/scripts/function_analysis.py --dft ${arcs_i_result_path}/dft.out --bin ${arcs_bin_file}
 }
 
 analyze()

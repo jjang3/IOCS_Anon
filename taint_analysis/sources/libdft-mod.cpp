@@ -58,6 +58,8 @@ std::ofstream TraceFile;
 /* global values */
 uintptr_t offset_addr;
 
+uintptr_t stack_rbp_addr;
+
 static stack<const char*> unwindStack;
 static stack<const char*> routineStack;
 static stack<ADDRINT> addressStack;
@@ -110,6 +112,25 @@ void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 	taintSrc = false;
 	PIN_UnlockClient();
 }
+// Analysis routine
+VOID FunctionEntryAnalysis(CONTEXT* ctx, ADDRINT functionAddr) {
+	ADDRINT val;
+	PIN_GetContextRegval(ctx, REG_STACK_PTR, reinterpret_cast<UINT8 *>(&val));
+	stack_rbp_addr = val;
+    // std::cerr << "Entered function at address: " << std::hex << functionAddr-offset_addr << " "  << val << std::dec << std::endl;
+	char instructionBytes[16];  // Adjust the size as needed
+    PIN_SafeCopy(instructionBytes, reinterpret_cast<VOID*>(functionAddr), sizeof(instructionBytes));
+    std::cout << "Instruction at address " << std::hex << stack_rbp_addr << ": " << std::dec << std::endl;
+}
+
+VOID FunctionEntryRSPAnalysis(CONTEXT* ctx, char* ins_str, ADDRINT functionAddr) {
+
+	ADDRINT val;
+	PIN_GetContextRegval(ctx, REG_STACK_PTR, reinterpret_cast<UINT8 *>(&val));
+	stack_rbp_addr = val;
+	std::cerr << ins_str << "\n" << "Entered function at address: " << std::hex << functionAddr-offset_addr << " "  << val << std::dec << std::endl;
+}
+
 
 VOID getMetadata(IMG img, void *v)
 {
@@ -159,9 +180,41 @@ VOID getMetadata(IMG img, void *v)
 						INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)callUnwinding, IARG_BRANCH_TARGET_ADDR, IARG_PTR, instString->c_str(), IARG_INST_PTR, IARG_END);
 					}
 				}
+
 				RTN_Close(rtn);
 			}
+
 			#endif
+		}
+		for (SEC sec = IMG_SecHead(img); SEC_Valid(sec); sec = SEC_Next(sec)) {
+			
+			for (RTN rtn = SEC_RtnHead(sec); RTN_Valid(rtn); rtn = RTN_Next(rtn)) {
+				
+				// cerr << RTN_Name(rtn) << " " << SEC_Name(sec) <<  endl;
+				if (!(RTN_IsDynamic(rtn)) && SEC_Name(sec) == ".text") {
+					RTN_Open(rtn);
+					for (INS ins = RTN_InsHead(rtn); INS_Valid(ins); ins = INS_Next(ins))
+					{
+						string *instString = new string(INS_Disassemble(ins));
+						if (INS_IsMov(ins)) {
+							// cerr << *instString << "\n";
+							if (INS_OperandIsReg(ins, 0) &&
+								INS_OperandIsReg(ins, 1) &&
+								INS_OperandReg(ins, 0) == REG_GBP &&
+								INS_OperandReg(ins, 1) == REG_STACK_PTR)
+							{
+								INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)FunctionEntryRSPAnalysis,IARG_CONTEXT, IARG_PTR, instString->c_str(), IARG_ADDRINT, RTN_Address(rtn), IARG_END);
+							}
+						}
+					}
+					// RTN_InsertCall(rtn, IPOINT_BEFORE, AFUNPTR(FunctionEntryAnalysis),
+					// 		IARG_CONTEXT, IARG_ADDRINT, RTN_Address(rtn),
+					// 		IARG_END);
+
+					RTN_Close(rtn);
+				}
+				
+			}
 		}
 		#endif
 	}
@@ -174,18 +227,18 @@ VOID getMetadata(IMG img, void *v)
  * @ins:	address of the offending instruction
  * @bt:		address of the branch target
  */
-// static void PIN_FAST_ANALYSIS_CALL
-// alert(ADDRINT ins, ADDRINT bt)
-// {
-// 	/* log file */
-// 	FILE *logfile;
-// 	/* auditing */
-// 	if (likely((logfile = fopen(logpath.Value().c_str(), "a")) != NULL)) {
-// 		(void)fprintf(logfile, " ____ ____ ____ ____\n");
-// 	}
-// 	/* terminate */
-// 	exit(EXIT_FAILURE);
-// }
+static void PIN_FAST_ANALYSIS_CALL
+alert(ADDRINT ins, ADDRINT bt)
+{
+	/* log file */
+	// FILE *logfile;
+	// /* auditing */
+	// if (likely((logfile = fopen(logpath.Value().c_str(), "a")) != NULL)) {
+	// 	(void)fprintf(logfile, " ____ ____ ____ ____\n");
+	// }
+	/* terminate */
+	exit(EXIT_FAILURE);
+}
 
 /*
  * 64-bit register assertion (taint-sink, DFT-sink)
@@ -431,13 +484,13 @@ dta_instrument_jmp_call(INS ins)
 		 * instrument alert() before branch;
 		 * conditional instrumentation -- then
 		 */
-		// INS_InsertThenCall(ins,
-		// 	IPOINT_BEFORE,
-		// 	(AFUNPTR)alert,
-		// 	IARG_FAST_ANALYSIS_CALL,
-		// 	IARG_INST_PTR,
-		// 	IARG_BRANCH_TARGET_ADDR,
-		// 	IARG_END);
+		INS_InsertThenCall(ins,
+			IPOINT_BEFORE,
+			(AFUNPTR)alert,
+			IARG_FAST_ANALYSIS_CALL,
+			IARG_INST_PTR,
+			IARG_BRANCH_TARGET_ADDR,
+			IARG_END);
 	}
 }
 
@@ -497,13 +550,13 @@ dta_instrument_ret(INS ins)
 	 * instrument alert() before ret;
 	 * conditional instrumentation -- then
 	 */
-	// INS_InsertThenCall(ins,
-	// 	IPOINT_BEFORE,
-	// 	(AFUNPTR)alert,
-	// 	IARG_FAST_ANALYSIS_CALL,
-	// 	IARG_INST_PTR,
-	// 	IARG_BRANCH_TARGET_ADDR,
-	// 	IARG_END);
+	INS_InsertThenCall(ins,
+		IPOINT_BEFORE,
+		(AFUNPTR)alert,
+		IARG_FAST_ANALYSIS_CALL,
+		IARG_INST_PTR,
+		IARG_BRANCH_TARGET_ADDR,
+		IARG_END);
 }
 
 
@@ -528,6 +581,7 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 		
 		#if DBG_FLAG
 		fprintf(trace, "Taint source read(2): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
+		
 		#endif
 		//cerr << "\t - Routine: " << routineStack.top() << endl;
 		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
@@ -865,7 +919,7 @@ post_open_hook(THREADID tid, syscall_ctx_t *ctx)
  * @ins: paddr = physical address | eaddr = effective address
  */
 static void
-dta_tainted_mem_write(ADDRINT paddr, ADDRINT eaddr)
+dta_tainted_mem_write(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg, ADDRINT disp)
 {
 	// print when addr is tagged.
 	
@@ -873,13 +927,26 @@ dta_tainted_mem_write(ADDRINT paddr, ADDRINT eaddr)
 	{
 		//auto tag_val = tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8);
 		#if DBG_FLAG
-		printf("Tagged Mem Write (TMW)\n");
+		ADDRINT val;
+		PIN_GetContextRegval(ctx, reg, reinterpret_cast<UINT8 *>(&val));
+		ADDRINT var_offset = stack_rbp_addr - val;
+		if (REG_valid(reg)) {
+			auto reg_name = REG_StringShort(REG_FullRegName(reg));
+			// if (reg_name == "rsp") {
+			// cerr << "W " << std::hex << val << " " << endl;
+			printf("Tagged Mem Write (TMW) offset: %lx %lx %lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
+			// }
+			
+		}
+		
 		#endif
 		if (taintSrc == false){
+			
 			//cerr << "\t▷ dta_mem_write() " << endl;
-			//printf("dta_mem_write\n");
+			printf("\tTaint sink dta_mem_write(): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
 			//fprintf(trace, "\tTaint sink: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), tag_val);
 			#if DBG_FLAG
+			
 			fprintf(trace, "\tTaint sink dta_mem_write(): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
 			#endif
 		}
@@ -887,14 +954,24 @@ dta_tainted_mem_write(ADDRINT paddr, ADDRINT eaddr)
 	}
 }
 static void
-dta_tainted_mem_read(ADDRINT paddr, ADDRINT eaddr)
+dta_tainted_mem_read(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg)
 {
 	// print when addr is tagged.
 	if (tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8))
 	{
 		//auto tag_val = tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8);
 		#if DBG_FLAG
-		printf("Tagged Mem Read (TMR)\n");
+		// printf("Tagged Mem Read (TMR)\n");
+		ADDRINT val;
+		PIN_GetContextRegval(ctx, reg, reinterpret_cast<UINT8 *>(&val));
+		ADDRINT var_offset = stack_rbp_addr - val;
+		if (REG_valid(reg)) {
+			auto reg_name = REG_StringShort(REG_FullRegName(reg));
+			// if (reg_name == "rsp") {
+			// 	cerr << "W " << std::hex << val << " " << disp << endl;
+			// }
+			printf("Tagged Mem Read (TMR) offset: %lx %lx %lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
+		}
 		#endif
 		if (taintSrc == false){
 			//cerr << "\t▷ dta_mem_read()" << std::hex << " " << endl;
@@ -903,11 +980,34 @@ dta_tainted_mem_read(ADDRINT paddr, ADDRINT eaddr)
 			#if DBG_FLAG
 			fprintf(trace, "\tTaint sink dta_mem_read(): 0x%lx\n",  (uintptr_t)(addressStack.top()-offset_addr));
 			#endif
+			
 		}
 		//fprintf(trace, "\tTMW: %s | %p", rtn_name.c_str(), (void *)ip);
 	}
 }
 #endif
+//Helper function
+// static std::string regsToString(uint32_t* regs, uint32_t numRegs) {
+//     std::string str = ""; //if efficiency was a concern, we'd use a stringstream
+//     if (numRegs) {
+//         str += "(";
+//         for (uint32_t i = 0; i < numRegs - 1; i++) {
+//             str += REG_StringShort((REG)regs[i]) + ", ";
+//         }
+//         str += REG_StringShort((REG)regs[numRegs - 1]) + ")";
+//     }
+//     return str;
+// }
+// VOID DoAdd_mem_x_a(CONTEXT *ctxt, REG reg, UINT32 addr_size)
+// {
+// 	ADDRINT val;
+//     PIN_GetContextRegval(ctxt, reg, reinterpret_cast<UINT8 *>(&val));
+
+// }
+
+VOID MovRbpRspAnalysis(ADDRINT address) {
+    std::cerr << "Caught mov rbp, rsp at address: " << std::hex << address << std::dec << std::endl;
+}
 #if 1
 VOID Instruction(INS ins, VOID* v)
 {
@@ -922,20 +1022,77 @@ VOID Instruction(INS ins, VOID* v)
 		#if 1
         if (INS_MemoryOperandIsWritten(ins, memOp))
         {
-            INS_InsertPredicatedCall(ins, IPOINT_BEFORE, (AFUNPTR)dta_tainted_mem_write, IARG_INST_PTR, IARG_MEMORYOP_EA, memOp,
-                                     IARG_END);
-        }
+            REG b_reg = INS_OperandMemoryBaseReg(ins, memOp);
+            ADDRINT disp = INS_OperandMemoryDisplacement(ins, memOp);
+            INS_InsertPredicatedCall(ins, IPOINT_BEFORE, (AFUNPTR)dta_tainted_mem_write, IARG_CONTEXT,  IARG_INST_PTR, IARG_MEMORYOP_EA, memOp, IARG_UINT64, b_reg, IARG_ADDRINT, disp, IARG_END);
+			// ADDRINT disp = INS_OperandMemoryDisplacement(ins, memOp);
+			// REG b_reg = INS_OperandMemoryBaseReg(ins, memOp);
+			// if (REG_valid(b_reg)) {
+			// 	// auto b_reg_name = REG_StringShort(REG_FullRegName(b_reg));
+			// 	// if (b_reg_name == "rsp")
+			// 	// {	
+			// 	// 	ADDRINT stackAddress = disp;
+			// 	// 	cerr << "Base: " << b_reg_name << " " << std::hex << stackAddress << endl;
+			// 	// }
+			// 	ADDRINT val;
+			// 	CONTEXT context;
+            //     PIN_InitContext(&context);
+            //     PIN_GetContextRegval(&context, b_reg, val);
+			// }
+            // REG i_reg = INS_OperandMemoryIndexReg(ins, memOp);
+			// if (REG_valid(i_reg)) {
+			// 	auto i_reg_name = REG_StringShort(REG_FullRegName(i_reg));
+			// 	cerr << "Index: " << i_reg_name << endl;
+			// }
+			// if (REG_valid(reg)) {
+			// 	auto reg_name = REG_StringShort(REG_FullRegName(reg));
+			// 	if (reg_name == "rsp") {
+			// 	 	ADDRINT stackAddress = INS_OperandMemoryDisplacement(ins, memOp) +  PIN_GetContextRegval(LEVEL_BASE::REG_STACK_PTR, v);
+			// 		cerr << reg_name << " " << std::hex << stackAddress << endl;
+			// 		ADDRINT memoryScale = INS_OperandMemoryScale(ins, memOp);
+			// 	}
+			// }
+			// Effective address = Displacement + BaseReg + IndexReg * Scale
+			
+			// // base register; optional
+            // REG reg = INS_OperandMemoryBaseReg(ins, op);
+            // if (REG_valid(reg)) inRegs[numInRegs++] = REG_FullRegName(reg);
+			// PIN_GetContextRegval()
+
+            // index register; optional
+            // if (REG_valid(reg)) inRegs[numInRegs++] = REG_FullRegName(reg);
+		
+		}
 		// Disabling this for now as there is no need to check on whether tagged memory is written.
 		if (INS_MemoryOperandIsRead(ins, memOp))
         {
-            INS_InsertPredicatedCall(ins, IPOINT_BEFORE, (AFUNPTR)dta_tainted_mem_read, IARG_INST_PTR, IARG_MEMORYOP_EA, memOp,
+            REG b_reg = INS_OperandMemoryBaseReg(ins, memOp);
+            INS_InsertPredicatedCall(ins, IPOINT_BEFORE, (AFUNPTR)dta_tainted_mem_read,  IARG_CONTEXT, IARG_INST_PTR, IARG_MEMORYOP_EA, memOp, IARG_UINT64, b_reg, 
                                      IARG_END);
         }
+		
+		// if (INS_Mnemonic(ins) == "MOV" && INS_OperandIsReg(ins, 0) && INS_OperandReg(ins, 0) == REG_STACK_PTR)
+		// {
+		// 	cerr << INS_Disassemble(ins)  << " " << INS_Mnemonic(ins) << " Found\n";
+		// } 
+		// &&
+        // INS_OperandIsReg(ins, 0) &&
+        // INS_OperandIsReg(ins, 1) &&
+        // INS_OperandReg(ins, 0) == REG_GBP &&
+        // INS_OperandReg(ins, 1) == REG_STACK_PTR) {
+        // // Instrument the mov rbp, rsp instruction
+		// 
+        // INS_InsertCall(ins, IPOINT_BEFORE, AFUNPTR(MovRbpRspAnalysis),
+        //                IARG_INST_PTR,
+        //                IARG_END);
+    	// }	
+		
 		#endif 
 		 // UNUSED
     }
 }
 #endif
+
 /* 
  * DTA
  *

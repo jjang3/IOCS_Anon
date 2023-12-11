@@ -28,7 +28,9 @@ TEST_ROOTS :=
 
 # This defines the tools which will be run during the the tests, and were not already defined in
 # TEST_TOOL_ROOTS.
-TOOL_ROOTS := libdft-default libdft-mod
+TOOL_ROOTS := libdft-mod
+#var-access
+#libdft-mod
 #libdft-default
 #libdft-OR
 #libdft-mod libdft-default
