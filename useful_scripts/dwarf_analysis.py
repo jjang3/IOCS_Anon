@@ -64,8 +64,16 @@ log.disabled = log_disable
 
 struct_list = list()
 @dataclass(unsafe_hash = True)
+class VarData:
+    name: Optional[str] = None
+    offset: str = None
+    var_type: str = None    
+    base_type: Optional[str] = None
+
+@dataclass(unsafe_hash = True)
 class StructData:
     name: Optional[str] = None
+    offset: str = None
     size: int = None
     line: int = None
     member_list: Optional[list] = None
@@ -74,25 +82,42 @@ class StructData:
 class StructMember:
     name: str = None
     offset: str = None
-    type: str = None
+    var_type: str = None
     base_type: Optional[str] = None
+    begin: Optional[str] = None
+    end: Optional[str] = None
 
-def get_dwarf_type(dwarfinfo: DWARFInfo, dwarf_die_atts, dwarf_die_cu, dwarf_die_cu_offset):
+def get_base_type(dwarfinfo: DWARFInfo, dwarf_die_atts, dwarf_die_cu, dwarf_die_cu_offset):
     # print(dwarf_die_atts)
     dwarf_name = None
     if 'DW_AT_type' in dwarf_die_atts:
         refaddr = dwarf_die_atts['DW_AT_type'].value + dwarf_die_cu_offset
         type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, dwarf_die_cu)
-        dwarf_name = get_dwarf_type(dwarfinfo, type_die.attributes, dwarf_die_cu, dwarf_die_cu_offset)
+        dwarf_name = get_base_type(dwarfinfo, type_die.attributes, dwarf_die_cu, dwarf_die_cu_offset)
         if dwarf_name != None:
             return dwarf_name
         else:
-            get_dwarf_type(dwarfinfo, type_die.attributes, dwarf_die_cu, dwarf_die_cu_offset)
+            get_base_type(dwarfinfo, type_die.attributes, dwarf_die_cu, dwarf_die_cu_offset)
     else:
         if 'DW_AT_name' in dwarf_die_atts:
             dwarf_name = dwarf_die_atts['DW_AT_name'].value.decode()
             # print("Returning", dwarf_name)
             return dwarf_name
+
+def get_dwarf_type(dwarfinfo: DWARFInfo, dwarf_die_atts, dwarf_die_cu, dwarf_die_cu_offset):
+    if 'DW_AT_type' in dwarf_die_atts:
+        refaddr = dwarf_die_atts['DW_AT_type'].value + dwarf_die_cu_offset
+        type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, dwarf_die_cu)
+        if (type_die.tag == "DW_TAG_typedef"):
+            type_die = get_dwarf_type(dwarfinfo, type_die.attributes, dwarf_die_cu, dwarf_die_cu_offset)
+            if type_die.tag != "DW_TAG_typedef":
+                return type_die
+            else: 
+                get_dwarf_type(dwarfinfo, type_die.attributes, dwarf_die_cu, dwarf_die_cu_offset)
+        else:
+            return type_die
+
+    
 
 def dwarf_analysis(input_binary):
     target_dir = Path(os.path.abspath(input_binary))
@@ -138,6 +163,7 @@ def dwarf_analysis(input_binary):
         for CU in dwarfinfo.iter_CUs():
 
             # print(DIE_count)
+            last_var = []
             last_die_tag = []
             temp_struct = None
             temp_struct_members = list()
@@ -170,8 +196,10 @@ def dwarf_analysis(input_binary):
                 
                 if (DIE.tag == "DW_TAG_variable"):
                     # This is used for variable that is declared within the function
-                    var_name = None
-                    reg_offset = None   
+                    var_name    = None
+                    reg_offset  = None
+                    struct_var  = None
+                    base_var    = None
                     for attr in DIE.attributes.values():
                         offset = None
                         if (attr.name == "DW_AT_name"):
@@ -191,35 +219,72 @@ def dwarf_analysis(input_binary):
                                     reg_offset = str(var_offset) + "(%rbp)" 
                                     log.debug("\tOffset:\t%s (hex: %s)", reg_offset, hex_var_offset)
                                     # fp.write("\tOffset:\t%s (hex: %s)\n\n" % (reg_offset, hex_var_offset))
+                                    # We found struct_variable, update its begin / end member
+                                    if struct_var == True:
+                                        working_var = last_var.pop()
+                                        # print(working_var.size)
+                                        working_var.offset = var_offset
+                                        for i, member in enumerate(working_var.member_list):
+                                            # begin = 
+                                            if i+1 < len(working_var.member_list):
+                                                # print(working_var.offset, member.offset)
+                                                begin   = hex(int(working_var.offset) + int(member.offset))
+                                                end     = hex(int(working_var.offset) + int(working_var.member_list[i+1].offset))
+                                                # print(hex(begin), hex(end))
+                                                member.begin    = begin
+                                                member.end      = end
+                                                # print(working_var.member_list[i])
+                                                # print(i, i+1, working_var.member_list[i+1])
+                                            else:
+                                                begin   = hex(int(working_var.offset) + int(member.offset))
+                                                end     = hex(int(working_var.offset) + int(working_var.size))
+                                                # print(hex(begin), hex(end))
+                                                member.begin    = begin
+                                                member.end      = end
+                                        pprint.pprint(working_var, width=1)
+                                    elif base_var == True:
+                                        working_var = last_var.pop()
+                                        working_var.offset = hex(var_offset)
+                                        print(working_var)
+                                    
                             print()
                         if (attr.name == "DW_AT_type"):
-                            try:
-                                refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
-                                type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
-                                if type_die.tag == "DW_TAG_structure_type":
-                                    if 'DW_AT_name' in type_die.attributes:
-                                        struct_name = type_die.attributes['DW_AT_name'].value.decode()
-                                        log.debug("\tStruct type found: %s", struct_name)
-                                elif type_die.tag == "DW_TAG_typedef":
-                                    if 'DW_AT_name' in type_die.attributes:
-                                        typedef_name = type_die.attributes['DW_AT_name'].value.decode()
-                                        typedef_ref = type_die.attributes['DW_AT_type'].value + type_die.cu.cu_offset
-                                        typedef_ref_type_die = dwarfinfo.get_DIE_from_refaddr(typedef_ref, type_die.cu)
-                                        # print(typedef_ref_type_die.tag, typedef_ref_type_die)
-                                        if (typedef_ref_type_die.tag == "DW_TAG_structure_type"):
-                                            log.debug("\tStruct type found: %s", typedef_name)
-                                            byte_size   = typedef_ref_type_die.attributes['DW_AT_byte_size'].value
-                                            line_num    = typedef_ref_type_die.attributes['DW_AT_decl_line'].value
-                                            print(byte_size, line_num)
-                                            for item in struct_list:
-                                                if item.size == byte_size and item.line == line_num:
-                                                    if typedef_name != None:
-                                                        item.name = typedef_name
-                            except Exception  as err:
-                                    print(err)
+                            refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
+                            type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
+                            typedef_name = None
+                            type_name = None
+                            if type_die.tag == "DW_TAG_typedef":
+                                typedef_name = type_die.attributes['DW_AT_name'].value.decode()
+                            else:
+                                # if not typedef, then it's going to be base type name (e.g., int)
+                                type_name = type_die.attributes['DW_AT_name'].value.decode()
+                            
+                            rec_type_die = get_dwarf_type(dwarfinfo, DIE.attributes, DIE.cu, DIE.cu.cu_offset)
+                            # We recurisvely go through type to figure out whether typedef is a struct or base type (reg)
+                            if rec_type_die.tag == "DW_TAG_structure_type":                            
+                                log.debug("\tStruct found: %s", typedef_name)
+                                struct_var = True
+                                byte_size   = rec_type_die.attributes['DW_AT_byte_size'].value
+                                line_num    = rec_type_die.attributes['DW_AT_decl_line'].value
+                                # We use byte size + line number to match the struct object
+                                # print(byte_size, line_num)
+                                for item in struct_list:
+                                    # This is to match the struct object
+                                    if item.size == byte_size and item.line == line_num:
+                                        # This is to update struct name
+                                        if typedef_name != None:
+                                            item.name = typedef_name
+                                            last_var.append(item)
+                            elif rec_type_die.tag == "DW_TAG_base_type":   
+                                log.debug("\tVariable found: %s", type_name)
+                                temp_var = VarData(var_name, None, type_name, None)
+                                last_var.append(temp_var)
+                                base_var = True
+                                       
+                                            
                 # This is used to catch struct name in a global fashion.
                 if DIE.tag == "DW_TAG_structure_type":
-                    pprint.pprint(DIE.attributes, width=1)
+                    # pprint.pprint(DIE.attributes, width=1)
                     byte_size = None
                     line_num = None
                     if 'DW_AT_byte_size' in DIE.attributes:
@@ -227,7 +292,7 @@ def dwarf_analysis(input_binary):
                     if 'DW_AT_decl_line' in DIE.attributes:
                         line_num    = DIE.attributes['DW_AT_decl_line'].value
                     if byte_size != None and line_num != None:
-                        temp_struct = StructData(None, byte_size, line_num, None)
+                        temp_struct = StructData(None, None, byte_size, line_num, None)
                 # This is used to catch member variables of a struct =
                 if (DIE.tag == "DW_TAG_member"):
                     temp_member = StructMember(None, None, None, None)
@@ -250,24 +315,13 @@ def dwarf_analysis(input_binary):
                         if (attr.name == "DW_AT_type"):
                             refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
                             type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
-                            print(type_die.tag)
-                            # typedef_ref = type_die.attributes['DW_AT_type'].value + type_die.cu.cu_offset
-                            # typedef_ref_type_die = dwarfinfo.get_DIE_from_refaddr(typedef_ref, type_die.cu)
-                            # print(typedef_ref_type_die)
-                            # if (type_die.tag == 'DW_TAG_array_type'):
-                            #     struct_type = type_die.tag
-                            #     log.debug("Array")
-                            # elif (type_die.tag == 'DW_TAG_typedef'):
-                            #     struct_type = type_die.tag
-                            #     log.debug("Typedef")
-                            # struct_type = typedef_ref_type_die.attributes['DW_AT_name'].value.decode()
-                            type_name = get_dwarf_type(dwarfinfo, DIE.attributes, DIE.cu, DIE.cu.cu_offset)
-                            # print(type_name)
-                            temp_member.type = type_name
+                            # print(type_die.tag)
+                            # Tries to find the base type of variable recursively (e.g., long unsigned int, char)
+                            base_type_name = get_base_type(dwarfinfo, DIE.attributes, DIE.cu, DIE.cu.cu_offset)
+                            temp_member.var_type = ''.join(map(str, base_type_name))
+                            # print(type(base_type_name))
+                            # Base type such as whether it is an array (e.g., DW_TAG_array_type)
                             temp_member.base_type = type_die.tag
-                            
-                        # print(struct_type, attr.name)
-                    # log.debug("Struct member: %s\t| Offset: %s | Type: %s", attr_name, offset.group(1), struct_type)
                     log.debug(temp_member)
                     temp_struct_members.append(temp_member)
                 if (DIE.tag == None):
@@ -282,10 +336,13 @@ def dwarf_analysis(input_binary):
                         temp_struct = None
                 last_die_tag.append(DIE.tag)
     
-    print("Struct list")
-    for item in struct_list:
-        print(item)
+    # print("Struct list")
+    # for item in struct_list:
+    #     print(item)
                         
+    # print("Variable list")
+    # for item in var_list:
+    #     print(item)
                         
     # fp.close()
     
