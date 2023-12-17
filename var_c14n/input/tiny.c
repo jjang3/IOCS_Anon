@@ -222,7 +222,7 @@ static const char* get_mime_type(char *filename){
 int open_listenfd(int port){
     int listenfd, optval=1;
     struct sockaddr_in serveraddr;
-
+    struct timespec ts;
     /* Create a socket descriptor */
     if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
         return -1;
@@ -353,7 +353,9 @@ void process(int fd, struct sockaddr_in *clientaddr){
     // printf("0x%hhx\n", *(int*)main);
     printf("accept request, fd is %d, pid is %d\n", fd, getpid());
     http_request req;
+    
     parse_request(fd, &req);
+    printf("%d\n", req.offset);
 
     struct stat sbuf;
     int status = 200, ffd = open(req.filename, O_RDONLY, 0);

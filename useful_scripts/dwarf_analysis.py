@@ -2,8 +2,8 @@ import sys, getopt
 import logging, os
 import re
 import pprint
-from elftools.dwarf.die import DIE
 
+from elftools.dwarf.die import DIE
 from elftools.elf.elffile import DWARFInfo, ELFFile
 from elftools.dwarf.dwarf_expr import DWARFExprParser, DWARFExprOp
 from elftools.dwarf.descriptions import (
@@ -96,6 +96,9 @@ class FunData:
     name: str = None
     var_list: list[VarData] = None
     struct_list: list[StructData] = None
+    var_count: Optional[int] = None
+    begin: Optional[str] = None
+    end: Optional[str] = None
 
 def get_base_type(dwarfinfo: DWARFInfo, dwarf_die_atts, dwarf_die_cu, dwarf_die_cu_offset):
     # print(dwarf_die_atts)
@@ -189,6 +192,7 @@ def dwarf_analysis(input_binary):
                             lowpc = DIE.attributes['DW_AT_low_pc'].value
                             highpc_attr = DIE.attributes['DW_AT_high_pc']
                             highpc_attr_class = describe_form_class(highpc_attr.form)
+                            
                             if highpc_attr_class == 'address':
                                 highpc = highpc_attr.value
                             elif highpc_attr_class == 'constant':
@@ -197,9 +201,11 @@ def dwarf_analysis(input_binary):
                                 print('Error: invalid DW_AT_high_pc class:',
                                     highpc_attr_class)
                                 continue
+                            
                             funname = DIE.attributes["DW_AT_name"].value.decode()
                             log.info("Function name: %s", funname)
-                            temp_fun = FunData(funname, None, None)
+                            temp_fun = FunData(funname, None, None, None, hex(lowpc), hex(highpc))
+                            
                             # fp.write("Function name: %s\n" % funname)
                             loc = loc_parser.parse_from_attribute(attr, CU['version'])
                             if isinstance(loc, list):
@@ -434,24 +440,27 @@ def dwarf_analysis(input_binary):
 
     # Iterate through function list once to populate the list
     for fun in fun_list:
-        print(fun.name)
+        # print(fun.name)
         temp_struct_list = list()
         temp_var_list = list()
+        temp_count = 0
         for idx, struct in enumerate(struct_list):
             if struct.fun_name == fun.name:
                 temp_struct_list.append(struct)
+                temp_count += 1
         for idx, var in enumerate(var_list):
             if var.fun_name == fun.name:
                 temp_var_list.append(var)
+                temp_count += 1
         fun.struct_list = temp_struct_list.copy()
         fun.var_list = temp_var_list.copy()
-
+        fun.var_count = temp_count
 
     # In second iteration, we will write it to the file pointer
     for fun in fun_list:
         fp.write("\n-------------Begin-----------------\nFunction Name: %s\n" % fun.name)
         for idx, struct in enumerate(struct_list):
-            print(getattr(struct, "offset"))
+            # print(getattr(struct, "offset"))
             fp.write("\n    ------------------------------\n\tName: %s\n" % struct.name)
             fp.write("\tOffset: %s\n" % struct.offset)
             fp.write("\tMembers:\n")
@@ -470,17 +479,10 @@ def dwarf_analysis(input_binary):
         fp.write("\n--------------End------------------\n")
     # test = None
     fp.write("\n")
-    None
-                        
-    # print("Variable list")
-    # fp.write("\nVariables:\n")
-    # pprint.pprint(var_list, width=1)
-
-    #     None
-    
-    pprint.pprint(fun_list, width=1)
+    # pprint.pprint(fun_list, width=1)
 
     fp.close()
+    return fun_list
 
 def process_argument(argv):
     inputfile = ''

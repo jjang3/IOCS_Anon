@@ -22,7 +22,6 @@ from pprint import pprint
 import fileinput
 from dataclasses import dataclass, field
 
-
 from elftools.elf.elffile import ELFFile
 from elftools.dwarf.dwarf_expr import DWARFExprParser, DWARFExprOp
 from elftools.dwarf.descriptions import (
@@ -40,8 +39,50 @@ from elftools.dwarf.enums import DW_EH_encoding_flags
 import logging
 import re
 import shutil
-
 from pathlib import Path
+
+
+@dataclass
+class PatchingInst:
+    inst_type: Optional[str] = None
+    src: Optional[str] = None
+    dest: Optional[str] = None
+    offset: Optional[str] = None
+    suffix: Optional[str] = None
+    # fun: Optional[str] = None
+
+@dataclass(unsafe_hash = True)
+class VarData:
+    name: Optional[str] = None
+    offset: str = None
+    var_type: str = None    
+    base_type: Optional[str] = None
+    fun_name: str = None
+
+@dataclass(unsafe_hash = True)
+class StructData:
+    name: Optional[str] = None
+    offset: str = None
+    size: int = None
+    line: int = None
+    member_list: Optional[list] = None
+    fun_name: str = None
+
+@dataclass(unsafe_hash = True)
+class StructMember:
+    name: str = None
+    offset: str = None
+    var_type: str = None
+    base_type: Optional[str] = None
+    begin: Optional[str] = None
+    end: Optional[str] = None
+
+@dataclass(unsafe_hash=True)
+class FunData:
+    name: str = None
+    var_list: list[VarData] = None
+    struct_list: list[StructData] = None
+
 
 class CustomFormatter(logging.Formatter):
 
@@ -73,6 +114,8 @@ class CustomFormatter(logging.Formatter):
 # examples/ dir of the source distribution.
 sys.path[0:0] = ['.', '..']
 sys.path.insert(0, '/home/jaewon/binaryninja')
+sys.path.insert(0, '/home/jaewon/ARCS_Final/useful_scripts')
+import dwarf_analysis
 
 fun_patch_tgts      = dict()
 fun_off_to_table    = dict()
@@ -250,363 +293,37 @@ def process_binary(filename, funfile, dirloc):
     dir_list = os.listdir(target_dir)
     print(filename, funfile, target_dir)
     # --- DWARF analysis --- #
-    dwarf_analysis(funlist, filename)
-    
-    #--- Binary Ninja Analysis --- #
-    print("Binary ninja input:", filename)
-    with load(filename.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
-        print("Here")                  
-        arch = Architecture['x86_64']
-        bn = BinAnalysis(bv)
-        bn.analyze_binary(funlist)
+    dwarf_output = dwarf_analysis.dwarf_analysis(filename)
+    # print(type(dwarf_output))
+    # for item in dwarf_output:
+    #     print(item)
+    pprint(dwarf_output, width=1)
 
-    var_count += dwarf_var_count
-    # Based on variable counts found by static analysis + dwarf analysis, generate table.
-    generate_table(var_count, target_dir)
+    # #--- Binary Ninja Analysis --- #
+    # print("Binary ninja input:", filename)
+    # with load(filename.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
+    #     print("Here")                  
+    #     arch = Architecture['x86_64']
+    #     bn = BinAnalysis(bv)
+    #     bn.analyze_binary(funlist)
 
-    if dirloc != '':
-        for dir_file in dir_list:
-            if (dir_file.endswith('.s')):
-                process_file(funlist, target_dir, dir_file)
-    else:
-        process_file(funlist, target_dir, target_file)
+    # var_count += dwarf_var_count
+    # # Based on variable counts found by static analysis + dwarf analysis, generate table.
+    # generate_table(var_count, target_dir)
+
+    # if dirloc != '':
+    #     for dir_file in dir_list:
+    #         if (dir_file.endswith('.s')):
+    #             process_file(funlist, target_dir, dir_file)
+    # else:
+    #     process_file(funlist, target_dir, target_file)
             
 
 fun_var_info = dict()
 fun_ignore_info = dict()
-struct_list = list()
-
-@dataclass(unsafe_hash = True)
-class StructData:
-    name: Optional[str] = None
-    size: int = None
-    line: int = None
-    member_list: Optional[list] = None
-    
-@dataclass(unsafe_hash = True)
-class VarData:
-    name: str = None
-    struct_type: str = None
-    offset: str = None
-
-@dataclass
-class PatchingInst:
-    inst_type: Optional[str] = None
-    src: Optional[str] = None
-    dest: Optional[str] = None
-    offset: Optional[str] = None
-    suffix: Optional[str] = None
-    # fun: Optional[str] = None
 
 var_count = 0
 dwarf_var_count = 0
-def dwarf_analysis(funlist, filename):
-    global dwarf_var_count
-    with open(filename, 'rb') as f:
-        elffile = ELFFile(f)
-
-        if not elffile.has_dwarf_info():
-            print('  file has no DWARF info')
-            return
-
-        # get_dwarf_info returns a DWARFInfo context object, which is the
-        # starting point for all DWARF-based processing in pyelftools.
-        dwarfinfo = elffile.get_dwarf_info()
-        
-        # The location lists are extracted by DWARFInfo from the .debug_loc
-        # section, and returned here as a LocationLists object.
-        location_lists = dwarfinfo.location_lists()
-
-        # This is required for the descriptions module to correctly decode
-        # register names contained in DWARF expressions.
-        set_global_machine_arch(elffile.get_machine_arch())
-
-        # Create a LocationParser object that parses the DIE attributes and
-        # creates objects representing the actual location information.
-        loc_parser = LocationParser(location_lists)
-        target_fun = bool()
-        reg_regex = r"(?<=\(DW_OP_fbreg:\s)(.*)(?=\))"
-        rbp_regex = r"(?<=\(DW_OP_breg.\s\(rbp\):\s)(.*)(?=\))"
-        off_regex = r"(?<=\(DW_OP_plus_uconst:\s)(.*)(?=\))"
-        temp_struct = None
-        funname = None
-        lowpc = None # Start address
-        var_list = list()
-        var_blacklist = list()
-        for CU in dwarfinfo.iter_CUs():
-            # This is required for a program with only one function (main)
-            DIE_count = sum(1 for _ in CU.iter_DIEs()) - 1
-            DIE_index = 0
-            # print(DIE_count)
-            last_die_tag = []
-            temp_struct = None
-            temp_struct_members = list()
-            for DIE in CU.iter_DIEs():
-                # print(DIE_index, DIE.tag)
-                DIE_index += 1
-                # Check if this attribute contains location information
-                #     print("----------------------------------------------------------------------------\n")
-                if (DIE.tag == "DW_TAG_subprogram"):
-                    if (len(var_list) != 0 and funname is not None):
-                        # Store the variable for the function if finihsed
-                        # print("Store var_list for", funname, len(var_list))
-                        print(colored("Store var_list for %s | Var count: %d" % (funname, len(var_list)), 'blue', attrs=['reverse']))
-                        pprint(var_list)
-                        pprint(var_blacklist)
-                        dwarf_var_count += len(var_list)
-                        delete_set = set()
-                        delete_list = list()
-                        
-                        # for item in var_list:
-                        #     # For sequential sort function
-                        #     if item.name == "nlo" and funname == "sequential_sort":
-                        #         var_list.remove(item)
-                        fun_var_info[funname] = var_list.copy()
-                        fun_entry_to_args[hex(lowpc)] = len(var_list)
-                        print(fun_entry_to_args[hex(lowpc)], hex(lowpc))
-                        print(var_list)
-                        
-                        # -- This is used to debug specific variable --
-                        # debug_var_count = 3
-                        # debug_var_list = var_list[0:debug_var_count]
-                        # delete_list = debug_var_list.copy()
-                        # fun_entry_to_args[hex(lowpc)] = len(debug_var_list)
-                        # pprint(debug_var_list)
-                        # print(len(debug_var_list))
-                        # # Keeping specific variable
-                        # # for item in debug_var_list:
-                        # #     if item.name != "i":
-                        # #         print("Removing: ", item.name)
-                        # #         delete_set.add(item)
-                        # #     else:
-                        # #         print("Keeping: ", item.name)
-                        # # Removing specific variable
-                        # for item in debug_var_list:
-                        #     if item.name == "new_column_info_alloc":
-                        #         delete_set.add(item)
-
-                        # # pprint(delete_set)
-                        # # pprint(delete_list)
-                        # for del_item in delete_list:
-                        #     if del_item in delete_set:
-                        #         print(del_item, "removed")
-                        #         debug_var_list.remove(del_item)
-
-                        # pprint(debug_var_list)
-                        # dwarf_var_count += len(debug_var_list)
-                        # fun_var_info[funname] = debug_var_list.copy()
-                        # debug_var_list.clear()
-                        # -- End debug -- #
-                        
-                        fun_ignore_info[funname] = var_blacklist.copy()
-                        var_list.clear()
-                        var_blacklist.clear()
-                    elif (len(var_blacklist) != 0 and funname is not None):
-                        # In case if a function doesn't have local variable, but have blacklist
-                        var_blacklist.clear()
-                    target_fun = False
-                    fun_frame_base = None
-                    
-                    for attr in DIE.attributes.values():
-                        if loc_parser.attribute_has_location(attr, CU['version']):
-                            lowpc = DIE.attributes['DW_AT_low_pc'].value
-                            highpc_attr = DIE.attributes['DW_AT_high_pc']
-                            highpc_attr_class = describe_form_class(highpc_attr.form)
-                            if highpc_attr_class == 'address':
-                                highpc = highpc_attr.value
-                            elif highpc_attr_class == 'constant':
-                                highpc = lowpc + highpc_attr.value
-                            else:
-                                print('Error: invalid DW_AT_high_pc class:',
-                                    highpc_attr_class)
-                                continue
-                            funname = DIE.attributes["DW_AT_name"].value.decode()
-                            if funname in funlist:
-                                target_fun = True
-                                print("Target fun: ", target_fun)
-                                print("Function name:", funname, "\t| Begin: ", hex(lowpc), "\t| End:", hex(highpc))
-                            # print('  Found a compile unit at offset %s, length %s' % (
-                            #     CU.cu_offset, CU['unit_length']))
-                            loc = loc_parser.parse_from_attribute(attr, CU['version'])
-                            if isinstance(loc, list):
-                                for loc_entity in loc:
-                                    if isinstance(loc_entity, LocationEntry):
-                                        offset = describe_DWARF_expr(loc_entity.loc_expr, dwarfinfo.structs, CU.cu_offset)
-                                        if "rbp" in offset:
-                                            if rbp_offset := re.search(rbp_regex, offset):
-                                                fun_frame_base = int(rbp_offset.group(1))
-                                                # print(fun_frame_base)
-                        # if (attr.name == "DW_AT_type"):
-                        #     refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
-                        #     type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
-                        #     print(type_die)
-                    if target_fun == True:
-                        print(colored("Target fun %s" % (funname), 'green', attrs=['reverse']))
-                    
-                if (DIE.tag == "DW_TAG_variable"):
-                    var_name = None
-                    reg_offset = None
-                    struct_name = None
-                    type_die = None
-                    for attr in DIE.attributes.values():
-                        offset = None
-                        if (attr.name == "DW_AT_name" and target_fun == True):
-                            print("\tVariable name:", DIE.attributes["DW_AT_name"].value.decode())
-                            var_name = DIE.attributes["DW_AT_name"].value.decode()     
-                        if (loc_parser.attribute_has_location(attr, CU['version']) and target_fun == True):
-                            loc = loc_parser.parse_from_attribute(attr,
-                                                                CU['version'])
-                            if isinstance(loc, LocationExpr):
-                                offset = describe_DWARF_expr(loc.loc_expr, dwarfinfo.structs, CU.cu_offset)
-                                if offset_regex := re.search(reg_regex, offset):
-                                    var_offset = int(offset_regex.group(1))
-                                    var_offset += fun_frame_base
-                                    reg_offset = str(var_offset) + "(%rbp)" 
-                                    # print("\t\tStarting offset: ", reg_offset)
-                        if (attr.name == "DW_AT_type" and target_fun == True):
-                            try:
-                                refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
-                                type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
-                                if type_die.tag == "DW_TAG_structure_type":
-                                    if 'DW_AT_name' in type_die.attributes:
-                                        struct_name = type_die.attributes['DW_AT_name'].value.decode()
-                                        print("\t\tStruct type found: ", struct_name)
-                                        log.debug("\tStruct type found: %s", struct_name)
-                                elif type_die.tag == "DW_TAG_typedef":
-                                    if 'DW_AT_name' in type_die.attributes:
-                                        typedef_name = type_die.attributes['DW_AT_name'].value.decode()
-                                        typedef_ref = type_die.attributes['DW_AT_type'].value + type_die.cu.cu_offset
-                                        typedef_ref_type_die = dwarfinfo.get_DIE_from_refaddr(typedef_ref, type_die.cu)
-                                        # print(typedef_ref_type_die.tag, typedef_ref_type_die)
-                                        if (typedef_ref_type_die.tag == "DW_TAG_structure_type"):
-                                            log.debug("\tStruct type found: %s", typedef_name)
-                                            byte_size   = typedef_ref_type_die.attributes['DW_AT_byte_size'].value
-                                            line_num    = typedef_ref_type_die.attributes['DW_AT_decl_line'].value
-                                            print(byte_size, line_num)
-                                            for item in struct_list:
-                                                if item.size == byte_size and item.line == line_num:
-                                                    if typedef_name != None:
-                                                        item.name = typedef_name
-                                elif type_die.tag == "DW_TAG_pointer_type":
-                                    # print(hex(type_die.attributes['DW_FORM_ref4'].value))
-                                    ptr_ref = type_die.attributes['DW_AT_type'].value + type_die.cu.cu_offset
-                                    ptr_type_die = dwarfinfo.get_DIE_from_refaddr(ptr_ref, type_die.cu)
-                                    print("Pointer:", ptr_type_die.tag, ptr_type_die.attributes)
-                                    if 'DW_AT_name' in ptr_type_die.attributes:
-                                        obj_name = ptr_type_die.attributes['DW_AT_name'].value.decode()
-                                        if (ptr_type_die.tag == "DW_TAG_structure_type"):
-                                            print("\t\tStruct ptr type found: ", obj_name)
-                                        elif (ptr_type_die.tag == "DW_TAG_base_type"):
-                                            print("\t\tPointer type found: ", obj_name)
-                                        elif (ptr_type_die.tag == "DW_TAG_typedef"):
-                                            print("\t\tTypedef ptr type found: ", obj_name)
-                                        elif (ptr_type_die.tag == "DW_TAG_const_type"):
-                                            print("\t\tConst ptr type found: ", obj_name)
-                                        # dwarf_var_count += 1
-                                        struct_name = obj_name
-                                        # for struct_item in struct_set:
-                                        #     if struct_name == struct_item.name:
-                                        #         # dwarf_var_count += len(struct_item.member_list)
-                                        #         None
-                                    elif (ptr_type_die.tag == "DW_TAG_pointer_type"):
-                                        print("\t\tDouble Pointer type found")
-                                        struct_name = "double"
-                                # else:
-                                    None
-                                    # dwarf_var_count += 1
-                            except Exception  as err:
-                                print(err)
-                    
-                    temp_var = VarData(var_name, struct_name, reg_offset)
-                    # Avoid struct variable and variable which offset cannot be determined in compile-time
-                    if type_die != None:
-                        # Question (think about whether we can / need to support these types:)
-                        # or type_die.tag == "DW_TAG_array_type" or type_die.tag == "DW_TAG_enumeration_type"
-                        # Comment: I could probably support array type, but is it necessary yet? probably not.
-                        if (type_die.tag == "DW_TAG_base_type" or type_die.tag == "DW_TAG_typedef") and reg_offset != None:
-                            print("Type:", type_die.tag)
-                            print("Inserting into the list: ", temp_var, "\n")
-                            var_list.append(temp_var)
-                        elif (type_die.tag == "DW_TAG_pointer_type" or type_die.tag == "DW_TAG_structure_type" or temp_var.struct_type != None) and reg_offset != None:
-                            print("Type:", type_die.tag)
-                            print("Inserting into the blacklist: ", reg_offset, "\n")
-                            var_blacklist.append(reg_offset)
-                
-                # This is used to catch struct name in a global fashion.
-                if (DIE.tag == "DW_TAG_structure_type"):
-                    # print(DIE.attributes)
-                    byte_size = None
-                    line_num = None
-                    if 'DW_AT_byte_size' in DIE.attributes:
-                        byte_size   = DIE.attributes['DW_AT_byte_size'].value
-                    if 'DW_AT_decl_line' in DIE.attributes:
-                        line_num    = DIE.attributes['DW_AT_decl_line'].value
-                    if byte_size != None and line_num != None:
-                        temp_struct = StructData(None, byte_size, line_num, None)
-                    print(temp_struct)
-                # This is used to catch member variables of a struct 
-                if (DIE.tag == "DW_TAG_member"):
-                    attr_name = None
-                    offset = None
-                    for attr in DIE.attributes.values():
-                        if(attr.name == "DW_AT_name"):
-                            attr_name = DIE.attributes["DW_AT_name"].value.decode()
-                            # log.debug("\tStruct member found: %s", attr_name)
-                        if loc_parser.attribute_has_location(attr, CU['version']):
-                            loc = loc_parser.parse_from_attribute(attr,
-                                                                CU['version'])
-                            if(attr.name == "DW_AT_data_member_location"):
-                                # print(attr)
-                                if isinstance(loc, LocationExpr):
-                                    offset = re.search(off_regex, describe_DWARF_expr(loc.loc_expr, dwarfinfo.structs, CU.cu_offset))
-                                    # log.debug(offset.group(1))
-                        if (attr.name == "DW_AT_type"):
-                            refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
-                            type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
-                            print(refaddr)
-                    log.debug("Struct member name: %s\t| Offset: %s\n", attr_name, offset.group(1))
-                    temp_struct_members.append((attr_name, offset.group(1)))
-                # Struct stuff
-
-
-                if (DIE.tag == None and len(var_list) != 0 and DIE_index == DIE_count):
-                    #  This is used to store the variable list for a program with only one function
-                    print(colored("Store var_list for %s | Var count: %d" % (funname, len(var_list)), 'blue', attrs=['reverse']))
-                    pprint(var_list)
-                    pprint(var_blacklist)
-                    dwarf_var_count += len(var_list)
-                    fun_var_info[funname] = var_list.copy()
-                    fun_ignore_info[funname] = var_blacklist.copy()
-                    var_list.clear()
-                    var_blacklist.clear()
-                elif (DIE.tag == None):
-                    last_tag = last_die_tag.pop()
-                    if (last_tag == "DW_TAG_member"):
-                        # Put members into the struct object
-                        if temp_struct != None: 
-                            temp_struct.member_list = temp_struct_members.copy()
-                            # log.debug("Inserting temp_struct")
-                            # print(temp_struct)
-                            struct_list.append(temp_struct)
-                        temp_struct_members.clear()
-                        temp_struct = None
-                last_die_tag.append(DIE.tag)
-                # elif (DIE.tag == None and funname != None and lowpc != None and target_fun is True and len(var_list) == 0):
-                #     # print(colored("Store var_list for %s | Var count: %d" % (funname, len(var_list)), 'blue', attrs=['reverse']))
-                #     fun_entry_to_args[lowpc] = len(var_list)
-                #     print(fun_entry_to_args[lowpc])
-            # if (target_fun == True):
-            #     print("----------------------------------------------------------------------------\n")
-            # ------- After DIE ------- #  
-    
-    # for item in struct_set:
-    #     print(item)
-    
-    # for item in fun_var_info:
-    #     print("Variables for:", item)
-    #     for var in fun_var_info[item]:
-    #         print(var)
-    print("Variable count: ", dwarf_var_count)
 
 def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
     log.critical("Patch the instruction %s", disassembly)

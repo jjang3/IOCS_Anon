@@ -96,5 +96,8 @@
         "cinttypes": "cpp"
     },
     "cmake.configureOnOpen": true,
-    "cmake.sourceDirectory": "/home/jaewon/ARCS/var_c14n/static_analysis"
+    "cmake.sourceDirectory": "/home/jaewon/ARCS/var_c14n/static_analysis",
+    "python.analysis.extraPaths": [
+        "./useful_scripts"
+    ]
 }

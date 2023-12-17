@@ -934,7 +934,7 @@ dta_tainted_mem_write(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg, ADDRI
 			auto reg_name = REG_StringShort(REG_FullRegName(reg));
 			// if (reg_name == "rsp") {
 			// cerr << "W " << std::hex << val << " " << endl;
-			printf("Tagged Mem Write (TMW) offset: %lx %lx %lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
+			printf("Tagged Mem Write (TMW) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
 			// }
 			
 		}
@@ -970,7 +970,7 @@ dta_tainted_mem_read(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg)
 			// if (reg_name == "rsp") {
 			// 	cerr << "W " << std::hex << val << " " << disp << endl;
 			// }
-			printf("Tagged Mem Read (TMR) offset: %lx %lx %lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
+			printf("Tagged Mem Read (TMR) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
 		}
 		#endif
 		if (taintSrc == false){
