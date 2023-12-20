@@ -132,7 +132,8 @@ class SizeType(Enum):
     
 def generate_table(varcount, target_dir):
     varlist = list()
-    if varcount % 2 != 0:
+    # print(varcount)
+    if varcount % 2 != 0 and varcount != 1:
         # This is to avoid malloc(): corrupted top size error, malloc needs to happen in mod 2
         varcount += 1
     # ptr = "%p\n".strip()    printf("%s", addr_%d);
@@ -157,7 +158,7 @@ void __attribute__((constructor)) table()
 """ % (varcount)
 
     count = 0
-    while count <= varcount: 
+    while count < varcount: # May need to make this <= in order to avoid mod 2 bug
         varentry = "\tvoid *addr_%d;" % count
         mmapentry = """
     addr_%d = mmap(NULL, getpagesize(), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS | MAP_32BIT, -1, 0);     
@@ -269,9 +270,14 @@ fun_var_info = dict()
 fun_struct_info = dict()
 fun_ignore_info = dict()
 
+# Total number of variables from the DWARF analysis
+dwarf_var_count = 0
+
+# Actual number of variables that will be patched
+patch_var_count = 0
 
 def process_binary(filename, funfile, dirloc):
-    global var_count
+    global patch_var_count
     global dwarf_var_count
     target_dir = None        
     # print("Dirloc", dirloc)
@@ -306,8 +312,10 @@ def process_binary(filename, funfile, dirloc):
     # print(type(dwarf_output))
     for fun in dwarf_output:
         fun_var_info[fun.name] = fun.var_list.copy()
-        fun_struct_info[fun.name] = fun.struct_list.copy()
+        # fun_struct_info[fun.name] = fun.struct_list.copy()
+        fun_struct_info[fun.name] = list()
         fun_entry_to_args[fun.begin] = fun.var_count
+        dwarf_var_count += fun.var_count
         
     # pprint(dwarf_output, width=1)
 
@@ -319,16 +327,15 @@ def process_binary(filename, funfile, dirloc):
         bn = BinAnalysis(bv)
         bn.analyze_binary(funlist)
 
-    # var_count += dwarf_var_count
-    # # Based on variable counts found by static analysis + dwarf analysis, generate table.
-    # generate_table(var_count, target_dir)
+    # Based on variable counts found by static analysis + dwarf analysis, generate table.
+    generate_table(patch_var_count, target_dir)
 
-    # if dirloc != '':
-    #     for dir_file in dir_list:
-    #         if (dir_file.endswith('.s')):
-    #             process_file(funlist, target_dir, dir_file)
-    # else:
-    #     process_file(funlist, target_dir, target_file)
+    if dirloc != '':
+        for dir_file in dir_list:
+            if (dir_file.endswith('.s')):
+                process_file(funlist, target_dir, dir_file)
+    else:
+        process_file(funlist, target_dir, target_file)
             
 # var_count = 0
 # dwarf_var_count = 0
@@ -468,7 +475,7 @@ def patch_inst(disassembly, temp: PatchingInst, offset_targets: dict):
             elif temp.suffix == "q":
                 new_inst_type = "divq_load_gs"
             line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%d\n" % (disassembly,new_inst_type, tgt_offset), disassembly)
-    log.info(line)
+    # log.info(line)
     return line
     
 def process_file(funlist, target_dir, target_file):
@@ -820,8 +827,11 @@ class BinAnalysis:
         # pprint(var_targets)
         for item in var_targets:
             if expr == item.offset_expr:
-                print(expr, item.offset)
-                return True
+                # print(item.base_type)
+                # if item.base_type != "DW_TAG_pointer_type": # Ignore pointer for now
+                if item.base_type == "DW_TAG_base_type":
+                    print(expr, item.offset)
+                    return True
         for item in struct_targets:
             if expr == item.offset_expr:
                 print(expr, item.offset)
@@ -875,9 +885,10 @@ class BinAnalysis:
             #  Question to ask(?) - Do I need to do variable check or just use the offset directly?
             for tgt in var_targets:
                 if expr == tgt.offset_expr:
-                    log.critical("Found the offset")
-                    # spec_log.critical("Found the offset")
-                    return True, expr
+                    if tgt.base_type == "DW_TAG_base_type": # Ignore pointer for now
+                        log.critical("Found the offset")
+                        # spec_log.critical("Found the offset")
+                        return True, expr
             
             for tgt in struct_targets:
                 if expr == tgt.offset_expr:
@@ -981,7 +992,7 @@ class BinAnalysis:
     # Need debug info to handle static functions
     def analyze_binary(self, funlist):
         print("Step: Binary Ninja")
-        total_var_count = 0
+        global patch_var_count
         for func in self.bv.functions:
             self.fun = func.name
             if func.name in funlist:            
@@ -1004,7 +1015,7 @@ class BinAnalysis:
                     for item in var_targets:
                         spec_log.info("\tFun: %s | %s", func.name, item)
                     self.backward_slice(func.name, mlil_fun, llil_fun, instr_fun, var_targets, struct_targets, ignore_targets)
-                    # fun_patch_tgts[func.name] = self.cur_fun_tgts.copy()
+                    fun_patch_tgts[func.name] = self.cur_fun_tgts.copy()
                     # print(fun_patch_tgts[func.name])
                     # exit()
                     for item in self.cur_fun_tgts:
@@ -1012,14 +1023,14 @@ class BinAnalysis:
                     fun_off_to_table[func.name] = self.off_to_table.copy()
                     spec_log.debug("Offset to table count: %d", len(self.off_to_table))
                     for item in self.off_to_table:
-                        total_var_count += 1
+                        patch_var_count += 1
                         spec_log.debug("Fun: %s | %s", func.name, item)
                     self.off_to_table.clear()
                     self.cur_fun_tgts.clear()
                 except Exception as error:
                     log.error("No variable targets: %s", error)
-        spec_log.critical("Total variable count: %d", total_var_count)
-        log.info("Total variable count: %d", total_var_count)
+        spec_log.critical("Total variable count: %d", patch_var_count)
+        log.info("Total variable count: %d", patch_var_count)
         time.sleep(3)
                 
     def backward_slice(self, name, medium, low, instr, var_targets, struct_targets, ignore_targets):
@@ -1045,18 +1056,18 @@ class BinAnalysis:
                     # var_10 -> -8(%rbp), this information is going to be used and saved in the case when we analyze the LLIL
                     # To-do: Is there a need to analyze parameters of call instruction? Or not necessary.
                     patch_tgt = self.analyze_call_inst(inst_ssa, medium, var_targets, struct_targets, ignore_targets)
-                    if patch_tgt != None:
+                    if patch_tgt != None and patch_tgt[1] != None:
                         # Try to find the Patch target: (<var int64_t var_28>, '-32(%rbp)') so it can be used in the find_var() to see if offset exists. Offset can be None which means it is useless.
                         self.patch_tgts.add(patch_tgt)
-                        log.debug("Patch target: %s", patch_tgt)
+                        log.debug("Adding patch target: %s", patch_tgt)
                         # spec_log.info("Analyze Call Inst | Patch target: %s", patch_tgt)
                     else:
                         for param_var in inst_ssa.params:
                             # print(param_var)
                             patch_tgt = self.analyze_params(inst_ssa, param_var, medium, var_targets, struct_targets, ignore_targets)
-                            if patch_tgt != None:
+                            if patch_tgt != None and patch_tgt[1] != None:
                                 self.patch_tgts.add(patch_tgt)
-                                log.debug("Patch target: %s", patch_tgt)
+                                log.debug("Adding patch target: %s", patch_tgt)
                                 # spec_log.info("Analyze Params | Patch target: %s", patch_tgt)
                     None
                 elif inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_SSA or \
@@ -1089,9 +1100,9 @@ class BinAnalysis:
                             log.info("%s | Analyze inst: %s", self.fun, inst_ssa)
                             # spec_log.info("%s | Analyze inst: %s", self.fun, inst_ssa)
                             patch_tgt = self.analyze_inst(inst_ssa, medium, var_targets, struct_targets, ignore_targets)
-                            if patch_tgt != None:
+                            if patch_tgt != None and patch_tgt[1] != None:
                                 self.patch_tgts.add(patch_tgt)
-                                log.debug("Patch target: %s", patch_tgt)
+                                log.debug("Adding patch target: %s", patch_tgt)
                     except Exception as error:
                         log.error("%s", error)
                         # spec_log.error("%s | inst: %s", error, inst_ssa)
@@ -1111,9 +1122,9 @@ class BinAnalysis:
                             log.info("%s | Analyze inst: %s", self.fun, inst_ssa)
                             # spec_log.info("%s | Analyze inst: %s", self.fun, inst_ssa)
                             patch_tgt = self.analyze_inst(inst_ssa, medium, var_targets, ignore_targets)
-                            if patch_tgt != None:
+                            if patch_tgt != None and patch_tgt[1] != None:
                                 self.patch_tgts.add(patch_tgt)
-                                log.debug("Patch target: %s", patch_tgt)
+                                log.debug("Adding patch target: %s", patch_tgt)
                     except Exception as error:
                         log.error("%s", error)
                         

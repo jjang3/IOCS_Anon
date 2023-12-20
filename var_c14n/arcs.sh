@@ -101,7 +101,7 @@ rewrite()
     cd ${arcs_input_path} && make ${input}.out
     # echo ${current_path}
     cd ${rewrite_path} && python3 binary_patch.py --binary ${input}.out --fun taint.in
-    # cd ${arcs_i_result_path} && make lib && make ${input}.new
+    cd ${arcs_i_result_path} && make lib && make ${input}.new
 }
 
 while true; do
