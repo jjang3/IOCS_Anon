@@ -26,9 +26,9 @@ int main()
     int test_2;
     test_2 = 91;
     
-    // test test;
-    // test.test = 1;
-    // test.end = 1717;
+    test test;
+    test.test = 1;
+    test.end = 1717;
 
     // char *filename = malloc(sizeof(char)*8196);
     // filename = "filename\n";
@@ -36,6 +36,7 @@ int main()
     // char **filename_ptr = &filename;
 
     // printf("Hello World %s %d %d %d %s %p %p\n", s1.filename, s1.offset, s1.end, test_2, filename, &filename, filename_ptr);
-    printf("Hello World %s %d %d %d\n", s1.filename, s1.offset, s1.end, test_2);
+    printf("Hello World %s %d %d %d %d %d\n", s1.filename, s1.offset, s1.end, test_2, test.test, test.end);
+    // printf("Hello World %s %d %d %d\n", s1.filename, s1.offset, s1.end, test_2);
     return 0; 
 }

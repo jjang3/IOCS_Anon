@@ -312,8 +312,9 @@ def process_binary(filename, funfile, dirloc):
     # print(type(dwarf_output))
     for fun in dwarf_output:
         fun_var_info[fun.name] = fun.var_list.copy()
-        # fun_struct_info[fun.name] = fun.struct_list.copy()
-        fun_struct_info[fun.name] = list()
+        fun_struct_info[fun.name] = fun.struct_list.copy()
+        # exit()
+        # fun_struct_info[fun.name] = list() # Disabling struct
         fun_entry_to_args[fun.begin] = fun.var_count
         dwarf_var_count += fun.var_count
         
@@ -832,10 +833,11 @@ class BinAnalysis:
                 if item.base_type == "DW_TAG_base_type":
                     print(expr, item.offset)
                     return True
-        for item in struct_targets:
-            if expr == item.offset_expr:
-                print(expr, item.offset)
-                return True
+        for struct in struct_targets:
+            for member in struct.member_list:
+                if expr == member.offset_expr:
+                    print(expr, item.offset, item.base_type)
+                    return True
         return False
     
     def search_var(self, inst_ssa):
@@ -890,11 +892,19 @@ class BinAnalysis:
                         # spec_log.critical("Found the offset")
                         return True, expr
             
-            for tgt in struct_targets:
-                if expr == tgt.offset_expr:
-                    log.critical("Found the offset")
-                    # spec_log.critical("Found the offset")
-                    return True, expr
+            # for tgt in struct_targets:
+            #     log.debug("%s %s", expr, tgt.offset_expr)
+            #     if expr == tgt.offset_expr:
+            #         log.critical("Found the offset")
+            #         # spec_log.critical("Found the offset")
+            #         return True, expr
+            print(expr)
+            for struct in struct_targets:
+                for member in struct.member_list:
+                    # print(member.offset_expr)
+                    if expr == member.offset_expr:
+                        log.critical("Found the offset")
+                        return True, expr
 
             return False, None
         except:
@@ -1045,9 +1055,10 @@ class BinAnalysis:
         """
         spec_log.info("Backward Slice")
         log.info("Backward Slice")
-        for mlil_bb in medium:
-            for inst in mlil_bb:
-                inst_ssa = inst.ssa_form
+        for mlil_bb in medium.ssa_form:
+            for inst_ssa in mlil_bb:
+                # print(inst_ssa)
+                # inst_ssa = inst.ssa_form
                 log.warning("%s | %s", inst_ssa, inst_ssa.operation)
                 # print(inst_ssa, inst_ssa.operation, inst_ssa.vars_address_taken, inst_ssa.vars_written[0].var, len(inst_ssa.vars_read), inst_ssa.vars_written[0].var.core_variable.source_type)
                 # These operations are highest level of variable assignments are one we care about.
@@ -1055,20 +1066,22 @@ class BinAnalysis:
                     # First analyze any function call instructions (e.g., malloc/calloc) to find potential patch targets
                     # var_10 -> -8(%rbp), this information is going to be used and saved in the case when we analyze the LLIL
                     # To-do: Is there a need to analyze parameters of call instruction? Or not necessary.
-                    patch_tgt = self.analyze_call_inst(inst_ssa, medium, var_targets, struct_targets, ignore_targets)
-                    if patch_tgt != None and patch_tgt[1] != None:
-                        # Try to find the Patch target: (<var int64_t var_28>, '-32(%rbp)') so it can be used in the find_var() to see if offset exists. Offset can be None which means it is useless.
-                        self.patch_tgts.add(patch_tgt)
-                        log.debug("Adding patch target: %s", patch_tgt)
-                        # spec_log.info("Analyze Call Inst | Patch target: %s", patch_tgt)
-                    else:
-                        for param_var in inst_ssa.params:
-                            # print(param_var)
-                            patch_tgt = self.analyze_params(inst_ssa, param_var, medium, var_targets, struct_targets, ignore_targets)
-                            if patch_tgt != None and patch_tgt[1] != None:
-                                self.patch_tgts.add(patch_tgt)
-                                log.debug("Adding patch target: %s", patch_tgt)
-                                # spec_log.info("Analyze Params | Patch target: %s", patch_tgt)
+                    # log.warning("%s %s", inst_ssa, inst_ssa.operation)
+                    
+                    # patch_tgt = self.analyze_call_inst(inst_ssa, medium, var_targets, struct_targets, ignore_targets)
+                    # if patch_tgt != None and patch_tgt[1] != None:
+                    #     # Try to find the Patch target: (<var int64_t var_28>, '-32(%rbp)') so it can be used in the find_var() to see if offset exists. Offset can be None which means it is useless.
+                    #     self.patch_tgts.add(patch_tgt)
+                    #     log.debug("Adding patch target: %s", patch_tgt)
+                    #     # spec_log.info("Analyze Call Inst | Patch target: %s", patch_tgt)
+                    # else:
+                    #     for param_var in inst_ssa.params:
+                    #         # print(param_var)
+                    #         patch_tgt = self.analyze_params(inst_ssa, param_var, medium, var_targets, struct_targets, ignore_targets)
+                    #         if patch_tgt != None and patch_tgt[1] != None:
+                    #             self.patch_tgts.add(patch_tgt)
+                    #             log.debug("Adding patch target: %s", patch_tgt)
+                    #             # spec_log.info("Analyze Params | Patch target: %s", patch_tgt)
                     None
                 elif inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_SSA or \
                      inst_ssa.operation == MediumLevelILOperation.MLIL_SET_VAR_ALIASED:
@@ -1108,6 +1121,7 @@ class BinAnalysis:
                         # spec_log.error("%s | inst: %s", error, inst_ssa)
                 elif inst_ssa.operation == MediumLevelILOperation.MLIL_STORE_SSA:
                     # [%rsp_5#9 - 8].q = &var_1d1 @ mem#68 -> mem#69
+                    # log.warning("%s %s", inst_ssa, inst_ssa.operation)
                     try:
                         var = None
                         if len(inst_ssa.vars_address_taken) != 0:
@@ -1127,7 +1141,10 @@ class BinAnalysis:
                                 log.debug("Adding patch target: %s", patch_tgt)
                     except Exception as error:
                         log.error("%s", error)
-                        
+                else:
+                    # log.warning("%s %s", inst_ssa, inst_ssa.operation)
+                    None
+
         # After all analysis is done with the MLIL level, find patch targets by dissecting disassembly of LLIL
         for llil_bb in low:
             for inst in llil_bb:

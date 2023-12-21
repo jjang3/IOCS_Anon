@@ -58,7 +58,7 @@ log = logging.getLogger(__name__)
 log.setLevel(debug_level)
 
 # create console handler with a higher log level
-log_disable = False
+log_disable = True
 log.addHandler(ch)
 log.disabled = log_disable
 
@@ -70,6 +70,7 @@ class VarData:
     var_type: str = None    
     base_type: Optional[str] = None
     fun_name: str = None
+    offset_expr: str = None
 
 struct_list = list()
 @dataclass(unsafe_hash = True)
@@ -80,6 +81,7 @@ class StructData:
     line: int = None
     member_list: Optional[list] = None
     fun_name: str = None
+    offset_expr: str = None
 
 @dataclass(unsafe_hash = True)
 class StructMember:
@@ -89,6 +91,7 @@ class StructMember:
     base_type: Optional[str] = None
     begin: Optional[str] = None
     end: Optional[str] = None
+    offset_expr: str = None
 
 fun_list = list()
 @dataclass(unsafe_hash=True)
@@ -248,28 +251,33 @@ def dwarf_analysis(input_binary):
                                         # print(working_var.size)
                                         working_var.fun_name = funname
                                         working_var.offset = hex_var_offset
+                                        working_var.offset_expr = reg_offset
                                         for i, member in enumerate(working_var.member_list):
                                             # begin = 
                                             if i+1 < len(working_var.member_list):
                                                 # print(working_var.offset, member.offset)
                                                 begin   = hex(int(var_offset) + int(member.offset))
                                                 end     = hex(int(var_offset) + int(working_var.member_list[i+1].offset))
+                                                member_var_offset = str(int(begin, base=16)) + "(%rbp)" 
                                                 member.begin    = begin
                                                 member.end      = end
+                                                member.offset_expr = member_var_offset
                                             else:
                                                 begin   = hex(int(var_offset) + int(member.offset))
                                                 end     = hex(int(var_offset) + int(working_var.size))
+                                                member_var_offset = str(int(begin, base=16)) + "(%rbp)" 
                                                 member.begin    = begin
                                                 member.end      = end
+                                                member.offset_expr = member_var_offset
                                         # pprint.pprint(working_var, width=1)
                                     # This is just a base variable, update its offset like regular
                                     elif base_var == True:
                                         working_var = last_var.pop()
                                         working_var.offset = hex(var_offset)
+                                        working_var.offset_expr = reg_offset
                                         var_list.append(working_var)
                                         # print(working_var)
-                                    
-                            print()
+                            # print()
                         if (attr.name == "DW_AT_type"):
                             refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
                             type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
@@ -304,7 +312,7 @@ def dwarf_analysis(input_binary):
                                 # exit()
                             else:
                                 # if not typedef, then it's going to be base type name (e.g., int)
-                                print(type_die)
+                                # print(type_die)
                                 type_name = type_die.attributes['DW_AT_name'].value.decode()
                             
                             rec_type_die = get_dwarf_type(dwarfinfo, DIE.attributes, DIE.cu, DIE.cu.cu_offset)
@@ -339,7 +347,7 @@ def dwarf_analysis(input_binary):
                                 byte_size   = arr_ptr_type_die.attributes['DW_AT_byte_size'].value
                                 line_num    = arr_ptr_type_die.attributes['DW_AT_decl_line'].value
                                 # We use byte size + line number to match the struct object
-                                print(byte_size, line_num)
+                                # print(byte_size, line_num)
                                 for item in struct_list:
                                     # This is to match the struct object
                                     if item.size == byte_size and item.line == line_num:
@@ -360,8 +368,7 @@ def dwarf_analysis(input_binary):
                                 temp_var = VarData(var_name, None, type_name, rec_type_die.tag, funname)
                                 last_var.append(temp_var)
                                 base_var = True
-                            elif rec_type_die.tag == "DW_TAG_base_type":   
-                                print(rec_type_die)
+                            elif rec_type_die.tag == "DW_TAG_base_type": 
                                 log.debug("\tVariable found: %s", type_name)
                                 temp_var = VarData(var_name, None, type_name, rec_type_die.tag, funname)
                                 last_var.append(temp_var)
@@ -433,9 +440,9 @@ def dwarf_analysis(input_binary):
                         temp_fun = None
                 last_die_tag.append(DIE.tag)
     
-    log.info("Struct list")
-    fp.write("Structs:\n")
-    pprint.pprint(struct_list, width=100, depth=4, compact=True)
+    # log.info("Struct list")
+    # fp.write("Structs:\n")
+    # pprint.pprint(struct_list, width=100, depth=4, compact=True)
     # print(vars(struct_list))
 
     # Iterate through function list once to populate the list
