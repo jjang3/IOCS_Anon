@@ -18,6 +18,8 @@ PIN_ROOT=$parent_path/pin-3.27_build
 
 taint_path=$parent_path/taint_analysis
 
+useful_path=$parent_path/useful_scripts
+
 static_path=${current_path}/static_analysis
 
 arcs_build_path=${static_path}/build
@@ -31,6 +33,7 @@ arcs_ll_file=${arcs_i_result_path}/$1.ll
 arcs_bc_file=${arcs_i_result_path}/$1.bc
 arcs_bin_file=${arcs_i_result_path}/$1.out
 arcs_out_file=${arcs_i_result_path}/${1}_arcs.out
+arcs_dwarf_file=${arcs_i_result_path}/dwarf.out
 arcs_analysis_file=${arcs_i_result_path}/analysis.txt
 
 rewrite_path=${current_path}/asm_rewriter
@@ -76,10 +79,11 @@ taint()
     fi
 
     sleep 1
+    python3 $useful_path/dwarf_analysis.py --binary ${arcs_bin_file} ${arcs_dwarf_file}
     # $PIN_ROOT/pin -follow-execv -t $taint_path/lib/var-access.so -- ${arcs_bin_file}
     # mv dft.out ${arcs_i_result_path}
 
-    $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file}
+    $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file} ${arcs_dwarf_file}
     mv dft.out ${arcs_i_result_path}
     # echo "$taint_path/scripts/function_analysis.py"
     # python3 $taint_path/scripts/function_analysis.py --dft ${arcs_i_result_path}/dft.out --bin ${arcs_bin_file}

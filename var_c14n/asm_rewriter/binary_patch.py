@@ -312,7 +312,7 @@ def process_binary(filename, funfile, dirloc):
     # print(type(dwarf_output))
     for fun in dwarf_output:
         fun_var_info[fun.name] = fun.var_list.copy()
-        fun_struct_info[fun.name] = fun.struct_list.copy()
+        # fun_struct_info[fun.name] = fun.struct_list.copy()
         # exit()
         # fun_struct_info[fun.name] = list() # Disabling struct
         fun_entry_to_args[fun.begin] = fun.var_count
@@ -823,7 +823,7 @@ class BinAnalysis:
         self.bv = bv
         self.fun = None
         
-    def search_var_tgts(self, expr, var_targets, struct_targets):
+    def search_var_tgts(self, expr, var_targets):
         log.debug("Searching %s", expr)
         # pprint(var_targets)
         for item in var_targets:
@@ -831,13 +831,13 @@ class BinAnalysis:
                 # print(item.base_type)
                 # if item.base_type != "DW_TAG_pointer_type": # Ignore pointer for now
                 if item.base_type == "DW_TAG_base_type":
-                    print(expr, item.offset)
+                    # print(expr, item.offset)
                     return True
-        for struct in struct_targets:
-            for member in struct.member_list:
-                if expr == member.offset_expr:
-                    print(expr, item.offset, item.base_type)
-                    return True
+        # for struct in struct_targets:
+        #     for member in struct.member_list:
+        #         if expr == member.offset_expr:
+        #             print(expr, item.offset, item.base_type)
+        #             return True
         return False
     
     def search_var(self, inst_ssa):
@@ -855,7 +855,7 @@ class BinAnalysis:
                 return True
         return False
 
-    def find_off(self, offset, var_targets, struct_targets, ignore_targets):
+    def find_off(self, offset, var_targets, ignore_targets):
         # spec_log.warning("\t%s", offset)
         try:
             offset_pattern = r'(\b[qword ptr|dword ptr]+\b)\s\[(%.*)([*+\/-]0x[a-z,0-9].*)\]'
@@ -886,8 +886,16 @@ class BinAnalysis:
                     # return True, expr
             #  Question to ask(?) - Do I need to do variable check or just use the offset directly?
             for tgt in var_targets:
-                if expr == tgt.offset_expr:
-                    if tgt.base_type == "DW_TAG_base_type": # Ignore pointer for now
+                # print(tgt)
+                if tgt.var_type == "DW_TAG_structure_type":
+                    tgt_struct = tgt.struct
+                    for member in tgt_struct.member_list:
+                        if expr == member.offset_expr:
+                            log.critical("Found the offset")
+                            return True, expr
+                elif tgt.base_type == "DW_TAG_base_type":
+                    if expr == tgt.offset_expr:
+                        # if tgt.base_type == "DW_TAG_base_type": # Ignore pointer for now
                         log.critical("Found the offset")
                         # spec_log.critical("Found the offset")
                         return True, expr
@@ -898,19 +906,19 @@ class BinAnalysis:
             #         log.critical("Found the offset")
             #         # spec_log.critical("Found the offset")
             #         return True, expr
-            print(expr)
-            for struct in struct_targets:
-                for member in struct.member_list:
-                    # print(member.offset_expr)
-                    if expr == member.offset_expr:
-                        log.critical("Found the offset")
-                        return True, expr
+            # print(expr)
+            # for struct in struct_targets:
+            #     for member in struct.member_list:
+            #         # print(member.offset_expr)
+            #         if expr == member.offset_expr:
+            #             log.critical("Found the offset")
+            #             return True, expr
 
             return False, None
         except:
             return False, None
     
-    def calc_offset(self, inst_ssa, var_targets, struct_targets):
+    def calc_offset(self, inst_ssa, var_targets):
         arrow = 'U+21B3'
         log.info("Finding the offset of %s %s", inst_ssa, type(inst_ssa)) 
         try:
@@ -929,7 +937,7 @@ class BinAnalysis:
                             # print("Not segment")
                             mapped_MLLIL = inst_ssa.mapped_medium_level_il # This is done to get the var (or find if not)
                             if mapped_MLLIL != None:
-                                result = self.calc_offset(inst_ssa.src, var_targets, struct_targets)
+                                result = self.calc_offset(inst_ssa.src, var_targets)
                                 if result != None:
                                     return result
                             else:
@@ -943,7 +951,7 @@ class BinAnalysis:
             elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILSetRegSsa:
                 try:
                     log.debug("%s SetRegSSA",  chr(int(arrow[2:], 16)))
-                    result = self.calc_offset(inst_ssa.src, var_targets, struct_targets)
+                    result = self.calc_offset(inst_ssa.src, var_targets)
                     if result != None:
                         return result
                 except Exception as error:
@@ -952,7 +960,7 @@ class BinAnalysis:
                 log.debug("%s StoreSSA",  chr(int(arrow[2:], 16)))
                 try:
                     try:
-                        result = self.calc_offset(inst_ssa.dest, var_targets, struct_targets)
+                        result = self.calc_offset(inst_ssa.dest, var_targets)
                         if result != None:
                             return result
                     except Exception as error:
@@ -973,7 +981,7 @@ class BinAnalysis:
                     return None # We do not want any RSP
                 
                 if type(inst_ssa.right) == binaryninja.lowlevelil.LowLevelILLoadSsa:
-                    result = self.calc_offset(inst_ssa.right, var_targets, struct_targets)
+                    result = self.calc_offset(inst_ssa.right, var_targets)
                     if result != None:
                         return result
                     else:
@@ -985,7 +993,7 @@ class BinAnalysis:
                 expr = offset + "(" + reg + ")"
                 
                 # os.system(f"pkill -f {os.path.basename(__file__)}")
-                if self.search_var_tgts(expr, var_targets, struct_targets):
+                if self.search_var_tgts(expr, var_targets):
                     log.debug("Offset: %s", offset)
                     log.critical("Expr: %s", expr)
                     return expr
@@ -993,7 +1001,7 @@ class BinAnalysis:
                     return None
         except:
             try:
-                return self.calc_offset(inst_ssa.src, var_targets, struct_targets)
+                return self.calc_offset(inst_ssa.src, var_targets)
             except: 
                 return None
         else:
@@ -1015,19 +1023,16 @@ class BinAnalysis:
                 var_targets = None  # Variable targets obtained from DWARF
                 struct_targets = None # Struct targets obtained from DWARF
                 try:
-                    print("Here")
                     if (fun_entry_to_args[hex(func.start)] is not None):
                         var_targets = fun_var_info[func.name]
-                        struct_targets = fun_struct_info[func.name]
+                        # struct_targets = fun_struct_info[func.name]
                     # Disabling ignore_targets for now
                     # ignore_targets = fun_ignore_info[func.name]
                     ignore_targets = []
                     for item in var_targets:
                         spec_log.info("\tFun: %s | %s", func.name, item)
-                    self.backward_slice(func.name, mlil_fun, llil_fun, instr_fun, var_targets, struct_targets, ignore_targets)
+                    self.backward_slice(func.name, mlil_fun, llil_fun, instr_fun, var_targets, ignore_targets)
                     fun_patch_tgts[func.name] = self.cur_fun_tgts.copy()
-                    # print(fun_patch_tgts[func.name])
-                    # exit()
                     for item in self.cur_fun_tgts:
                         log.debug(item)
                     fun_off_to_table[func.name] = self.off_to_table.copy()
@@ -1043,7 +1048,7 @@ class BinAnalysis:
         log.info("Total variable count: %d", patch_var_count)
         time.sleep(3)
                 
-    def backward_slice(self, name, medium, low, instr, var_targets, struct_targets, ignore_targets):
+    def backward_slice(self, name, medium, low, instr, var_targets, ignore_targets):
         """
         - Workflow of backward slice starts from the MLIL as it is the most intuitive way of observing the behavior
         After obtaining the informations (e.g., where malloc()'d variable is being used, register offset for local var)
@@ -1068,7 +1073,7 @@ class BinAnalysis:
                     # To-do: Is there a need to analyze parameters of call instruction? Or not necessary.
                     # log.warning("%s %s", inst_ssa, inst_ssa.operation)
                     
-                    # patch_tgt = self.analyze_call_inst(inst_ssa, medium, var_targets, struct_targets, ignore_targets)
+                    # patch_tgt = self.analyze_call_inst(inst_ssa, medium, var_targets, ignore_targets)
                     # if patch_tgt != None and patch_tgt[1] != None:
                     #     # Try to find the Patch target: (<var int64_t var_28>, '-32(%rbp)') so it can be used in the find_var() to see if offset exists. Offset can be None which means it is useless.
                     #     self.patch_tgts.add(patch_tgt)
@@ -1077,7 +1082,7 @@ class BinAnalysis:
                     # else:
                     #     for param_var in inst_ssa.params:
                     #         # print(param_var)
-                    #         patch_tgt = self.analyze_params(inst_ssa, param_var, medium, var_targets, struct_targets, ignore_targets)
+                    #         patch_tgt = self.analyze_params(inst_ssa, param_var, medium, var_targets, ignore_targets)
                     #         if patch_tgt != None and patch_tgt[1] != None:
                     #             self.patch_tgts.add(patch_tgt)
                     #             log.debug("Adding patch target: %s", patch_tgt)
@@ -1112,7 +1117,7 @@ class BinAnalysis:
                         else:
                             log.info("%s | Analyze inst: %s", self.fun, inst_ssa)
                             # spec_log.info("%s | Analyze inst: %s", self.fun, inst_ssa)
-                            patch_tgt = self.analyze_inst(inst_ssa, medium, var_targets, struct_targets, ignore_targets)
+                            patch_tgt = self.analyze_inst(inst_ssa, medium, var_targets, ignore_targets)
                             if patch_tgt != None and patch_tgt[1] != None:
                                 self.patch_tgts.add(patch_tgt)
                                 log.debug("Adding patch target: %s", patch_tgt)
@@ -1148,7 +1153,7 @@ class BinAnalysis:
         # After all analysis is done with the MLIL level, find patch targets by dissecting disassembly of LLIL
         for llil_bb in low:
             for inst in llil_bb:
-                self.find_patch_tgts(inst.address, var_targets, struct_targets, ignore_targets)
+                self.find_patch_tgts(inst.address, var_targets, ignore_targets)
                 
         # Offset-based checking
         for item in instr:
@@ -1156,11 +1161,11 @@ class BinAnalysis:
             # print(item)
             # if item[0][0].__str__() == "cmp":
             addr = item[1]
-            self.find_patch_tgts(addr, var_targets, struct_targets, ignore_targets)
+            self.find_patch_tgts(addr, var_targets, ignore_targets)
         # exit()
                 
     # This function is the one that is used to add patch targets to be found in disassembly file
-    def find_patch_tgts(self, addr, var_targets, struct_targets, ignore_targets):
+    def find_patch_tgts(self, addr, var_targets, ignore_targets):
         # pprint(var_targets)
         global table_offset
         dis_inst = self.bv.get_disassembly(addr)
@@ -1196,7 +1201,7 @@ class BinAnalysis:
             suffix_regex = re.search(r'(qword ptr|dword ptr|byte ptr)', src)
             if suffix_regex != None:
                 suffix = suffix_regex.group(1)
-            result, expr = self.find_off(src, var_targets, struct_targets, ignore_targets)
+            result, expr = self.find_off(src, var_targets, ignore_targets)
             if result and dest == None:
                 tgt_inst = PatchingInst(inst_type=inst_type, dest=None, src=conv_imm(expr), offset=expr, suffix=conv_suffix(suffix)) # 
             elif result:
@@ -1207,7 +1212,7 @@ class BinAnalysis:
             suffix_regex = re.search(r'(qword ptr|dword ptr|byte ptr)', dest)
             if suffix_regex != None:
                 suffix = suffix_regex.group(1)
-            result, expr = self.find_off(dest, var_targets, struct_targets, ignore_targets)
+            result, expr = self.find_off(dest, var_targets, ignore_targets)
             if result:
                 tgt_inst = PatchingInst(inst_type=inst_type, dest=conv_imm(expr), src=conv_imm(src), offset=expr, suffix=conv_suffix(suffix)) # expr -> None
         
@@ -1257,7 +1262,7 @@ class BinAnalysis:
 
                 
     # ------------------------------ Analysis Methods ------------------------------ #           
-    def analyze_params(self, inst_ssa, param_var, medium, var_targets, struct_targets, ignore_targets):
+    def analyze_params(self, inst_ssa, param_var, medium, var_targets, ignore_targets):
         # Takes in SSA parameters
         # pprint("analyze param: ", var_targets)
         log.info("%s | %s", inst_ssa, param_var)
@@ -1281,13 +1286,13 @@ class BinAnalysis:
                     reg = use_ref.llil.dest.src # LowLevelILRegSsa type -> get reg
                     offset = inst_ssa.llil.function.get_ssa_reg_definition(reg)
                 if offset != None:
-                    return (var, self.analyze_llil_inst(offset, offset.function, var_targets, struct_targets, ignore_targets))
+                    return (var, self.analyze_llil_inst(offset, offset.function, var_targets, ignore_targets))
             except:
                 None
             else:
                 # print(var, use_ref)
                 if binaryninja.commonil.Arithmetic in use_ref.__class__.__bases__:
-                    offset = self.analyze_llil_inst(use_ref.llil, use_ref.llil.function, var_targets, struct_targets, ignore_targets)
+                    offset = self.analyze_llil_inst(use_ref.llil, use_ref.llil.function, var_targets, ignore_targets)
                     if offset == None:
                         return None
                     else:
@@ -1299,7 +1304,7 @@ class BinAnalysis:
                             return (var, offset)
                 elif type(use_ref.llil.src.src) == LowLevelILRegSsaPartial:
                     # %rdi#43 = zx.q(%rdx#38.%edx) <class 'binaryninja.lowlevelil.LowLevelILZx'>
-                    print(use_ref.llil, type(use_ref.llil.src))
+                    # print(use_ref.llil, type(use_ref.llil.src))
                     reg = use_ref.llil.src.src.full_reg
                     reg_def = inst_ssa.llil.function.get_ssa_reg_definition(reg)
                     try:
@@ -1309,7 +1314,7 @@ class BinAnalysis:
                         log.error("%s", error)
                         return None
 
-                    offset = self.analyze_llil_inst(use_ref.llil.src, use_ref.llil.function, var_targets, struct_targets, ignore_targets)
+                    offset = self.analyze_llil_inst(use_ref.llil.src, use_ref.llil.function, var_targets, ignore_targets)
                     if offset == None:
                         return None
                     else:
@@ -1325,7 +1330,7 @@ class BinAnalysis:
             if len(param_var.llils) > 0:
                 for llil in param_var.llils:
                     if llil.operation == LowLevelILOperation.LLIL_SET_REG_SSA:
-                        offset = self.analyze_llil_inst(llil, llil.function, var_targets, struct_targets, ignore_targets)
+                        offset = self.analyze_llil_inst(llil, llil.function, var_targets, ignore_targets)
                         if offset != None:
                             var = self.search_var(llil)
                             if self.find_var(var):
@@ -1337,7 +1342,7 @@ class BinAnalysis:
                             
                             
     
-    def analyze_call_inst(self, inst_ssa, medium, var_targets, struct_targets, ignore_targets):
+    def analyze_call_inst(self, inst_ssa, medium, var_targets, ignore_targets):
         # Call instruction either can be malloc which stores the address in rax register or
         # scanf that uses the parameter of the function.
         # returns -> Tuples
@@ -1348,14 +1353,14 @@ class BinAnalysis:
             use_ref = medium.ssa_form.get_ssa_var_uses(var)
             if use_ref is not None:
                 # log.debug("%s %s", self.analyze_llil_inst(use_ref[0].llil, use_ref[0].llil.function), use_ref[0].vars_written[0])
-                return (use_ref[0].vars_written[0].var, self.analyze_llil_inst(use_ref[0].llil, use_ref[0].llil.function, var_targets, struct_targets, ignore_targets))
+                return (use_ref[0].vars_written[0].var, self.analyze_llil_inst(use_ref[0].llil, use_ref[0].llil.function, var_targets, ignore_targets))
             else:
                 return None
         except:
             return None
         
     
-    def analyze_inst(self, inst_ssa, mlil_fun, var_targets, struct_targets, ignore_targets):
+    def analyze_inst(self, inst_ssa, mlil_fun, var_targets, ignore_targets):
         # Only interested in instruction with the disassembly code as we gathered supposedly all necessary information from 
         # previous analysis
         log.info("%s | Analyzing inst\t%s %s", self.fun, inst_ssa, inst_ssa.operation)
@@ -1390,7 +1395,7 @@ class BinAnalysis:
                     reg = inst_ssa.llil.src.src # LowLevelILRegSsa type -> get reg
                     offset = inst_ssa.llil.function.get_ssa_reg_definition(reg)
                 if offset != None:
-                    return (addr_var, self.analyze_llil_inst(offset, offset.function, var_targets, struct_targets, ignore_targets))
+                    return (addr_var, self.analyze_llil_inst(offset, offset.function, var_targets, ignore_targets))
             elif inst_var != None:
             # else if variable simply exists, then we analyze the LLIL to get the offset
             # Example: %rax_131 = [%rbp_1 - 0x450].q
@@ -1403,10 +1408,10 @@ class BinAnalysis:
                     var = inst_ssa.vars_read[0].var
                 
                 if var != None:
-                    return (var, self.analyze_llil_inst(inst_var.llil, inst_var.llil.function, var_targets, struct_targets, ignore_targets))
+                    return (var, self.analyze_llil_inst(inst_var.llil, inst_var.llil.function, var_targets, ignore_targets))
                 
         
-    def analyze_llil_inst(self, inst_ssa, llil_fun, var_targets, struct_targets, ignore_targets):
+    def analyze_llil_inst(self, inst_ssa, llil_fun, var_targets, ignore_targets):
         log.debug("%s | Analyze LLIL inst %s %s", self.fun, inst_ssa, type(inst_ssa))
         if type(inst_ssa) == binaryninja.lowlevelil.LowLevelILRegSsa:
             log.debug("RegSSA")
@@ -1414,15 +1419,15 @@ class BinAnalysis:
             return reg
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILSetRegSsa:
             log.debug("SetSSA")
-            offset = self.calc_offset(inst_ssa, var_targets, struct_targets)
+            offset = self.calc_offset(inst_ssa, var_targets)
             return offset
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILStoreSsa:
             log.debug("StoreSSA")
-            offset = self.calc_offset(inst_ssa, var_targets, struct_targets)
+            offset = self.calc_offset(inst_ssa, var_targets)
             return offset
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILLoadSsa:
             log.debug("LoadSSA")
-            offset = self.calc_offset(inst_ssa, var_targets, struct_targets)
+            offset = self.calc_offset(inst_ssa, var_targets)
             return offset
         elif type(inst_ssa) == binaryninja.lowlevelil.SSARegister:
             log.debug("SSARegister")
@@ -1446,7 +1451,7 @@ class BinAnalysis:
                     return reg_def
         elif binaryninja.commonil.Arithmetic in inst_ssa.__class__.__bases__:
             log.debug("ArithSSA")
-            offset = self.calc_offset(inst_ssa, var_targets, struct_targets)
+            offset = self.calc_offset(inst_ssa, var_targets)
             return offset
 if __name__ == '__main__':
     process_argument(sys.argv[1:])

@@ -10,6 +10,8 @@
 #include <set>
 #include <stack>
 #include <string>
+#include <vector>
+#include <regex>
 
 #include "branch_pred.h"
 #include "libdft_api.h"
@@ -26,7 +28,7 @@ using std::endl;
 #define WORD_LEN	4	/* size in bytes of a word value */
 
 /* default path for the log file (audit) */
-#define LOGFILE_DFL	"libdft-dta.log"
+// #define LOGFILE_DFL	"libdft-dta.log"
 
 /* default suffixes for dynamic shared libraries */
 #define DLIB_SUFF	".so"
@@ -48,12 +50,13 @@ extern syscall_desc_t syscall_desc[SYSCALL_MAX];
 static set<int> fdset;
 
 /* log file path (auditing) */
-static KNOB<string> logpath(KNOB_MODE_WRITEONCE, "pintool", "l",
-		LOGFILE_DFL, "");
+// static KNOB<string> logpath(KNOB_MODE_WRITEONCE, "pintool", "l",
+// 		LOGFILE_DFL, "");
 
 /* trace file */
 FILE *trace;
 std::ofstream TraceFile;
+const char* inFile = nullptr;
 
 /* global values */
 uintptr_t offset_addr;
@@ -65,6 +68,43 @@ static stack<const char*> routineStack;
 static stack<ADDRINT> addressStack;
 
 bool taintSrc = false;
+
+struct DWARF_member {
+	string name;
+	int offset;
+	string var_type;
+	string base_type;
+	int begin;
+	int end;
+};
+
+struct DWARF_struct {
+	string name;
+	int offset;
+	string fun_name;
+	int begin;
+	int end;
+	std::vector<DWARF_member> member_vec;
+};
+
+struct DWARF_var {             // Structure declaration
+	string name;   // Member (string variable)
+	int offset;         // Member (int variable)
+	string var_type;
+	string base_type;
+	string fun_name;
+	DWARF_struct dw_struct;
+};       // Structure variable
+
+struct DWARF_fun {
+	string name;
+	std::vector<DWARF_var> var_vec;
+	int begin;
+	int end;
+};
+
+std::vector<DWARF_fun> fun_vec;
+
 
 /*
  * flag variables
@@ -932,24 +972,26 @@ dta_tainted_mem_write(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg, ADDRI
 		ADDRINT var_offset = stack_rbp_addr - val;
 		if (REG_valid(reg)) {
 			auto reg_name = REG_StringShort(REG_FullRegName(reg));
+			// auto fun_addr = (uintptr_t)(addressStack.top()-offset_addr);
 			// if (reg_name == "rsp") {
 			// cerr << "W " << std::hex << val << " " << endl;
+			// if (var_offset < fun_addr)
 			printf("Tagged Mem Write (TMW) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
 			// }
 			
 		}
 		
 		#endif
-		if (taintSrc == false){
+		// if (taintSrc == false){
 			
-			//cerr << "\t▷ dta_mem_write() " << endl;
-			printf("\tTaint sink dta_mem_write(): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
-			//fprintf(trace, "\tTaint sink: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), tag_val);
-			#if DBG_FLAG
+		// 	//cerr << "\t▷ dta_mem_write() " << endl;
+		// 	printf("\tTaint sink dta_mem_write(): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
+		// 	//fprintf(trace, "\tTaint sink: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), tag_val);
+		// 	#if DBG_FLAG
 			
-			fprintf(trace, "\tTaint sink dta_mem_write(): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
-			#endif
-		}
+		// 	fprintf(trace, "\tTaint sink dta_mem_write(): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
+		// 	#endif
+		// }
 		//fprintf(trace, "\tTMW: %s | %p", rtn_name.c_str(), (void *)ip);
 	}
 }
@@ -967,21 +1009,23 @@ dta_tainted_mem_read(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg)
 		ADDRINT var_offset = stack_rbp_addr - val;
 		if (REG_valid(reg)) {
 			auto reg_name = REG_StringShort(REG_FullRegName(reg));
+			// auto fun_addr = (uintptr_t)(addressStack.top()-offset_addr);
 			// if (reg_name == "rsp") {
 			// 	cerr << "W " << std::hex << val << " " << disp << endl;
 			// }
+			// if (var_offset < fun_addr)
 			printf("Tagged Mem Read (TMR) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
 		}
 		#endif
-		if (taintSrc == false){
-			//cerr << "\t▷ dta_mem_read()" << std::hex << " " << endl;
-			//printf("dta_mem_read\n");
-			//fprintf(trace, "\tTaint sink: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), tag_val);
-			#if DBG_FLAG
-			fprintf(trace, "\tTaint sink dta_mem_read(): 0x%lx\n",  (uintptr_t)(addressStack.top()-offset_addr));
-			#endif
+		// if (taintSrc == false){
+		// 	//cerr << "\t▷ dta_mem_read()" << std::hex << " " << endl;
+		// 	//printf("dta_mem_read\n");
+		// 	//fprintf(trace, "\tTaint sink: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), tag_val);
+		// 	#if DBG_FLAG
+		// 	fprintf(trace, "\tTaint sink dta_mem_read(): 0x%lx\n",  (uintptr_t)(addressStack.top()-offset_addr));
+		// 	#endif
 			
-		}
+		// }
 		//fprintf(trace, "\tTMW: %s | %p", rtn_name.c_str(), (void *)ip);
 	}
 }
@@ -1005,9 +1049,9 @@ dta_tainted_mem_read(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg)
 
 // }
 
-VOID MovRbpRspAnalysis(ADDRINT address) {
-    std::cerr << "Caught mov rbp, rsp at address: " << std::hex << address << std::dec << std::endl;
-}
+// VOID MovRbpRspAnalysis(ADDRINT address) {
+//     std::cerr << "Caught mov rbp, rsp at address: " << std::hex << address << std::dec << std::endl;
+// }
 #if 1
 VOID Instruction(INS ins, VOID* v)
 {
@@ -1092,7 +1136,231 @@ VOID Instruction(INS ins, VOID* v)
     }
 }
 #endif
+VOID ParseCommandLineArguments(int argc, char *argv[]) {
+    if (argc < 3) {
+        std::cerr << "Usage: pin -t <tool> -- <executable> <dwarf.out>\n";
+        PIN_ExitProcess(1);
+    }
+    inFile = argv[argc - 1];
+	std::ifstream inStream(inFile);
+	if (!inStream.is_open()) {
+        std::cerr << "Unable to open file\n";
+        exit(1);
+    }
 
+    std::string line;
+	std::regex fun_cnt_regex("(?:FunCount: )(.*)");
+	int fun_count = 0;
+	std::smatch fun_match;
+
+	// First get the function count from the dwarf.out in order to create empty struct objects
+    while (std::getline(inStream, line)) {
+        // std::cout << line << std::endl; // Process each line here
+		auto fun_search = std::regex_search(line, fun_match, fun_cnt_regex);
+		if (fun_search) {
+			string match = fun_match[1];
+			fun_count = atoi(match.c_str());
+			break;
+		}
+    }
+	// std::cout << fun_count << std::endl; // Process each line here
+	for (int fun_obj = 0; fun_obj < fun_count; fun_obj++)
+	{
+		DWARF_fun dwarf_fun{};
+		fun_vec.push_back(dwarf_fun);
+	}
+	
+	// function index that is going to keep track of fun_vec
+	int fun_idx = 0;
+	/* Function-related regex */
+	std::regex fun_name_regex("(?:FunName: )(.*)");
+	std::regex fun_begin_regex("(?:FunBegin: )(.*)");
+	std::regex fun_var_regex("(?:VarCount: )(.*)");
+	int var_count = 0;
+	std::regex fun_end_regex("--------------FunEnd------------------");
+
+	// variable index that is going to keep track of var_vec
+	int var_idx = 0;
+	/* Variable-related regex */
+	std::smatch var_match;
+	std::regex var_name_regex("(?:VarName: )(.*)");
+	std::regex var_offset_regex("(?:Offset: )(.*)");
+	std::regex var_type_regex("(?:\tVarType: )(.*)");
+	std::regex var_end_regex("    -------------VarEnd------------");
+
+	/* Struct-related regex */
+	int mem_idx = 0; // this is for struct member index
+	std::smatch struct_match;
+	std::regex struct_name_regex("(?:StructName: )(.*)");
+	std::regex struct_begin_regex("(?:StructBegin: )(.*)");
+	std::regex struct_end_regex("(?:StructEnd: )(.*)");
+	std::regex struct_member_regex("(?:MemCount: )(.*)");
+	int mem_count = 0;
+
+	/* Member-related regex */
+	std::regex member_end_regex("            -------MemberEnd-------");	
+	std::smatch mem_match;
+	std::regex mem_name_regex("(?:MemberName: )(.*)");
+	std::regex mem_begin_regex("(?:MemBegin: )(.*)");
+	std::regex mem_end_regex("(?:MemEnd: )(.*)");
+
+	string match;
+	string curVarType;
+	// Resume reading the inFile and populate the objects
+    while (std::getline(inStream, line)) {
+		// std::cout << line << std::endl; // Process each line here
+		
+		/* Function-related regexes */
+		auto fun_name_search = std::regex_search(line, fun_match, fun_name_regex);
+		if (fun_name_search) {
+			match = fun_match[1];
+			// cerr << match << "\n";
+			fun_vec[fun_idx].name = match;
+		}
+
+		auto fun_begin_search = std::regex_search(line, fun_match, fun_begin_regex);
+		if (fun_begin_search) {
+			match = fun_match[1];
+			unsigned int addr;   
+			std::stringstream ss;	
+			ss << std::hex << match.c_str();
+			ss >> addr;
+			fun_vec[fun_idx].begin = addr;
+		}
+
+		auto fun_var_search = std::regex_search(line, fun_match, fun_var_regex);
+		if (fun_var_search) {
+			string match = fun_match[1];
+			var_count = atoi(match.c_str());
+			for (int var_obj = 0; var_obj < var_count; var_obj++)
+			{
+				DWARF_var dwarf_var{};
+				fun_vec[fun_idx].var_vec.push_back(dwarf_var);
+			}
+		}
+
+		if (std::regex_match(line, fun_end_regex)) // if FunEnd is found, go to next idx
+		{	fun_idx++; var_count = 0; }
+
+		/* Variable-related regexes */
+		auto var_name_search = std::regex_search(line, var_match, var_name_regex);
+		if (var_name_search) {
+			match = var_match[1];
+			fun_vec[fun_idx].var_vec[var_idx].name = match;
+		}
+
+		auto var_offset_search = std::regex_search(line, var_match, var_offset_regex);
+		if (var_offset_search) {
+			match = var_match[1];
+			fun_vec[fun_idx].var_vec[var_idx].offset = atoi(match.c_str());
+		}
+
+		auto var_type_search = std::regex_search(line, var_match, var_type_regex);
+		if (var_type_search) {
+			match = var_match[1];
+			fun_vec[fun_idx].var_vec[var_idx].var_type = match;
+			curVarType = match;
+		}
+
+		if (curVarType == "DW_TAG_structure_type")
+		{
+			/* Struct-related regexes */
+			auto struct_name_search = std::regex_search(line, struct_match, struct_name_regex);
+			if (struct_name_search) {
+				match = struct_match[1];
+				fun_vec[fun_idx].var_vec[var_idx].dw_struct.name = match;
+			}
+			
+			auto struct_begin_search = std::regex_search(line, struct_match, struct_begin_regex);
+			if (struct_begin_search) {
+				match = struct_match[1];
+				unsigned int addr;   
+				std::stringstream ss;	
+				ss << std::hex << match.c_str();
+				ss >> addr;
+				fun_vec[fun_idx].var_vec[var_idx].dw_struct.begin = addr;
+			}
+			auto struct_end_search = std::regex_search(line, struct_match, struct_end_regex);
+			if (struct_end_search) {
+				match = struct_match[1];
+				unsigned int addr;   
+				std::stringstream ss;	
+				ss << std::hex << match.c_str();
+				ss >> addr;
+				fun_vec[fun_idx].var_vec[var_idx].dw_struct.end = addr;
+			}
+				
+			auto mem_count_search = std::regex_search(line, struct_match, struct_member_regex);
+			if (mem_count_search) {
+				string match = struct_match[1];
+				mem_count = atoi(match.c_str());
+				for (int mem_obj = 0; mem_obj < mem_count; mem_obj++)
+				{
+					DWARF_member dwarf_mem{};
+					fun_vec[fun_idx].var_vec[var_idx].dw_struct.member_vec.push_back(dwarf_mem);
+				}
+			}
+			
+			if (std::regex_match(line, member_end_regex)) // if FunEnd is found, go to next idx
+			{	mem_idx++; }
+
+			/* Member-related regexes */
+			auto mem_name_search = std::regex_search(line, mem_match, mem_name_regex);
+			if (mem_name_search) {
+				match = mem_match[1];
+				fun_vec[fun_idx].var_vec[var_idx].dw_struct.member_vec[mem_idx].name = match;
+			}
+			auto mem_begin_search = std::regex_search(line, mem_match, mem_begin_regex);
+			if (mem_begin_search) {
+				match = mem_match[1];
+				unsigned int addr;   
+				std::stringstream ss;	
+				ss << std::hex << match.c_str();
+				ss >> addr;
+				fun_vec[fun_idx].var_vec[var_idx].dw_struct.member_vec[mem_idx].begin = addr;
+			}
+			auto mem_end_search = std::regex_search(line, mem_match, mem_end_regex);
+			if (mem_end_search) {
+				match = mem_match[1];
+				unsigned int addr;   
+				std::stringstream ss;	
+				ss << std::hex << match.c_str();
+				ss >> addr;
+				fun_vec[fun_idx].var_vec[var_idx].dw_struct.member_vec[mem_idx].end = addr;
+			}
+
+		}	
+
+		if (std::regex_match(line, fun_end_regex)) // if FunEnd is found, go to next idx
+		{	var_idx++; curVarType.erase(); }
+	}
+	cerr << fun_idx << "\n";
+	
+
+    inStream.close(); // Explicitly close the file
+	cerr << "Checking vector:\n";
+	for (auto fun : fun_vec)
+	{
+		cerr << fun.name << "\nFunBegin: " << fun.begin << endl;
+		for (auto var : fun.var_vec)
+		{
+			cerr << "\tVarName: " << var.name << endl;
+			cerr << "\tOffset: " << var.offset << endl; 
+			cerr << "\tVarType: " << var.var_type << endl;
+			if (var.dw_struct.name != "")
+			{
+				cerr << "\t\tStructName: " << var.dw_struct.name << endl;
+				cerr << "\t\tStructBegin: " << var.dw_struct.begin << endl;
+				cerr << "\t\tStructEnd: " << var.dw_struct.end << endl;
+				for (auto mem : var.dw_struct.member_vec){
+					cerr << "\t\t\tMemName: " << mem.name << endl;
+					cerr << "\t\t\tMemBegin: " << mem.begin << endl;
+					cerr << "\t\t\tMemEnd: " << mem.end << endl;
+				}
+			}
+		}
+	}
+}
 /* 
  * DTA
  *
@@ -1107,9 +1375,14 @@ main(int argc, char **argv)
 	PIN_InitSymbols();
 	
 	/* initialize Pin; optimized branch */
-	if (unlikely(PIN_Init(argc, argv)))
+	if (unlikely(PIN_Init(argc, argv))){
 		/* Pin initialization failed */
 		goto err;
+	}
+	else {
+		ParseCommandLineArguments(argc, argv);
+	}
+	
 
 	/* initialize the core tagging engine */
 	if (unlikely(libdft_init() != 0))

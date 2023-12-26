@@ -761,9 +761,10 @@ main(int argc, char **argv)
 	PIN_InitSymbols();
 	
 	/* initialize Pin; optimized branch */
-	if (unlikely(PIN_Init(argc, argv)))
+	if (unlikely(PIN_Init(argc, argv))){
 		/* Pin initialization failed */
 		goto err;
+	}
 
 	/* initialize the core tagging engine */
 	if (unlikely(libdft_init() != 0))
