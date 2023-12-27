@@ -105,6 +105,13 @@ struct DWARF_fun {
 
 std::vector<DWARF_fun> fun_vec;
 
+struct search_result {
+	bool found;
+	string fun_name;
+	string var_type;
+	string var_name;
+	string mem_name;
+};
 
 /*
  * flag variables
@@ -121,6 +128,70 @@ static KNOB<size_t> fs(KNOB_MODE_WRITEONCE, "pintool", "f", "1", "");
 
 /* track net (enabled by default) */
 static KNOB<size_t> net(KNOB_MODE_WRITEONCE, "pintool", "n", "1", "");
+
+search_result findVar(ADDRINT tgt_offset)
+{
+	search_result result{};
+	for (auto fun : fun_vec)
+	{
+		cerr << fun.name << "\nFunBegin: " << fun.begin << " | " << tgt_offset << endl;
+		if ((ADDRINT)fun.begin == tgt_offset)
+		{
+			result.found = true;
+			result.fun_name = fun.name;
+		}
+		else if ((ADDRINT)fun.begin <= tgt_offset && tgt_offset <= (ADDRINT)fun.end)
+		{
+			result.found = true;
+			result.fun_name = fun.name;
+		}
+		for (auto var : fun.var_vec)
+		{
+			auto abs_offset = var.offset * -1;
+			// cerr << "Comparing: " << abs_offset << " " << tgt_offset << endl;
+			if ((ADDRINT)abs_offset == tgt_offset)
+			{
+				result.found = true;
+				result.var_name = var.name;
+				result.var_type = var.var_type;
+				if (var.var_type == "DW_TAG_structure_type")
+				{
+					for (auto mem : var.dw_struct.member_vec){
+						auto abs_begin = mem.begin * -1;
+						auto abs_end = mem.end * -1;
+						if ((ADDRINT)abs_end <= tgt_offset && tgt_offset <= (ADDRINT)abs_begin)
+						{
+							result.mem_name = mem.name;
+						}
+						// cerr << "\t\t\tMemName: " << mem.name << endl;
+						// cerr << "\t\t\tMemBegin: " << mem.begin << endl;
+						// cerr << "\t\t\tMemEnd: " << mem.end << endl;
+					}
+				}
+			}
+			else if ((ADDRINT)abs_offset > tgt_offset) {
+				if (var.var_type == "DW_TAG_structure_type")
+				{
+					for (auto mem : var.dw_struct.member_vec){
+						auto abs_begin = mem.begin * -1;
+						auto abs_end = mem.end * -1;
+						if ((ADDRINT)abs_end <= tgt_offset && tgt_offset <= (ADDRINT)abs_begin)
+						{
+							result.found = true;
+							result.var_name = var.name;
+							result.var_type = var.var_type;
+							result.mem_name = mem.name;
+						}
+						// cerr << "\t\t\tMemName: " << mem.name << endl;
+						// cerr << "\t\t\tMemBegin: " << mem.begin << endl;
+						// cerr << "\t\t\tMemEnd: " << mem.end << endl;
+					}
+				}
+			}
+		}
+	}
+	return result;
+}
 
 #if 1
 void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
@@ -606,6 +677,7 @@ dta_instrument_ret(INS ins)
 static void
 post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 {
+	search_result result{};
 	/* read() was not successful; optimized branch */
 	if (unlikely((long)ctx->ret <= 0))
 		return;
@@ -618,9 +690,13 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 		/* set the tag markings */
 		//cerr << "\t► read(2) taint set | " << unwindStack.top() << endl;
 		taintSrc = true;
-		
+		auto addr = (uintptr_t)(addressStack.top()-offset_addr);
+		result = findVar(addr);
 		#if DBG_FLAG
-		fprintf(trace, "Taint source read(2): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
+		if (result.found == true)
+		{
+			fprintf(trace, "T_SRC 0x%lx: %s\n", (uintptr_t)(addr), result.fun_name.c_str());
+		}
 		
 		#endif
 		//cerr << "\t - Routine: " << routineStack.top() << endl;
@@ -962,7 +1038,7 @@ static void
 dta_tainted_mem_write(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg, ADDRINT disp)
 {
 	// print when addr is tagged.
-	
+	search_result result{};
 	if (tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8))
 	{
 		//auto tag_val = tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8);
@@ -976,7 +1052,15 @@ dta_tainted_mem_write(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg, ADDRI
 			// if (reg_name == "rsp") {
 			// cerr << "W " << std::hex << val << " " << endl;
 			// if (var_offset < fun_addr)
-			printf("Tagged Mem Write (TMW) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
+			// printf("Tagged Mem Write (TMW) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
+			result = findVar(var_offset);
+			if (result.found == true) {
+				printf("Tagged Mem Write (TMW) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
+				if (result.mem_name == "")
+					fprintf(trace, "\tW 0x%lx: %s\n", (uintptr_t)(var_offset), result.var_name.c_str());
+				else
+					fprintf(trace, "\tW 0x%lx: %s.%s\n", (uintptr_t)(var_offset), result.var_name.c_str(), result.mem_name.c_str());
+			}
 			// }
 			
 		}
@@ -999,6 +1083,7 @@ static void
 dta_tainted_mem_read(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg)
 {
 	// print when addr is tagged.
+	search_result result{};
 	if (tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8))
 	{
 		//auto tag_val = tagmap_getn(paddr, 8) | tagmap_getn(eaddr, 8);
@@ -1014,7 +1099,15 @@ dta_tainted_mem_read(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg)
 			// 	cerr << "W " << std::hex << val << " " << disp << endl;
 			// }
 			// if (var_offset < fun_addr)
-			printf("Tagged Mem Read (TMR) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
+			// printf("Tagged Mem Read (TMR) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
+			result = findVar(var_offset);
+			if (result.found == true) {
+				printf("Tagged Mem Read (TMR) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
+				if (result.mem_name == "")
+					fprintf(trace, "\tR 0x%lx: %s\n", (uintptr_t)(var_offset), result.var_name.c_str());
+				else
+					fprintf(trace, "\tR 0x%lx: %s.%s\n", (uintptr_t)(var_offset), result.var_name.c_str(), result.mem_name.c_str());
+			}
 		}
 		#endif
 		// if (taintSrc == false){
@@ -1175,9 +1268,10 @@ VOID ParseCommandLineArguments(int argc, char *argv[]) {
 	/* Function-related regex */
 	std::regex fun_name_regex("(?:FunName: )(.*)");
 	std::regex fun_begin_regex("(?:FunBegin: )(.*)");
+	std::regex fun_end_regex("(?:FunEnd: )(.*)");
 	std::regex fun_var_regex("(?:VarCount: )(.*)");
 	int var_count = 0;
-	std::regex fun_end_regex("--------------FunEnd------------------");
+	std::regex function_end_regex("--------------FunEnd------------------");
 
 	// variable index that is going to keep track of var_vec
 	int var_idx = 0;
@@ -1228,6 +1322,16 @@ VOID ParseCommandLineArguments(int argc, char *argv[]) {
 			fun_vec[fun_idx].begin = addr;
 		}
 
+		auto fun_end_search = std::regex_search(line, fun_match, fun_end_regex);
+		if (fun_end_search) {
+			match = fun_match[1];
+			unsigned int addr;   
+			std::stringstream ss;	
+			ss << std::hex << match.c_str();
+			ss >> addr;
+			fun_vec[fun_idx].end = addr;
+		}
+
 		auto fun_var_search = std::regex_search(line, fun_match, fun_var_regex);
 		if (fun_var_search) {
 			string match = fun_match[1];
@@ -1239,7 +1343,7 @@ VOID ParseCommandLineArguments(int argc, char *argv[]) {
 			}
 		}
 
-		if (std::regex_match(line, fun_end_regex)) // if FunEnd is found, go to next idx
+		if (std::regex_match(line, function_end_regex)) // if FunEnd is found, go to next idx
 		{	fun_idx++; var_count = 0; }
 
 		/* Variable-related regexes */
@@ -1331,7 +1435,7 @@ VOID ParseCommandLineArguments(int argc, char *argv[]) {
 
 		}	
 
-		if (std::regex_match(line, fun_end_regex)) // if FunEnd is found, go to next idx
+		if (std::regex_match(line, function_end_regex)) // if FunEnd is found, go to next idx
 		{	var_idx++; curVarType.erase(); }
 	}
 	cerr << fun_idx << "\n";

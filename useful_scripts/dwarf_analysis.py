@@ -484,7 +484,7 @@ def dwarf_analysis(input_binary):
     # In second iteration, we will write it to the file pointer
     fp.write("FunCount: %s" % len(fun_list))
     for fun in fun_list:
-        fp.write("\n-------------FunBegin-----------------\nFunName: %s\nFunBegin: %s\nVarCount: %s\n" % (fun.name, fun.begin, fun.var_count))
+        fp.write("\n-------------FunBegin-----------------\nFunName: %s\nFunBegin: %s\nFunEnd: %s\nVarCount: %s\n" % (fun.name, fun.begin, fun.end, fun.var_count))
         
         for idx, var in enumerate(var_list):
             fp.write("    -------------------------------\n\tVarName: %s\n" % var.name)
