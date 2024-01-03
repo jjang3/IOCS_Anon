@@ -80,8 +80,8 @@ taint()
 
     sleep 1
     python3 $useful_path/dwarf_analysis.py --binary ${arcs_bin_file} ${arcs_dwarf_file}
-    $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file} ${arcs_dwarf_file}
-    mv dft.out ${arcs_i_result_path}
+    # $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file} ${arcs_dwarf_file}
+    # mv dft.out ${arcs_i_result_path}
 
 }
 

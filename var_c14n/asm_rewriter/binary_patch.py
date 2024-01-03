@@ -650,7 +650,6 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
                         log.info("Patching with lea_gs")
                         line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d\n" % 
                                       (dis_inst,new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
-                        # print(line)
                         return line
                     # parse_ast(var_ast)
     
