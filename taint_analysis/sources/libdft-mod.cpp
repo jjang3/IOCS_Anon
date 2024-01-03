@@ -145,10 +145,12 @@ search_result findVar(ADDRINT tgt_offset)
 			result.found = true;
 			result.fun_name = fun.name;
 		}
+		// cerr << "Here\n";
 		for (auto var : fun.var_vec)
 		{
+			// cerr << "Here 2\n";
 			auto abs_offset = var.offset * -1;
-			// cerr << "Comparing: " << abs_offset << " " << tgt_offset << endl;
+			cerr << "Comparing: " << abs_offset << " " << tgt_offset << endl;
 			if ((ADDRINT)abs_offset == tgt_offset)
 			{
 				result.found = true;
@@ -222,16 +224,6 @@ void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 	}
 	taintSrc = false;
 	PIN_UnlockClient();
-}
-// Analysis routine
-VOID FunctionEntryAnalysis(CONTEXT* ctx, ADDRINT functionAddr) {
-	ADDRINT val;
-	PIN_GetContextRegval(ctx, REG_STACK_PTR, reinterpret_cast<UINT8 *>(&val));
-	stack_rbp_addr = val;
-    // std::cerr << "Entered function at address: " << std::hex << functionAddr-offset_addr << " "  << val << std::dec << std::endl;
-	char instructionBytes[16];  // Adjust the size as needed
-    PIN_SafeCopy(instructionBytes, reinterpret_cast<VOID*>(functionAddr), sizeof(instructionBytes));
-    std::cout << "Instruction at address " << std::hex << stack_rbp_addr << ": " << std::dec << std::endl;
 }
 
 VOID FunctionEntryRSPAnalysis(CONTEXT* ctx, char* ins_str, ADDRINT functionAddr) {
@@ -318,9 +310,6 @@ VOID getMetadata(IMG img, void *v)
 							}
 						}
 					}
-					// RTN_InsertCall(rtn, IPOINT_BEFORE, AFUNPTR(FunctionEntryAnalysis),
-					// 		IARG_CONTEXT, IARG_ADDRINT, RTN_Address(rtn),
-					// 		IARG_END);
 
 					RTN_Close(rtn);
 				}
@@ -1302,7 +1291,7 @@ VOID ParseCommandLineArguments(int argc, char *argv[]) {
 	string curVarType;
 	// Resume reading the inFile and populate the objects
     while (std::getline(inStream, line)) {
-		// std::cout << line << std::endl; // Process each line here
+		std::cout << line << std::endl; // Process each line here
 		
 		/* Function-related regexes */
 		auto fun_name_search = std::regex_search(line, fun_match, fun_name_regex);
@@ -1435,7 +1424,7 @@ VOID ParseCommandLineArguments(int argc, char *argv[]) {
 
 		}	
 
-		if (std::regex_match(line, function_end_regex)) // if FunEnd is found, go to next idx
+		if (std::regex_match(line, var_end_regex)) // if FunEnd is found, go to next idx
 		{	var_idx++; curVarType.erase(); }
 	}
 	cerr << fun_idx << "\n";

@@ -13,8 +13,8 @@
             "console": "integratedTerminal",
             "cwd": "${fileDirname}",
             "justMyCode": true,
-            // "args": ["--binary", "struct.out", "--fun", "taint.in"]
-            "args": ["--binary", "/home/jaewon/ARCS_Final/var_c14n/result/memcpy/memcpy.out"]
+            "args": ["--binary", "scanf.out", "--taint", "dft.out"]
+            // "args": ["--binary", "/home/jaewon/ARCS_Final/var_c14n/result/memcpy/memcpy.out"]
         }
     ]
 }

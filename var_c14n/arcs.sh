@@ -80,13 +80,9 @@ taint()
 
     sleep 1
     python3 $useful_path/dwarf_analysis.py --binary ${arcs_bin_file} ${arcs_dwarf_file}
-    # $PIN_ROOT/pin -follow-execv -t $taint_path/lib/var-access.so -- ${arcs_bin_file}
-    # mv dft.out ${arcs_i_result_path}
-
     $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file} ${arcs_dwarf_file}
     mv dft.out ${arcs_i_result_path}
-    # echo "$taint_path/scripts/function_analysis.py"
-    # python3 $taint_path/scripts/function_analysis.py --dft ${arcs_i_result_path}/dft.out --bin ${arcs_bin_file}
+
 }
 
 analyze()
@@ -104,7 +100,7 @@ rewrite()
     echo "Assembly rewriting the application" 
     cd ${arcs_input_path} && make ${input}.out
     # echo ${current_path}
-    cd ${rewrite_path} && python3 binary_patch.py --binary ${input}.out --fun taint.in
+    cd ${rewrite_path} && python3 binary_patch.py --binary ${input}.out --taint dft.out
     cd ${arcs_i_result_path} && make lib && make ${input}.new
 }
 

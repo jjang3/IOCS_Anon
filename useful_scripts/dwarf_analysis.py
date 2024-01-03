@@ -59,7 +59,7 @@ log = logging.getLogger(__name__)
 log.setLevel(debug_level)
 
 # create console handler with a higher log level
-log_disable = False
+log_disable = True
 log.addHandler(ch)
 log.disabled = log_disable
 
@@ -87,7 +87,7 @@ class StructMember:
     offset_expr: str = None
 
 var_list = list()
-@dataclass(frozen = True)
+@dataclass(unsafe_hash=True)
 class VarData:
     name: Optional[str] = None
     offset: str = None
@@ -277,11 +277,12 @@ def dwarf_analysis(input_binary):
                                                 # pprint.pprint(var_list, width=1)
                                         # print("Finished working var: ", working_var)
                                         temp_var = VarData(var_name, var_offset, "DW_TAG_structure_type", None, funname, reg_offset, working_var)
+                                        # print(temp_var)
                                         var_list.append(temp_var)
                                     # This is just a base variable, update its offset like regular
                                     elif base_var == True:
-                                        # print("Here")
                                         working_var = last_var.pop()
+                                        # print(type(working_var), working_var, var_offset)
                                         working_var.offset = hex(var_offset)
                                         working_var.offset_expr = reg_offset
                                         var_list.append(working_var)
@@ -335,14 +336,15 @@ def dwarf_analysis(input_binary):
                                 # We use byte size + line number to match the struct object
                                 # print(byte_size, line_num)
                                 for item in struct_list:
-                                    print(item)
                                     # This is to match the struct object
                                     if item.size == byte_size and item.line == line_num:
+                                        # print(item, typedef_name)
                                         # This is to update struct name
                                         if typedef_name != None:
                                             item.name = typedef_name
                                             # print("Inserting last_var", item)
                                             temp_var = copy.deepcopy(item)
+                                            # print(temp_var)
                                             last_var.append(temp_var)
                             elif rec_type_die.tag == "DW_TAG_pointer_type" and arr_ptr_type_die.tag == "DW_TAG_pointer_type":  
                                 log.debug("\tDouble Ptr var found: %s", type_name)
@@ -472,10 +474,15 @@ def dwarf_analysis(input_binary):
         #     if struct.fun_name == fun.name:
         #         temp_struct_list.append(struct)
         #         temp_count += 1
+        # pprint.pprint(var_list, width=1)
         for idx, var in enumerate(var_list):
             if var.fun_name == fun.name:
                 temp_var_list.append(var)
-                temp_count += 1
+                if var.struct != None:
+                    for member in var.struct.member_list:
+                        temp_count += 1
+                else:
+                    temp_count += 1
         # fun.struct_list = temp_struct_list.copy()
         fun.var_list = temp_var_list.copy()
         fun.var_count = temp_count
