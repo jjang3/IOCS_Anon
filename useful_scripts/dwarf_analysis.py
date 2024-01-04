@@ -350,7 +350,7 @@ def dwarf_analysis(input_binary):
                                         decode_name = item.name.decode('utf-8')
                                     except:
                                         decode_name = item.name
-                                    print(byte_size, line_num, str(item.name), typedef_name)
+                                    # print(byte_size, line_num, str(item.name), typedef_name)
                                     if item.size == byte_size and decode_name == typedef_name:
                                     # and item.line == line_num:
                                         # print(item, typedef_name)
@@ -359,7 +359,7 @@ def dwarf_analysis(input_binary):
                                         item.name = typedef_name
                                         # print("Inserting last_var", item)
                                         temp_var = copy.deepcopy(item)
-                                        print(temp_var)
+                                        # print(temp_var)
                                         last_var.append(temp_var)
                             elif rec_type_die.tag == "DW_TAG_pointer_type" and arr_ptr_type_die.tag == "DW_TAG_pointer_type":  
                                 log.debug("\tDouble Ptr var found: %s", type_name)
@@ -371,7 +371,7 @@ def dwarf_analysis(input_binary):
                                 # This is for struct pointer variables
                                 if 'DW_AT_name' in arr_ptr_type_die.attributes:
                                     typedef_name = arr_ptr_type_die.attributes['DW_AT_name'].value.decode()
-                                print(arr_ptr_type_die.tag, rec_type_die.tag)   
+                                # print(arr_ptr_type_die.tag, rec_type_die.tag)   
                                 log.debug("\tStruct ptr var found: %s", type_name)
                                 # print(arr_ptr_type_die)
                                 byte_size = None

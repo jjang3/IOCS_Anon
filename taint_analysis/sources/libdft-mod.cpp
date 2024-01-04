@@ -1232,227 +1232,228 @@ VOID ParseCommandLineArguments(int argc, char *argv[]) {
 
     std::string line;
 	std::regex fun_cnt_regex("(?:FunCount: )(.*)");
-	int fun_count = 0;
+	// int fun_count = 0;
 	std::smatch fun_match;
 
-	// First get the function count from the dwarf.out in order to create empty struct objects
-    while (std::getline(inStream, line)) {
-        // std::cout << line << std::endl; // Process each line here
-		auto fun_search = std::regex_search(line, fun_match, fun_cnt_regex);
-		if (fun_search) {
-			string match = fun_match[1];
-			fun_count = atoi(match.c_str());
-			break;
-		}
-    }
-	// std::cout << fun_count << std::endl; // Process each line here
-	for (int fun_obj = 0; fun_obj < fun_count; fun_obj++)
-	{
-		DWARF_fun dwarf_fun{};
-		fun_vec.push_back(dwarf_fun);
-	}
+	// // First get the function count from the dwarf.out in order to create empty struct objects
+    // while (std::getline(inStream, line)) {
+    //     // std::cout << line << std::endl; // Process each line here
+	// 	auto fun_search = std::regex_search(line, fun_match, fun_cnt_regex);
+	// 	if (fun_search) {
+	// 		string match = fun_match[1];
+	// 		fun_count = atoi(match.c_str());
+	// 		break;
+	// 	}
+    // }
+	// // std::cout << fun_count << std::endl; // Process each line here
+	// for (int fun_obj = 0; fun_obj < fun_count; fun_obj++)
+	// {
+	// 	DWARF_fun dwarf_fun{};
+	// 	fun_vec.push_back(dwarf_fun);
+	// }
 	
-	// function index that is going to keep track of fun_vec
-	int fun_idx = 0;
-	/* Function-related regex */
-	std::regex fun_name_regex("(?:FunName: )(.*)");
-	std::regex fun_begin_regex("(?:FunBegin: )(.*)");
-	std::regex fun_end_regex("(?:FunEnd: )(.*)");
-	std::regex fun_var_regex("(?:VarCount: )(.*)");
-	int var_count = 0;
-	std::regex function_end_regex("--------------FunEnd------------------");
+	// // function index that is going to keep track of fun_vec
+	// int fun_idx = 0;
+	// /* Function-related regex */
+	// std::regex fun_name_regex("(?:FunName: )(.*)");
+	// std::regex fun_begin_regex("(?:FunBegin: )(.*)");
+	// std::regex fun_end_regex("(?:FunEnd: )(.*)");
+	// std::regex fun_var_regex("(?:VarCount: )(.*)");
+	// int var_count = 0;
+	// std::regex function_end_regex("--------------FunEnd------------------");
 
-	// variable index that is going to keep track of var_vec
-	int var_idx = 0;
-	/* Variable-related regex */
-	std::smatch var_match;
-	std::regex var_name_regex("(?:VarName: )(.*)");
-	std::regex var_offset_regex("(?:Offset: )(.*)");
-	std::regex var_type_regex("(?:\tVarType: )(.*)");
-	std::regex var_end_regex("    -------------VarEnd------------");
+	// // variable index that is going to keep track of var_vec
+	// int var_idx = 0;
+	// /* Variable-related regex */
+	// std::smatch var_match;
+	// std::regex var_name_regex("(?:VarName: )(.*)");
+	// std::regex var_offset_regex("(?:Offset: )(.*)");
+	// std::regex var_type_regex("(?:\tVarType: )(.*)");
+	// std::regex var_end_regex("    -------------VarEnd------------");
 
-	/* Struct-related regex */
-	int mem_idx = 0; // this is for struct member index
-	std::smatch struct_match;
-	std::regex struct_name_regex("(?:StructName: )(.*)");
-	std::regex struct_begin_regex("(?:StructBegin: )(.*)");
-	std::regex struct_end_regex("(?:StructEnd: )(.*)");
-	std::regex struct_member_regex("(?:MemCount: )(.*)");
-	int mem_count = 0;
+	// /* Struct-related regex */
+	// int mem_idx = 0; // this is for struct member index
+	// std::smatch struct_match;
+	// std::regex struct_name_regex("(?:StructName: )(.*)");
+	// std::regex struct_begin_regex("(?:StructBegin: )(.*)");
+	// std::regex struct_end_regex("(?:StructEnd: )(.*)");
+	// std::regex struct_member_regex("(?:MemCount: )(.*)");
+	// int mem_count = 0;
 
-	/* Member-related regex */
-	std::regex member_end_regex("            -------MemberEnd-------");	
-	std::smatch mem_match;
-	std::regex mem_name_regex("(?:MemberName: )(.*)");
-	std::regex mem_begin_regex("(?:MemBegin: )(.*)");
-	std::regex mem_end_regex("(?:MemEnd: )(.*)");
+	// /* Member-related regex */
+	// std::regex member_end_regex("            -------MemberEnd-------");	
+	// std::smatch mem_match;
+	// std::regex mem_name_regex("(?:MemberName: )(.*)");
+	// std::regex mem_begin_regex("(?:MemBegin: )(.*)");
+	// std::regex mem_end_regex("(?:MemEnd: )(.*)");
 
-	string match;
-	string curVarType;
-	// Resume reading the inFile and populate the objects
-    while (std::getline(inStream, line)) {
-		std::cout << line << std::endl; // Process each line here
+	// string match;
+	// string curVarType;
+	// // Resume reading the inFile and populate the objects
+    // while (std::getline(inStream, line)) {
+	// 	// std::cout << line << std::endl; // Process each line here
 		
-		/* Function-related regexes */
-		auto fun_name_search = std::regex_search(line, fun_match, fun_name_regex);
-		if (fun_name_search) {
-			match = fun_match[1];
-			// cerr << match << "\n";
-			fun_vec[fun_idx].name = match;
-		}
+	// 	/* Function-related regexes */
+	// 	auto fun_name_search = std::regex_search(line, fun_match, fun_name_regex);
+	// 	if (fun_name_search) {
+	// 		match = fun_match[1];
+	// 		// cerr << match << "\n";
+	// 		fun_vec[fun_idx].name = match;
+	// 	}
 
-		auto fun_begin_search = std::regex_search(line, fun_match, fun_begin_regex);
-		if (fun_begin_search) {
-			match = fun_match[1];
-			unsigned int addr;   
-			std::stringstream ss;	
-			ss << std::hex << match.c_str();
-			ss >> addr;
-			fun_vec[fun_idx].begin = addr;
-		}
+	// 	auto fun_begin_search = std::regex_search(line, fun_match, fun_begin_regex);
+	// 	if (fun_begin_search) {
+	// 		match = fun_match[1];
+	// 		unsigned int addr;   
+	// 		std::stringstream ss;	
+	// 		ss << std::hex << match.c_str();
+	// 		ss >> addr;
+	// 		fun_vec[fun_idx].begin = addr;
+	// 	}
 
-		auto fun_end_search = std::regex_search(line, fun_match, fun_end_regex);
-		if (fun_end_search) {
-			match = fun_match[1];
-			unsigned int addr;   
-			std::stringstream ss;	
-			ss << std::hex << match.c_str();
-			ss >> addr;
-			fun_vec[fun_idx].end = addr;
-		}
+	// 	auto fun_end_search = std::regex_search(line, fun_match, fun_end_regex);
+	// 	if (fun_end_search) {
+	// 		match = fun_match[1];
+	// 		unsigned int addr;   
+	// 		std::stringstream ss;	
+	// 		ss << std::hex << match.c_str();
+	// 		ss >> addr;
+	// 		fun_vec[fun_idx].end = addr;
+	// 	}
 
-		auto fun_var_search = std::regex_search(line, fun_match, fun_var_regex);
-		if (fun_var_search) {
-			string match = fun_match[1];
-			var_count = atoi(match.c_str());
-			for (int var_obj = 0; var_obj < var_count; var_obj++)
-			{
-				DWARF_var dwarf_var{};
-				fun_vec[fun_idx].var_vec.push_back(dwarf_var);
-			}
-		}
+	// 	auto fun_var_search = std::regex_search(line, fun_match, fun_var_regex);
+	// 	if (fun_var_search) {
+	// 		string match = fun_match[1];
+	// 		var_count = atoi(match.c_str());
+	// 		for (int var_obj = 0; var_obj < var_count; var_obj++)
+	// 		{
+	// 			DWARF_var dwarf_var{};
+	// 			fun_vec[fun_idx].var_vec.push_back(dwarf_var);
+	// 		}
+	// 	}
 
-		if (std::regex_match(line, function_end_regex)) // if FunEnd is found, go to next idx
-		{	fun_idx++; var_count = 0; }
+	// 	if (std::regex_match(line, function_end_regex)) // if FunEnd is found, go to next idx
+	// 	{	fun_idx++; var_count = 0; }
 
-		/* Variable-related regexes */
-		auto var_name_search = std::regex_search(line, var_match, var_name_regex);
-		if (var_name_search) {
-			match = var_match[1];
-			fun_vec[fun_idx].var_vec[var_idx].name = match;
-		}
+	// 	/* Variable-related regexes */
+	// 	auto var_name_search = std::regex_search(line, var_match, var_name_regex);
+	// 	if (var_name_search) {
+	// 		match = var_match[1];
+	// 		fun_vec[fun_idx].var_vec[var_idx].name = match;
+	// 	}
 
-		auto var_offset_search = std::regex_search(line, var_match, var_offset_regex);
-		if (var_offset_search) {
-			match = var_match[1];
-			fun_vec[fun_idx].var_vec[var_idx].offset = atoi(match.c_str());
-		}
+	// 	auto var_offset_search = std::regex_search(line, var_match, var_offset_regex);
+	// 	if (var_offset_search) {
+	// 		match = var_match[1];
+	// 		fun_vec[fun_idx].var_vec[var_idx].offset = atoi(match.c_str());
+	// 	}
 
-		auto var_type_search = std::regex_search(line, var_match, var_type_regex);
-		if (var_type_search) {
-			match = var_match[1];
-			fun_vec[fun_idx].var_vec[var_idx].var_type = match;
-			curVarType = match;
-		}
+	// 	auto var_type_search = std::regex_search(line, var_match, var_type_regex);
+	// 	if (var_type_search) {
+	// 		match = var_match[1];
+	// 		fun_vec[fun_idx].var_vec[var_idx].var_type = match;
+	// 		curVarType = match;
+	// 	}
 
-		if (curVarType == "DW_TAG_structure_type")
-		{
-			/* Struct-related regexes */
-			auto struct_name_search = std::regex_search(line, struct_match, struct_name_regex);
-			if (struct_name_search) {
-				match = struct_match[1];
-				fun_vec[fun_idx].var_vec[var_idx].dw_struct.name = match;
-			}
+	// 	if (curVarType == "DW_TAG_structure_type")
+	// 	{
+	// 		/* Struct-related regexes */
+	// 		auto struct_name_search = std::regex_search(line, struct_match, struct_name_regex);
+	// 		if (struct_name_search) {
+	// 			match = struct_match[1];
+	// 			fun_vec[fun_idx].var_vec[var_idx].dw_struct.name = match;
+	// 		}
 			
-			auto struct_begin_search = std::regex_search(line, struct_match, struct_begin_regex);
-			if (struct_begin_search) {
-				match = struct_match[1];
-				unsigned int addr;   
-				std::stringstream ss;	
-				ss << std::hex << match.c_str();
-				ss >> addr;
-				fun_vec[fun_idx].var_vec[var_idx].dw_struct.begin = addr;
-			}
-			auto struct_end_search = std::regex_search(line, struct_match, struct_end_regex);
-			if (struct_end_search) {
-				match = struct_match[1];
-				unsigned int addr;   
-				std::stringstream ss;	
-				ss << std::hex << match.c_str();
-				ss >> addr;
-				fun_vec[fun_idx].var_vec[var_idx].dw_struct.end = addr;
-			}
+	// 		auto struct_begin_search = std::regex_search(line, struct_match, struct_begin_regex);
+	// 		if (struct_begin_search) {
+	// 			match = struct_match[1];
+	// 			unsigned int addr;   
+	// 			std::stringstream ss;	
+	// 			ss << std::hex << match.c_str();
+	// 			ss >> addr;
+	// 			fun_vec[fun_idx].var_vec[var_idx].dw_struct.begin = addr;
+	// 		}
+	// 		auto struct_end_search = std::regex_search(line, struct_match, struct_end_regex);
+	// 		if (struct_end_search) {
+	// 			match = struct_match[1];
+	// 			unsigned int addr;   
+	// 			std::stringstream ss;	
+	// 			ss << std::hex << match.c_str();
+	// 			ss >> addr;
+	// 			fun_vec[fun_idx].var_vec[var_idx].dw_struct.end = addr;
+	// 		}
 				
-			auto mem_count_search = std::regex_search(line, struct_match, struct_member_regex);
-			if (mem_count_search) {
-				string match = struct_match[1];
-				mem_count = atoi(match.c_str());
-				for (int mem_obj = 0; mem_obj < mem_count; mem_obj++)
-				{
-					DWARF_member dwarf_mem{};
-					fun_vec[fun_idx].var_vec[var_idx].dw_struct.member_vec.push_back(dwarf_mem);
-				}
-			}
+	// 		auto mem_count_search = std::regex_search(line, struct_match, struct_member_regex);
+	// 		if (mem_count_search) {
+	// 			string match = struct_match[1];
+	// 			mem_count = atoi(match.c_str());
+	// 			for (int mem_obj = 0; mem_obj < mem_count; mem_obj++)
+	// 			{
+	// 				DWARF_member dwarf_mem{};
+	// 				fun_vec[fun_idx].var_vec[var_idx].dw_struct.member_vec.push_back(dwarf_mem);
+	// 			}
+	// 		}
 			
-			if (std::regex_match(line, member_end_regex)) // if FunEnd is found, go to next idx
-			{	mem_idx++; }
+	// 		if (std::regex_match(line, member_end_regex)) // if FunEnd is found, go to next idx
+	// 		{	mem_idx++; }
 
-			/* Member-related regexes */
-			auto mem_name_search = std::regex_search(line, mem_match, mem_name_regex);
-			if (mem_name_search) {
-				match = mem_match[1];
-				fun_vec[fun_idx].var_vec[var_idx].dw_struct.member_vec[mem_idx].name = match;
-			}
-			auto mem_begin_search = std::regex_search(line, mem_match, mem_begin_regex);
-			if (mem_begin_search) {
-				match = mem_match[1];
-				unsigned int addr;   
-				std::stringstream ss;	
-				ss << std::hex << match.c_str();
-				ss >> addr;
-				fun_vec[fun_idx].var_vec[var_idx].dw_struct.member_vec[mem_idx].begin = addr;
-			}
-			auto mem_end_search = std::regex_search(line, mem_match, mem_end_regex);
-			if (mem_end_search) {
-				match = mem_match[1];
-				unsigned int addr;   
-				std::stringstream ss;	
-				ss << std::hex << match.c_str();
-				ss >> addr;
-				fun_vec[fun_idx].var_vec[var_idx].dw_struct.member_vec[mem_idx].end = addr;
-			}
+	// 		/* Member-related regexes */
+	// 		auto mem_name_search = std::regex_search(line, mem_match, mem_name_regex);
+	// 		if (mem_name_search) {
+	// 			match = mem_match[1];
+	// 			fun_vec[fun_idx].var_vec[var_idx].dw_struct.member_vec[mem_idx].name = match;
+	// 		}
+	// 		auto mem_begin_search = std::regex_search(line, mem_match, mem_begin_regex);
+	// 		if (mem_begin_search) {
+	// 			match = mem_match[1];
+	// 			unsigned int addr;   
+	// 			std::stringstream ss;	
+	// 			ss << std::hex << match.c_str();
+	// 			ss >> addr;
+	// 			fun_vec[fun_idx].var_vec[var_idx].dw_struct.member_vec[mem_idx].begin = addr;
+	// 		}
+	// 		auto mem_end_search = std::regex_search(line, mem_match, mem_end_regex);
+	// 		if (mem_end_search) {
+	// 			match = mem_match[1];
+	// 			unsigned int addr;   
+	// 			std::stringstream ss;	
+	// 			ss << std::hex << match.c_str();
+	// 			ss >> addr;
+	// 			fun_vec[fun_idx].var_vec[var_idx].dw_struct.member_vec[mem_idx].end = addr;
+	// 		}
 
-		}	
+	// 	}	
 
-		if (std::regex_match(line, var_end_regex)) // if FunEnd is found, go to next idx
-		{	var_idx++; curVarType.erase(); }
-	}
-	cerr << fun_idx << "\n";
+	// 	if (std::regex_match(line, var_end_regex)) // if FunEnd is found, go to next idx
+	// 	{	var_idx++; curVarType.erase(); }
+	// }
+	// cerr << fun_idx << "\n";
 	
 
-    inStream.close(); // Explicitly close the file
-	cerr << "Checking vector:\n";
-	for (auto fun : fun_vec)
-	{
-		cerr << fun.name << "\nFunBegin: " << fun.begin << endl;
-		for (auto var : fun.var_vec)
-		{
-			cerr << "\tVarName: " << var.name << endl;
-			cerr << "\tOffset: " << var.offset << endl; 
-			cerr << "\tVarType: " << var.var_type << endl;
-			if (var.dw_struct.name != "")
-			{
-				cerr << "\t\tStructName: " << var.dw_struct.name << endl;
-				cerr << "\t\tStructBegin: " << var.dw_struct.begin << endl;
-				cerr << "\t\tStructEnd: " << var.dw_struct.end << endl;
-				for (auto mem : var.dw_struct.member_vec){
-					cerr << "\t\t\tMemName: " << mem.name << endl;
-					cerr << "\t\t\tMemBegin: " << mem.begin << endl;
-					cerr << "\t\t\tMemEnd: " << mem.end << endl;
-				}
-			}
-		}
-	}
+	// cerr << "Checking vector:\n";
+	// for (auto fun : fun_vec)
+	// {
+	// 	cerr << fun.name << "\nFunBegin: " << fun.begin << endl;
+	// 	for (auto var : fun.var_vec)
+	// 	{
+	// 		cerr << "\tVarName: " << var.name << endl;
+	// 		cerr << "\tOffset: " << var.offset << endl; 
+	// 		cerr << "\tVarType: " << var.var_type << endl;
+	// 		if (var.dw_struct.name != "")
+	// 		{
+	// 			cerr << "\t\tStructName: " << var.dw_struct.name << endl;
+	// 			cerr << "\t\tStructBegin: " << var.dw_struct.begin << endl;
+	// 			cerr << "\t\tStructEnd: " << var.dw_struct.end << endl;
+	// 			for (auto mem : var.dw_struct.member_vec){
+	// 				cerr << "\t\t\tMemName: " << mem.name << endl;
+	// 				cerr << "\t\t\tMemBegin: " << mem.begin << endl;
+	// 				cerr << "\t\t\tMemEnd: " << mem.end << endl;
+	// 			}
+	// 		}
+	// 	}
+	// }
+
+    // inStream.close(); // Explicitly close the file
 }
 /* 
  * DTA
