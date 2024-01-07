@@ -285,7 +285,7 @@ def dwarf_analysis(input_binary):
                                     elif base_var == True:
                                         working_var = last_var.pop()
                                         # print(type(working_var), working_var, var_offset)
-                                        working_var.offset = hex(var_offset)
+                                        working_var.offset = var_offset #(var_offset)
                                         working_var.offset_expr = reg_offset
                                         var_list.append(working_var)
                                         # print(working_var)
@@ -529,27 +529,35 @@ def dwarf_analysis(input_binary):
     # exit()
 
     # Iterate through function list once to populate the list
+    temp_var_list = list()
+    temp_count = 0
     for fun in fun_list:
         # print(fun.name)
         temp_struct_list = list()
-        temp_var_list = list()
-        temp_count = 0
         # for idx, struct in enumerate(struct_list):
         #     if struct.fun_name == fun.name:
         #         temp_struct_list.append(struct)
         #         temp_count += 1
-        # pprint.pprint(var_list, width=1)
         for idx, var in enumerate(var_list):
             if var.fun_name == fun.name:
                 temp_var_list.append(var)
                 if var.struct != None:
-                    for member in var.struct.member_list:
+                    # temp_count += 1 # This is temporary
+                    for member in var.struct.member_list:        
+                        if var.fun_name == "open_listenfd":
+                            print(member)
                         temp_count += 1
                 else:
+                    if var.fun_name == "open_listenfd":
+                        print(var)
                     temp_count += 1
         # fun.struct_list = temp_struct_list.copy()
         fun.var_list = temp_var_list.copy()
         fun.var_count = temp_count
+        temp_var_list.clear()
+        temp_count = 0
+
+    # pprint.pprint(fun_list, width=1)
 
     # pprint.pprint(fun_list, width=1)
     # In second iteration, we will write it to the file pointer
@@ -557,7 +565,7 @@ def dwarf_analysis(input_binary):
     for fun in fun_list:
         fp.write("\n-------------FunBegin-----------------\nFunName: %s\nFunBegin: %s\nFunEnd: %s\nVarCount: %s\n" % (fun.name, fun.begin, fun.end, fun.var_count))
         
-        for idx, var in enumerate(var_list):
+        for idx, var in enumerate(fun.var_list):
             fp.write("    -------------------------------\n\tVarName: %s\n" % var.name)
             fp.write("\tOffset: %s\n" % var.offset)
             fp.write("\tVarType: %s\n" % var.var_type)

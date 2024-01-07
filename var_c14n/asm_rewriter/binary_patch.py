@@ -251,7 +251,9 @@ void __attribute__((constructor)) table()
     # Variable count to patch
     var_patch = 99
     # Function count to patch
-    fun_patch = 12
+    fun_patch = 15
+    print("Total function: ", len(dwarf_fun_var_info))
+    # exit()
     for fun_idx,fun in enumerate(dwarf_fun_var_info):
         if True: 
         # if fun_idx == 12: # This is used to debug specific function
