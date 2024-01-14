@@ -271,8 +271,9 @@ def dwarf_analysis(input_binary):
                         if (var_attr.name == "DW_AT_name"):
                             var_name = DIE.attributes["DW_AT_name"].value.decode()
                             log.debug("\tVar name: %s", var_name)
-                            if var_name == "version_etc_copyright":
-                                None
+                            # Debugging var name
+                            # if var_name == "version_etc_copyright":
+                            #     None
                         if (loc_parser.attribute_has_location(var_attr, CU['version'])):
                             loc = loc_parser.parse_from_attribute(var_attr,
                                                                 CU['version'])
@@ -319,6 +320,8 @@ def dwarf_analysis(input_binary):
                                     temp_var = VarData(var_name, var_offset, working_var.name, 
                                                        "DW_TAG_structure_type", fun_name, reg_offset, working_var)
                                     log.critical("Inserting struct var %s", temp_var.name)
+                                    struct_var = False
+                                    base_var = True
                                     var_list.append(temp_var)
                                     # pprint.pprint(working_var)
                                 elif base_var == True and gv_var == True:
@@ -364,6 +367,21 @@ def dwarf_analysis(input_binary):
                                             type_name = dbl_ptr_type_die.attributes['DW_AT_name'].value.decode()
                                         elif dbl_ptr_type_die.tag == "DW_TAG_subroutine_type":
                                             type_name = "subroutine"
+                                        elif dbl_ptr_type_die.tag == "DW_TAG_structure_type":
+                                            if 'DW_AT_byte_size' in dbl_ptr_type_die.attributes:
+                                                byte_size   = dbl_ptr_type_die.attributes['DW_AT_byte_size'].value
+                                            if 'DW_AT_decl_line' in dbl_ptr_type_die.attributes:
+                                                line_num    = dbl_ptr_type_die.attributes['DW_AT_decl_line'].value
+                                            # print(byte_size, line_num)
+                                            for struct_item in struct_list:
+                                                # print(struct_item.size, struct_item.line)
+                                                if (byte_size == struct_item.size and
+                                                    line_num == struct_item.line):
+                                                    type_name = struct_item.name
+                                                    temp_var = copy.deepcopy(struct_item)
+                                                    struct_var  = True
+                                                    base_var    = False
+                                                    last_var.append(temp_var)
                                         else:
                                             trip_ptr_type_die = get_dwarf_type(dwarfinfo, dbl_ptr_type_die.attributes, dbl_ptr_type_die.cu, dbl_ptr_type_die.cu.cu_offset)
                                             if 'DW_AT_name' in trip_ptr_type_die.attributes:
@@ -371,19 +389,20 @@ def dwarf_analysis(input_binary):
                                 else:
                                     type_name = "null"
                                 log.error("ptr_type: %s", type_name)
+                            
+                                if struct_var == True:
+                                    continue
                                 struct_var  = False
                                 base_var    = True
                                 temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
                                 last_var.append(temp_var)
                             elif type_die.tag == "DW_TAG_typedef":
-                                # print(type_die)
                                 typedef_name = type_die.attributes['DW_AT_name'].value.decode()
                                 try:
                                     typedef_name = typedef_name.decode('utf-8')
                                 except:
                                     None
                                 for typedef_item in typedef_list:
-                                    # print(typedef_item.name, typedef_item.base_type)
                                     if typedef_name == typedef_item.name:
                                         type_name = typedef_item.base_type
                                 # After searching through typedef list, if type_name is None, rec find
@@ -396,10 +415,11 @@ def dwarf_analysis(input_binary):
                                         base_var    = True
                                         arr_type_die = get_dwarf_type(dwarfinfo, typedef_die.attributes,
                                                                         typedef_die.cu, typedef_die.cu.cu_offset)
-                                        if arr_type_die.tag == "DW_TAG_base_type":
-                                            type_name = arr_type_die.attributes['DW_AT_name'].value.decode()
-                                        elif arr_type_die.tag == "DW_TAG_subroutine_type":
-                                            type_name = "subroutine"
+                                        if arr_type_die != None:
+                                            if arr_type_die.tag == "DW_TAG_base_type":
+                                                type_name = arr_type_die.attributes['DW_AT_name'].value.decode()
+                                            elif arr_type_die.tag == "DW_TAG_subroutine_type":
+                                                type_name = "subroutine"
                                         temp_var = VarData(var_name, None, type_name, 
                                                            type_die.tag, fun_name)
                                         last_var.append(temp_var)
@@ -407,19 +427,21 @@ def dwarf_analysis(input_binary):
                                         # If typedef is a struct, then enable struct_var and disable base_var
                                         struct_var  = True
                                         base_var    = False
+                                        print(typedef_die)
                                         if 'DW_AT_name' in typedef_die.attributes:
                                             type_name = typedef_die.attributes['DW_AT_name'].value.decode()
-                                        else:
-                                            if 'DW_AT_byte_size' in typedef_die.attributes:
-                                                byte_size   = typedef_die.attributes['DW_AT_byte_size'].value
-                                            if 'DW_AT_decl_line' in typedef_die.attributes:
-                                                line_num    = typedef_die.attributes['DW_AT_decl_line'].value
-                                            for struct_item in struct_list:
-                                                if (byte_size == struct_item.size and
-                                                    line_num == struct_item.line):
-                                                    type_name = struct_item.name
-                                                    temp_var = copy.deepcopy(struct_item)
-                                                    last_var.append(temp_var)
+                                        if 'DW_AT_byte_size' in typedef_die.attributes:
+                                            byte_size   = typedef_die.attributes['DW_AT_byte_size'].value
+                                        if 'DW_AT_decl_line' in typedef_die.attributes:
+                                            line_num    = typedef_die.attributes['DW_AT_decl_line'].value
+                                        # print(byte_size, line_num)
+                                        for struct_item in struct_list:
+                                            # print(struct_item.size, struct_item.line)
+                                            if (byte_size == struct_item.size and
+                                                line_num == struct_item.line):
+                                                type_name = struct_item.name
+                                                temp_var = copy.deepcopy(struct_item)
+                                                last_var.append(temp_var)
                                 else:
                                     struct_var  = False
                                     base_var    = True
@@ -613,7 +635,8 @@ def dwarf_analysis(input_binary):
                             temp_struct_members.clear()
                             temp_struct = None
                             struct_typedef = True
-                    elif last_tag == "DW_TAG_typedef" and struct_typedef:
+                    elif (last_tag == "DW_TAG_typedef" and struct_typedef or
+                          last_tag == "DW_TAG_const_type" and struct_typedef) :
                         # If typedef of struct, last item of struct_list should be the struct
                         if 'DW_AT_name' in DIE.attributes:
                             typedef_name = DIE.attributes['DW_AT_name'].value
@@ -658,9 +681,13 @@ def dwarf_analysis(input_binary):
                                 typedef_type = arr_type_die.attributes['DW_AT_name'].value.decode()
                             elif arr_type_die.tag == "DW_TAG_array_type":
                                 
-                                dbl_arr_type_die = get_dwarf_type(dwarfinfo, arr_type_die.attributes,
-                                                            arr_type_die.cu, arr_type_die.cu.cu_offset)
-                                typedef_type = dbl_arr_type_die.attributes['DW_AT_name'].value.decode()
+                                dbl_arr_type_die = get_dwarf_type(dwarfinfo, arr_type_die.attributes, arr_type_die.cu, arr_type_die.cu.cu_offset)
+                                if 'DW_AT_name' in dbl_arr_type_die.attributes:
+                                    typedef_type = dbl_arr_type_die.attributes['DW_AT_name'].value.decode()
+                                else: 
+                                    trip_arr_type_die = get_dwarf_type(dwarfinfo, dbl_arr_type_die.attributes, dbl_arr_type_die.cu, dbl_arr_type_die.cu.cu_offset)
+                                    if 'DW_AT_name' in trip_arr_type_die.attributes:
+                                        typedef_type = trip_arr_type_die.attributes['DW_AT_name'].value.decode()
                         elif type_die.tag == "DW_TAG_typedef":
                             # uintmax_t => __uintmax_t
                             typedef_type = get_base_type(dwarfinfo, DIE.attributes, DIE.cu, DIE.cu.cu_offset)
@@ -748,7 +775,7 @@ def dwarf_analysis(input_binary):
             fp.write("\tOffset: %s\n" % var.offset)
             fp.write("\tVarType: %s\n" % var.var_type)
             fp.write("\tBaseType: %s\n" % var.base_type)
-            if var.var_type == "DW_TAG_structure_type":
+            if var.base_type == "DW_TAG_structure_type":
                 fp.write("        --------------------------\n\t\tStructName: %s" % var.struct.name)
                 fp.write("                                  \n\t\tStructBegin: %s" % var.struct.begin)
                 fp.write("                                  \n\t\tStructEnd: %s" % var.struct.end)
