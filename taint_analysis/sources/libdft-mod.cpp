@@ -218,7 +218,11 @@ void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 		//	return;
 		RTN_Open(callRtn);
 		#if DBG_FLAG
-		cerr << hex << ins_addr << " [*] " << RTN_Name(callRtn) << endl;
+		if(!(strstr(routineName.c_str(),pltName.c_str()))) {
+			cerr << hex << ins_addr << " [*] " << RTN_Name(callRtn) << endl;
+			
+			fprintf(trace, "%s,", RTN_Name(callRtn).c_str());
+		}
 		#endif
 		RTN_Close(callRtn);
 	}

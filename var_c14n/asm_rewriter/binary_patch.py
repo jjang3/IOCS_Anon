@@ -53,6 +53,13 @@ from pathlib import Path
 #     # fun: Optional[str] = None
 
 
+@dataclass(unsafe_hash = True)
+class FileData:
+    name: str = None
+    asm_path: str = None
+    obj_path: str = None
+    fun_list: Optional[list] = None
+
 # @dataclass
 @dataclass(unsafe_hash = True)
 class VarData:
@@ -217,7 +224,7 @@ void __attribute__((constructor)) table()
 """ % (dwarf_var_count)
 
     count = 0
-    while count < dwarf_var_count: # May need to make this <= in order to avoid mod 2 bug
+    while count <= dwarf_var_count: # May need to make this <= in order to avoid mod 2 bug
         varentry = "\tvoid *addr_%d;" % count
         mmapentry = """
     addr_%d = mmap(NULL, getpagesize(), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS | MAP_32BIT, -1, 0);     
@@ -248,15 +255,17 @@ void __attribute__((constructor)) table()
     offset_expr_to_table    = set()
     table_offset = 0
     
+    # Variable that is going to be patched
+    off_var_count = 0
     # Variable count to patch
-    var_patch = 99
+    var_patch = 9999
     # Function count to patch
-    fun_patch = 15
-    print("Total function: ", len(dwarf_fun_var_info))
+    fun_patch = 0
+    # print("Total variables to patch: ", count)
     # exit()
     for fun_idx,fun in enumerate(dwarf_fun_var_info):
         if True: 
-        # if fun_idx == 12: # This is used to debug specific function
+        # if fun_idx == 0: # This is used to debug specific function
             vars = dwarf_fun_var_info[fun]
             # print(fun)
             for var_idx, var in enumerate(vars):
@@ -266,12 +275,19 @@ void __attribute__((constructor)) table()
                     #     exit()
                     if var_idx < var_patch: # and var_idx == 6: # (and var_idx is used to debug)
                         if var.base_type == "DW_TAG_base_type":
-                            offset_expr_to_table.add((var.offset_expr, table_offset))
-                            table_offset += 8
-                        elif var.var_type == "DW_TAG_structure_type":
+                            if var.offset_expr != None:
+                                offset_expr_to_table.add((var.offset_expr, table_offset))
+                                table_offset += 8
+                                off_var_count += 1
+                        elif var.base_type == "DW_TAG_structure_type":
                             # Because structure is a variable type like how int is used
                             var_struct = var.struct
-                            result = any("DW_TAG_structure_type" in member.base_type for member in var_struct.member_list)
+                            # result = any("DW_TAG_structure_type" in member.base_type for member in var_struct.member_list)
+                            result = False
+                            for member in var_struct.member_list:
+                                if member.base_type != None:
+                                    if member.base_type == "DW_TAG_structure_type":
+                                        result = True
                             # If none of the struct members are structure, then it's fine
                             if not result:
                                 for mem_idx, member in enumerate(var_struct.member_list):
@@ -282,13 +298,28 @@ void __attribute__((constructor)) table()
                                     #     None
                                         if True:
                                         # if mem_idx == 0:
-                                            offset_expr_to_table.add((member.offset_expr, table_offset))
-                                            table_offset += 8
+                                            if member.offset_expr != None:
+                                                offset_expr_to_table.add((member.offset_expr, table_offset))
+                                                table_offset += 8
+                                                off_var_count += 1
+                        elif (var.base_type == "DW_TAG_typedef" and
+                              var.struct == None):
+                            if var.offset_expr != None:
+                                offset_expr_to_table.add((var.offset_expr, table_offset))
+                                table_offset += 8
+                                off_var_count += 1
+                        else:
+                            log.error("Skipping: %s", var)
             fun_table_offsets[fun] = offset_expr_to_table.copy()
             offset_expr_to_table.clear()
-        if fun_idx == fun_patch:
-            # pprint(fun_table_offsets[fun], width=1)
-            break
+        
+    
+    print("Total function: ", len(dwarf_fun_var_info))
+    print("Total variables getting patched: ", off_var_count)
+    
+        # if fun_idx == fun_patch:
+        #     # pprint(fun_table_offsets[fun], width=1)
+        #     break
     
 def conv_expr(expr):
     print("Converting expression", expr)
@@ -341,6 +372,8 @@ def conv_imm(imm):
             offset = -1
         elif offset == 18446744073709551615:
             offset = -1
+        elif offset == 4294967196:
+            offset = -100
         elif offset == 4294967165:
             offset = -130
         elif offset == 4294967166:
@@ -356,22 +389,25 @@ def process_argument(argv):
     inputfile = ''
     taintfile = ''
     dirloc = None
+    funfile = None
     try:
-        opts, args = getopt.getopt(argv,"hfic:",["binary=","taint=","dir="])
+        opts, args = getopt.getopt(argv,"hfic:",["binary=","taint=","dir=","fun="])
     except getopt.GetoptError:
-        print ('binary_patch.py --binary <binary> --taint <dft.out> --dir <dir name>')
+        print ('binary_patch.py --binary <binary> --taint <dft.out> --dir <dir name> --fun <fun.list>')
         sys.exit(2)
     for opt, arg in opts:
         if opt == '-h':
-            print ('binary_patch.py --binary <binary> --taint <dft.out> --dir <dir name>')
+            print ('binary_patch.py --binary <binary> --taint <dft.out> --dir <dir name> --fun <fun.list>')
             sys.exit()
         elif opt in ("-b", "--binary"):
             inputfile = arg
+        elif opt in ("-f", "--fun"):
+            funfile = arg
         elif opt in ("-t", "--taint"):
             taintfile = arg
         elif opt in ("-d", "--dir"):
             dirloc = arg
-    process_binary(inputfile, taintfile, dirloc)
+    process_binary(inputfile, taintfile, dirloc, funfile)
 
 dwarf_fun_var_info  = dict()
 bn_fun_var_info     = dict()
@@ -379,123 +415,168 @@ bn_fun_var_info     = dict()
 # Total number of variables from the DWARF analysis
 dwarf_var_count = 0
 
+# This list will contain all target variables
 target_list = list()
 
-def process_binary(filename, taintfile, dirloc):
+# This list will contain all target files based on searching through all directories
+target_files = list()
+
+# This dict will have function -> fun_list relationship
+file_fun = dict()
+fun_list = list() # This list contains all functions analyzed per asm file
+
+file_list = list()
+
+def find_funs(file_list):
+    fun_regex = re.compile(r'\t\.type\s+.*,\s*@function\n\b(^.[a-zA-Z_.\d]+)\s*:', re.MULTILINE)
+    for file_item in file_list:
+        if file_item.asm_path != None:
+            # pprint(file_item)
+            with open(file_item.asm_path, 'r') as asm_file:
+                asm_string = asm_file.read()
+                fun_names = fun_regex.findall(asm_string)
+            for name in fun_names:
+                fun_list.append(name)
+            if file_item.fun_list == None:
+                file_item.fun_list = fun_list.copy()
+            fun_list.clear()
+
+def visit_dir(dir_list):
+    for root, dirs, files in os.walk(dir_list):
+        # print(f"Current directory: {root}")
+        
+        # Print subdirectories
+        # for dir_name in dirs:
+        #     print(os.path.join(root, dir_name))
+
+        # Print files
+        for file_name in files:
+            temp_file = None
+            tgt_index = None
+            base_name = os.path.splitext(os.path.basename(file_name))[0]
+            for index, file_item in enumerate(file_list):
+                if isinstance(file_item, FileData) and file_item.name == base_name:
+                    tgt_index = index
+            if tgt_index != None:
+                temp_file = file_list[tgt_index]
+            else:
+                temp_file = FileData(base_name)
+
+            if file_name.endswith(".s"):
+                file_path = os.path.join(root, file_name)
+                temp_file.asm_path = file_path
+            elif file_name.endswith(".o"):
+                file_path = os.path.join(root, file_name)
+                temp_file.obj_path = file_path
+                
+            if temp_file != None and tgt_index == None:
+                file_list.append(temp_file)
+            # pprint(temp_file)
+
+def process_binary(filename, taintfile, dirloc, funfile):
     global dwarf_var_count
     target_dir = None        
-    # print("Dirloc", dirloc)
+    target_file = None
     if dirloc != None:
-        # print("Here")
-        target_dir = os.path.join(os.path.dirname(os.path.abspath(filename)), dirloc)
-        # filename = os.path.join(target_dir, filename)
-        # funfile = os.path.join(target_dir, funfile)
-        # target_dir = Path(os.path.abspath(filename))
+        target_dir = Path(os.path.abspath(dirloc))
+        visit_dir(target_dir)
     else:
         target_dir = Path(os.path.abspath(filename))
         target_dir = target_dir.parent.parent.joinpath("result", os.path.splitext((os.path.basename(filename)))[0])
         taint_file = target_dir.joinpath("dft.out")
         filename = target_dir.joinpath(os.path.splitext((os.path.basename(filename)))[0] + ".out")
-        # target_dir= (os.path.abspath(filename)) #os.path.abspath(os.path.abspath(os.path.dirname))
+        target_file = target_dir.joinpath(os.path.splitext((os.path.basename(filename)))[0] + ".s")
+        
+    funfile_list = None
+    funfile_path = None
+    if funfile != None:
+        funfile_path = target_dir.joinpath(os.path.splitext((os.path.basename(funfile)))[0] + ".list")
+        with open(funfile_path) as ff:
+            for line in ff:
+                # print(line)
+                funfile_list = line.split(',')
+    
+    # print("File list:")
+    find_funs(file_list)
+    # pprint(file_list)
+    
+    
+    # print("Function list:")
+    # pprint(funfile_list, width=1)
 
-    # print("\tTarget dir:", target_dir)
-    # print(funfile)
-
-    target_file = target_dir.joinpath(os.path.splitext((os.path.basename(filename)))[0] + ".s")
+    for file_item in file_list:
+        if file_item.fun_list != None:
+            file_fun_list = file_item.fun_list
+            found = [element for element in funfile_list if element in file_fun_list]
+            if found:
+                # pprint(file_item)
+                # for element in found:
+                #     print(f"The item {element} is found in both lists.")
+                target_files.append(file_item)
     
     funlist = list()
-    # taint_src_regex = r"(?:T_SRC.*?:\s)(.*)"
-    # taint_sink_regex = r"(?:(W|R)\s0x[0-9,A-z]*:\s)(.*)\.(.*)"
-    # if taint_file != "":
-    #     with open(taint_file) as c:
-    #         for line in c:
-    #             taint_src = re.search(taint_src_regex, line)
-    #             if (taint_src):
-    #                 print(taint_src.group(1))
-    #                 funlist.append(taint_src.group(1))
-    #             taint_sink = re.search(taint_sink_regex, line)
-    #             if (taint_sink):
-    #                 print(line)
-    #                 op_type = taint_sink.group(1)
-    #                 var_name = taint_sink.group(2)
-    #                 mem_name = taint_sink.group(3)
-    #                 target_var = None
-    #                 if mem_name != None:
-    #                     target_var = TargetData(set(), var_name, mem_name)
-    #                 else:
-    #                     target_var = TargetData(set(), var_name, None)
-                    
-    #                 if len(target_list) != 0:
-    #                     for target in target_list:
-    #                         if target.var_name == target_var.var_name:
-    #                             if mem_name != None:
-    #                                 if target.member_name == target_var.member_name:
-    #                                     target.type.add(op_type)
-    #                             else:
-    #                                 target.type.add(op_type)
-    #                         else:
-    #                             target_list.append(target_var)
-    #                 else:
-    #                     target_var.type.add(op_type)
-    #                     target_list.append(target_var)
-    #             else:
-    #                 print(line)
-    
-    # print("Target list:")
-    # pprint(target_list, width=1)
-
-    dir_list = os.listdir(target_dir)
-    # print(filename, funfile, target_dir)
-    # --- DWARF analysis --- #
-    dwarf_output = dwarf_analysis.dwarf_analysis(filename)
-    # pprint(dwarf_output, width=1)
-    for fun in dwarf_output:
-        funlist.append(fun.name)
-        temp_var_count = fun.var_count
-        # Make copy of var_list to make modification and copy it to dwarf_fun_var_info
-        temp_var_list = fun.var_list.copy()
-        # Temporary disabled taint analysis information
-        # for var in temp_var_list:
-            # target_vars = [(target.var_name, idx) for (idx,target) in enumerate(target_list)]
-            # # print(target_vars[0])
-            # for target_var in target_vars:
-            #     if target_var[0] == var.name:
-            #         # target_var[1] is an index
-            #         if var.struct is not None:
-            #             if var.struct.member_list is not None:
-            #                 for member in var.struct.member_list:
-            #                     if target_list[target_var[1]].member_name is member.name:
-            #                         None
-            #                     else:
-            #                         var.struct.member_list.remove(member)
-            #                         temp_var_count -= 1
-        # pprint(temp_var_list, width=1)
-        dwarf_fun_var_info[fun.name] = temp_var_list.copy()
-        fun_entry_to_args[fun.begin] = temp_var_count
-        dwarf_var_count += temp_var_count
-
-    pprint(dwarf_fun_var_info, width=1)
-
-    # Based on variable counts and targets found by dwarf analysis, generate table.
-    generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir)
-
-    # pprint(dwarf_fun_var_info, width=1)
-    # --- Binary Ninja Analysis --- #
-    print("Binary ninja input:", filename)
-    with load(filename.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
-        # print("Here")                  
-        arch = Architecture['x86_64']
-        bn = BinAnalysis(bv)
-        bn.analyze_binary(funlist)
-
-    if dirloc != '':
-        for dir_file in dir_list:
-            if (dir_file.endswith('.s')):
-                process_file(funlist, target_dir, dir_file)
+    if dirloc != None:
+        for file_item in target_files:
+            print("Analyzing: ", file_item.name)
+            dwarf_output = dwarf_analysis.dwarf_analysis(file_item.obj_path)
+        # for dir_file in dir_list:
+        #     if (dir_file.endswith('.s')):
+        #         process_file(funlist, target_dir, dir_file)
     else:
-        process_file(funlist, target_dir, target_file)
+    
+        print(filename, funfile, target_dir)
+        # --- DWARF analysis --- #
+        dwarf_output = dwarf_analysis.dwarf_analysis(filename)
+        # pprint(dwarf_output, width=1)
+        for fun in dwarf_output:
+            if funfile_list == None:
+                funlist.append(fun.name)
+                temp_var_count = fun.var_count
+                # Make copy of var_list to make modification and copy it to dwarf_fun_var_info
+                temp_var_list = fun.var_list.copy()
+                # Temporary disabled taint analysis information
+                # for var in temp_var_list:
+                    # target_vars = [(target.var_name, idx) for (idx,target) in enumerate(target_list)]
+                    # # print(target_vars[0])
+                    # for target_var in target_vars:
+                    #     if target_var[0] == var.name:
+                    #         # target_var[1] is an index
+                    #         if var.struct is not None:
+                    #             if var.struct.member_list is not None:
+                    #                 for member in var.struct.member_list:
+                    #                     if target_list[target_var[1]].member_name is member.name:
+                    #                         None
+                    #                     else:
+                    #                         var.struct.member_list.remove(member)
+                    #                         temp_var_count -= 1
+                # pprint(temp_var_list, width=1)
+                dwarf_fun_var_info[fun.name] = temp_var_list.copy()
+                fun_entry_to_args[fun.begin] = temp_var_count
+                dwarf_var_count += temp_var_count
+            else:
+                if fun.name in funfile_list:
+                    funlist.append(fun.name)
+                    temp_var_count = fun.var_count
+                    # Make copy of var_list to make modification and copy it to dwarf_fun_var_info
+                    temp_var_list = fun.var_list.copy()
+                    dwarf_fun_var_info[fun.name] = temp_var_list.copy()
+                    fun_entry_to_args[fun.begin] = temp_var_count
+                    dwarf_var_count += temp_var_count
 
+        pprint(dwarf_fun_var_info, width=1)
 
+        # Based on variable counts and targets found by dwarf analysis, generate table.
+        generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir)
+
+        # pprint(dwarf_fun_var_info, width=1)
+        # --- Binary Ninja Analysis --- #
+        print("Binary ninja input:", filename)
+        with load(filename.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
+            # print("Here")                  
+            arch = Architecture['x86_64']
+            bn = BinAnalysis(bv)
+            bn.analyze_binary(funlist)
+        process_file(funlist, target_dir, str(target_file))
 
 asm_macros = """# ASM Rewriting Macros:
     .macro movw_set_gs src offset
@@ -904,6 +985,7 @@ def process_file(funlist, target_dir, target_file):
         patch_count = 0
         with fileinput.input(os.path.join(target_dir, target_file), 
                              inplace=(not debug), encoding="utf-8", backup='.bak') as f:
+            file_pattern = re.compile(r'\.file\s+"([^"]+)"')
             fun_begin_regex = r'(?<=.type\t)(.*)(?=,\s@function)'
             fun_end_regex   = r'(\t.cfi_endproc)'
             dis_line_regex  = r'(mov|movzb|lea|sub|add|cmp|sal|imul)([l|b|w|q]*)\t(.*),\s(.*)'
@@ -916,11 +998,10 @@ def process_file(funlist, target_dir, target_file):
             offset_targets = list()
             struct_targets = set()
             # print(funlist)
+            
             for line in f:
-                # print('\t.file\t"%s.c"' % target_file.rsplit('.', maxsplit=1)[0])
-                if line.startswith('\t.file\t"%s.c"' % target_file.rsplit('.', maxsplit=1)[0]):
+                if file_pattern.findall(line): #.startswith('\t.file\t"%s.c"' % target_file.rsplit('.', maxsplit=1)[0]):
                     print(asm_macros, end='')
-                    # None
                 fun_begin = re.search(fun_begin_regex, line)
                 if fun_begin is not None:
                     if fun_begin.group(1) in funlist:
@@ -935,10 +1016,14 @@ def process_file(funlist, target_dir, target_file):
                             log.error("Skipping", type(err))
                             check = False
                         if debug:
+                            if currFun != "print_factors_single": # Debug
+                                check = False
+                            else:
+                                check = True
                             None
                             # pprint(dwarf_var_info, width = 1)
                             # pprint(bninja_info, width = 1)
-                            # pprint(offset_targets, width = 1)
+                            pprint(offset_targets, width = 1)
                         else:
                             if offset_targets != None:
                                 for tgt in offset_targets:
@@ -966,10 +1051,18 @@ def process_file(funlist, target_dir, target_file):
                                                     dest=conv_imm(dest), src=conv_imm(src))
                         if debug:
                             print(temp_inst.inst_print())
+                            if src != None:
+                                for offset in offset_targets:
+                                    if src == offset[0]:
+                                        log.warning("Debug found")
+                            if dest != None:
+                                for offset in offset_targets:
+                                    if dest == offset[0]:
+                                        log.warning("Debug found")
                         new_inst = None
                         for idx, bn_var in enumerate(bninja_info):
-                            if debug:
-                                log.warning(bn_var.patch_inst.inst_print())
+                            # if debug:
+                            # log.warning(bn_var.patch_inst.inst_print())
                             if temp_inst.inst_check(bn_var.patch_inst):
                                 # print("Found\n", temp_inst.inst_print(), "\n", bn_var.patch_inst.inst_print())
                                 offset_expr = bn_var.offset_expr
@@ -1169,6 +1262,10 @@ class BinAnalysis:
                 right = self.gen_ast(llil_fun, llil_inst.src)
                 sub_node = BnSSAOp(None, llil_inst.operation, right)
                 return sub_node
+            elif type(llil_inst) == binaryninja.lowlevelil.LowLevelILLowPart:
+                right = self.gen_ast(llil_fun, llil_inst.src)
+                sub_node = BnSSAOp(None, llil_inst.operation, right)
+                return sub_node
             elif binaryninja.commonil.Arithmetic in llil_inst.__class__.__bases__:
                 # Arithmetic operation
                 log.debug("%s Arithmetic",  llil_inst)
@@ -1318,6 +1415,7 @@ class BinAnalysis:
         # If ASM is directly provided
         else:
             asm_syntax_tree = self.gen_ast(None, None, patch_inst)
+            offset_expr = None
             if offset_src_dest == "dest":
                 offset_expr = patch_inst.dest
             elif offset_src_dest == "src":
@@ -1330,9 +1428,10 @@ class BinAnalysis:
     
     # Need debug info to handle static functions
     def analyze_binary(self, funlist):
-        print("Step: Binary Ninja")
-        debug_fun = "rio_read"
-        gen_regs = {"%rax","%rbx","%rcx","%rdx","%eax","%ebx","%ecx","%edx"}
+        # print("Step: Binary Ninja")
+        debug_fun = "do_copy"
+        gen_regs = {"%rax","%rbx","%rcx","%rdx","%rdi","%rsi",
+                    "%eax","%ebx","%ecx","%edx","%edi","%esi"}
         for func in self.bv.functions:
             self.fun = func.name
             if self.fun in funlist:
@@ -1345,13 +1444,14 @@ class BinAnalysis:
                     if True: 
                     # if self.fun == debug_fun: # Specific function
                         for llil_inst in llil_bb:
-                            # print(llil_inst, llil_inst.operation)
+                            print(llil_inst, llil_inst.operation)
                             mapped_il = llil_inst.mapped_medium_level_il
                             # log.debug("%s | %s", llil_inst, mapped_il)
+                            # if hex(llil_inst.address) == "0x5208":
+                            #     print(llil_inst, llil_inst.operation)
+                            #     log.error("%s | %s", llil_inst, mapped_il)
+                            #     exit()
                             if llil_inst.operation == LowLevelILOperation.LLIL_SET_REG:
-                                # if hex(llil_inst.address) == "0x2533":
-                                #     print(llil_inst, llil_inst.operation)
-                                #     log.error("%s | %s", llil_inst, mapped_il)
                                 if len(mapped_il.vars_read) > 0:
                                     # print(inst)
                                     var_idx = None
@@ -1397,7 +1497,7 @@ class BinAnalysis:
                         for dis_inst in dis_bb:
                             # Check tokens for cmp instruction
                             if dis_inst.tokens[0].text == "cmp":
-                                # print(dis_inst)
+                                print(dis_inst)
                                 target = "var"
                                 indices = [index for index, token in enumerate(dis_inst.tokens) if target in token.text]
                                 if indices:
@@ -1410,10 +1510,10 @@ class BinAnalysis:
             self.bn_var_list.clear()
             # pprint(bn_fun_var_info[self.fun], width=1)
             # print(len(bn_fun_var_info[self.fun]))
-        for bn_var in bn_fun_var_info[debug_fun]:
-            print(bn_var)
-            print(bn_var.patch_inst.inst_print())
-            print("")
+        # for bn_var in bn_fun_var_info[debug_fun]:
+        #     print(bn_var)
+        #     print(bn_var.patch_inst.inst_print())
+        #     print("")
                 
     def __init__(self, bv):
         self.bv = bv

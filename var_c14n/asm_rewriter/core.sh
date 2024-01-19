@@ -11,8 +11,10 @@ coreutils_build_path="/home/jaewon/coreutils/new_build"
 coreutils_src_path="/home/jaewon/coreutils/new_build/src"
 
 # This is used to setup test path
+parent_path=$( cd ../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 current_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
-test_path=${current_path}/tests
+input_path=${parent_path}/input
+test_path=${parent_path}/result
 result_path=${test_path}/$1
 
 # https://www.maizure.org/projects/decoded-gnu-coreutils/index.html
@@ -30,16 +32,17 @@ migrate()
         mkdir $result_path
     fi
     cp ${coreutils_src_path}/${input} ${coreutils_src_path}/${input}.def
-    cp ${coreutils_src_path}/${input} $result_path/${input}.out
-    cp ${coreutils_src_path}/${input}.s $result_path
+    cp ${coreutils_src_path}/${input}.def $result_path/${input}.out
+    cp ${coreutils_src_path}/${input}.s ${coreutils_src_path}/${input}.s.bak
+    cp ${coreutils_src_path}/${input}.s.bak $result_path
 
-    if [ ! -e ${result_path}/list.out ] 
-	then 
-		echo "Doesn't exist" 
-	else
-		rm ${result_path}/list.out
-	fi 
-    printf "main" >> $result_path/list.out
+    # if [ ! -e ${result_path}/list.out ] 
+	# then 
+	# 	echo "Doesn't exist" 
+	# else
+	# 	rm ${result_path}/list.out
+	# fi 
+    # printf "main" >> $result_path/list.out
 }
 
 patch()
@@ -51,7 +54,8 @@ patch()
         cp ${result_path}/${input}.s.bak ${result_path}/${input}.s
     fi
     sleep 1.5
-    python3 binary_patch.py --binary ${input}.out --fun list.out --dir=tests/${input}
+    python3 binary_patch.py --binary ${input}.out --fun fun.list
+    #--fun list.out --dir=tests/${input}
 }
 
 compile()
@@ -62,7 +66,7 @@ compile()
         echo "No source file, please use other option"
         exit
     fi
-    cp ${test_path}/libMakefile ${result_path}/Makefile
+    cp ${input_path}/libMakefile ${result_path}/Makefile
     cd ${result_path}
     make lib
     cp -rf ${result_path}/lib ${coreutils_src_path}

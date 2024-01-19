@@ -13,8 +13,9 @@
             "console": "integratedTerminal",
             "cwd": "${fileDirname}",
             "justMyCode": true,
-            "args": ["--binary", "tiny.out", "--taint", "dft.out"]
-            // "args": ["--binary", "/home/jaewon/ARCS_Final/var_c14n/result/memcpy/memcpy.out"]
+            // "args": ["--binary", "/home/jaewon/ARCS_Final/var_c14n/result/cp/cp.out"]
+            // "args": ["--binary", "tiny.out", "--taint", "dft.out"]
+            "args": ["--binary", "cp.out", "--fun", "fun.list"]
         }
     ]
 }

@@ -25,3 +25,6 @@ result
 !Makefile
 local
 archive.py
+*.html
+*.pyc
+.gdb_history

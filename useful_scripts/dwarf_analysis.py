@@ -200,8 +200,10 @@ def dwarf_analysis(input_binary):
         # creates objects representing the actual location information.
         loc_parser = LocationParser(location_lists)
         gv_regex  = r"(?<=\(DW_OP_addr:\s)(.*)(?=\))"
-        reg_regex = r"(?<=\(DW_OP_fbreg:\s)(.*)(?=\))"
+        # reg_regex = r"(?<=\(DW_OP_fbreg:\s)(.*)(?=\))"
+        reg_regex = r"DW_OP_fbreg:\s*(-?\d+)"
         rbp_regex = r"(?<=\(DW_OP_breg.\s\(rbp\):\s)(.*)(?=\))"
+        rsp_regex = r"(?<=\(DW_OP_breg.\s\(rsp\):\s)(.*)(?=\))"
         off_regex = r"(?<=\(DW_OP_plus_uconst:\s)(.*)(?=\))"
         
         for CU in dwarfinfo.iter_CUs():
@@ -229,6 +231,7 @@ def dwarf_analysis(input_binary):
             gv_var          = False
             
             for DIE in CU.iter_DIEs():
+                cu_ver = CU['version']
                 if (DIE.tag == "DW_TAG_subprogram"):
                     if temp_fun != None:
                         fun_list.append(temp_fun)
@@ -254,12 +257,21 @@ def dwarf_analysis(input_binary):
                             # fp.write("Function name: %s\n" % fun_name)
                             loc = loc_parser.parse_from_attribute(attr, CU['version'])
                             if isinstance(loc, list):
+                                idx = 1
                                 for loc_entity in loc:
+                                    print(idx)
                                     if isinstance(loc_entity, LocationEntry):
                                         offset = describe_DWARF_expr(loc_entity.loc_expr, dwarfinfo.structs, CU.cu_offset)
+                                        print(offset)
                                         if "rbp" in offset:
                                             if rbp_offset := re.search(rbp_regex, offset):
                                                 fun_frame_base = int(rbp_offset.group(1))
+                                        elif idx == 2:
+                                            # This is if RBP is not used and RSP is used to access variable
+                                            if rsp_offset := re.search(rsp_regex, offset):
+                                                fun_frame_base = int(rsp_offset.group(1))
+                                    idx += 1
+                
                 if (DIE.tag == "DW_TAG_variable"):
                     # This is used for variable that is declared within the function
                     var_name        = None

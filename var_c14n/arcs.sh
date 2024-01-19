@@ -79,9 +79,10 @@ taint()
     fi
 
     sleep 1
-    python3 $useful_path/dwarf_analysis.py --binary ${arcs_bin_file} ${arcs_dwarf_file}
-    file ${arcs_dwarf_file}
-    $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file} 
+    # python3 $useful_path/dwarf_analysis.py --binary ${arcs_bin_file} ${arcs_dwarf_file}
+    # file ${arcs_dwarf_file}
+    # $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file} 
+    $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file} -c ~/Downloads/nginx-1.3.9/conf/nginx_taint.conf
     mv dft.out ${arcs_i_result_path} 
     # --custom_arg ${arcs_dwarf_file}
 
@@ -102,7 +103,8 @@ rewrite()
     echo "Assembly rewriting the application" 
     cd ${arcs_input_path} && make ${input}.out
     # echo ${current_path}
-    cd ${rewrite_path} && python3 binary_patch.py --binary ${input}.out --taint dft.out
+    cd ${rewrite_path} && python3 binary_patch.py --binary ${input}.out 
+    #--fun fun.list
     cd ${arcs_i_result_path} && make lib && make ${input}.new
 }
 
