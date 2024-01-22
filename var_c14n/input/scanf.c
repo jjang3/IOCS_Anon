@@ -24,6 +24,15 @@ int main()
     s1.offset = 71;
     int test = s1.offset - 65;
     s1.offset = test;
+    uint8_t a = 100;  // 8-bit
+    uint16_t b = 50;   // 8-bit
+    uint16_t result;   // 8-bit
+
+    // Addition of two 8-bit values
+    result = a + b;
+    result = a - b;
+
+    printf("8-bit Addition: %u\n", result);
     for (int i = 0; i < s1.offset; i++)
     {
         printf("Test\n");

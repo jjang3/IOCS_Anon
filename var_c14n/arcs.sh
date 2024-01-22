@@ -76,6 +76,7 @@ taint()
         echo "Input binary file doesn't exist"
         # $LLVM_BUILD_DIR/bin/clang
         gcc ${CFLAGS} -o ${arcs_bin_file} ${arcs_input_path}/${input}.c
+        rm ${arcs_input_path}/${input}.s.bak
     fi
 
     sleep 1
