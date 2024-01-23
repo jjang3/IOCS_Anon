@@ -208,91 +208,6 @@ class SizeType(Enum):
     CHARPTR = 8
     
 def generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir):
-    varlist = list()
-    log.info("Generating the table %d", dwarf_var_count)
-    if dwarf_var_count % 2 != 0 and dwarf_var_count != 1:
-        # This is to avoid malloc(): corrupted top size error, malloc needs to happen in mod 2
-        dwarf_var_count += 1
-    # ptr = "%p\n".strip()    printf("%s", addr_%d);
-    include_lib_flags="""
-#include <sys/auxv.h>
-#include <elf.h>
-#include <immintrin.h>
-#include <stdio.h>
-#include <sys/mman.h>
-#include <unistd.h>
-/* Will be eventually in asm/hwcap.h */
-#ifndef HWCAP2_FSGSBASE
-#define HWCAP2_FSGSBASE        (1 << 1)
-#endif
-#define _GNU_SOURCE
-#define PAGE_SIZE 4096
-"""
-    begin_table="""
-void **table;
-void __attribute__((constructor)) create_table()
-{    
-    table = malloc(sizeof(void*)*%d);\n
-    if (!table) {
-        perror("Failed to allocate memory for page table");
-        exit(EXIT_FAILURE);
-    }
-    /*Pointer to shared memory region*/    
-""" % (dwarf_var_count)
-
-    loop_table="""
-    // Map each page
-    for (int i = 0; i < %d; ++i) {
-        table[i] = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-        if (table[i] == MAP_FAILED) {
-            perror("Memory mapping failed");
-            // Clean up previously mapped pages
-            for (int j = 0; j < i; ++j) {
-                munmap(table[j], PAGE_SIZE);
-            }
-            free(table);
-            exit(EXIT_FAILURE);
-        }
-    }
-""" % (dwarf_var_count)
-#     count = 0
-#     while count <= dwarf_var_count: # May need to make this <= in order to avoid mod 2 bug
-#         varentry = "\tvoid *addr_%d;" % count
-#         mmapentry = """
-#     addr_%d = mmap(NULL, getpagesize(), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS | MAP_32BIT, -1, 0);     
-#     if (addr_%d == MAP_FAILED) {     
-#         fprintf(stderr, "mmap() failed\\n");     
-#         exit(EXIT_FAILURE);
-#     }
-#     table[%d] = addr_%d;\n
-# """ % (count, count, count, count) #  | MAP_32BIT
-#         varlist.append((varentry, mmapentry))
-#         count += 1
-
-    end_table="""\t_writegsbase_u64((long long unsigned int)table);
-}
-void __attribute__((destructor)) cleanup_table() {
-    // Unmap each page and free the table
-    for (int i = 0; i < %d; ++i) {
-        if (table[i]) {
-            munmap(table[i], PAGE_SIZE);
-        }
-    }
-    free(table);
-}
-""" % (dwarf_var_count)
-    table_file = open("%s/table.c" % target_dir, "w")
-    table_file.write(include_lib_flags)
-    table_file.write(begin_table)
-    table_file.write(loop_table)
-    # for item in varlist:
-    #     table_file.write(item[0])
-    #     table_file.write(item[1])
-    table_file.write(end_table)
-    table_file.close()
-    log.info("Based on offsets, generate offsets per respective variables")
-    pprint(dwarf_fun_var_info, width=1)
-    
     # Offset to table offset set of the current working function
     offset_expr_to_table    = set()
     table_offset = 0
@@ -311,8 +226,8 @@ void __attribute__((destructor)) cleanup_table() {
             vars = dwarf_fun_var_info[fun]
             # print(fun)
             for var_idx, var in enumerate(vars):
-                # if True:
-                if var_idx == 1:
+                if True:
+                # if var_idx == 1:
                     #     print(var)
                     #     exit()
                     if var_idx < var_patch: # and var_idx == 6: # (and var_idx is used to debug)
@@ -358,9 +273,93 @@ void __attribute__((destructor)) cleanup_table() {
     
     print("Total function: ", len(dwarf_fun_var_info))
     print("Total variables getting patched: ", off_var_count)
+    # varlist = list()
+    log.info("Generating the table %d", off_var_count)
+    if off_var_count % 2 != 0 and off_var_count != 1:
+        # This is to avoid malloc(): corrupted top size error, malloc needs to happen in mod 2
+        off_var_count += 1
+    # ptr = "%p\n".strip()    printf("%s", addr_%d);
+    include_lib_flags="""
+#include <sys/auxv.h>
+#include <elf.h>
+#include <immintrin.h>
+#include <stdio.h>
+#include <sys/mman.h>
+#include <unistd.h>
+/* Will be eventually in asm/hwcap.h */
+#ifndef HWCAP2_FSGSBASE
+#define HWCAP2_FSGSBASE        (1 << 1)
+#endif
+#define _GNU_SOURCE
+#define PAGE_SIZE 4096
+"""
+    begin_table="""
+void **table;
+void __attribute__((constructor)) create_table()
+{    
+    table = malloc(sizeof(void*)*%d);\n
+    if (!table) {
+        perror("Failed to allocate memory for page table");
+        exit(EXIT_FAILURE);
+    }
+    /*Pointer to shared memory region*/    
+""" % (off_var_count)
 
+    loop_table="""
+    // Map each page
+    for (int i = 0; i < %d; ++i) {
+        table[i] = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+        if (table[i] == MAP_FAILED) {
+            perror("Memory mapping failed");
+            // Clean up previously mapped pages
+            for (int j = 0; j < i; ++j) {
+                munmap(table[j], PAGE_SIZE);
+            }
+            free(table);
+            exit(EXIT_FAILURE);
+        }
+    }
+""" % (off_var_count)
+#     count = 0
+#     while count <= dwarf_var_count: # May need to make this <= in order to avoid mod 2 bug
+#         varentry = "\tvoid *addr_%d;" % count
+#         mmapentry = """
+#     addr_%d = mmap(NULL, getpagesize(), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS | MAP_32BIT, -1, 0);     
+#     if (addr_%d == MAP_FAILED) {     
+#         fprintf(stderr, "mmap() failed\\n");     
+#         exit(EXIT_FAILURE);
+#     }
+#     table[%d] = addr_%d;\n
+# """ % (count, count, count, count) #  | MAP_32BIT
+#         varlist.append((varentry, mmapentry))
+#         count += 1
+
+    end_table="""\t_writegsbase_u64((long long unsigned int)table);
+}
+void __attribute__((destructor)) cleanup_table() {
+    // Unmap each page and free the table
+    for (int i = 0; i < %d; ++i) {
+        if (table[i]) {
+            munmap(table[i], PAGE_SIZE);
+        }
+    }
+    free(table);
+}
+""" % (dwarf_var_count)
+    table_file = open("%s/table.c" % target_dir, "w")
+    table_file.write(include_lib_flags)
+    table_file.write(begin_table)
+    table_file.write(loop_table)
+    # for item in varlist:
+    #     table_file.write(item[0])
+    #     table_file.write(item[1])
+    table_file.write(end_table)
+    table_file.close()
+    log.info("Based on offsets, generate offsets per respective variables")
+    pprint(dwarf_fun_var_info, width=1)
+    
     # if fun_idx == fun_patch:
-    pprint(fun_table_offsets["sequential_sort"], width=1)
+    # pprint(fun_table_offsets["sequential_sort"], width=1)
         # break
     
 def conv_expr(expr):
@@ -515,6 +514,17 @@ def visit_dir(dir_list):
                 file_list.append(temp_file)
             # pprint(temp_file)
 
+def gen_obj_file(filename):
+    print(filename.asm_path, filename.obj_path)
+    try:
+        # Call GNU assembler with the source and destination file paths
+        subprocess.run(['as', filename.asm_path, '-o', filename.obj_path], check=True)
+        print(f"Assembly of {filename.asm_path} completed. Output in {filename.obj_path}")
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred: {e}")
+    except FileNotFoundError:
+        print("GNU assembler (as) not found. Please ensure it is installed and in your PATH.")
+
 def process_binary(filename, taintfile, dirloc, funfile):
     global dwarf_var_count
     target_dir = None        
@@ -556,11 +566,43 @@ def process_binary(filename, taintfile, dirloc, funfile):
                 #     print(f"The item {element} is found in both lists.")
                 target_files.append(file_item)
     
+    # pprint(target_files)
+    # exit()
+    
+    
+    print("Analyzing: ", target_files)
+    print(funfile_list)
+    pprint(target_files)
+    print(target_dir)
+    # exit()
+    time.sleep(1.5)
     funlist = list()
     if dirloc != None:
         for file_item in target_files:
-            print("Analyzing: ", file_item.name)
             dwarf_output = dwarf_analysis.dwarf_analysis(file_item.obj_path)
+            # pprint(dwarf_output)
+            for fun in dwarf_output:
+                if fun.name in funfile_list:
+                    pprint(fun)
+                    funlist.append(fun.name)
+                    temp_var_count = fun.var_count
+                    # pprint(fun)
+                    # Make copy of var_list to make modification and copy it to dwarf_fun_var_info
+                    temp_var_list = fun.var_list.copy()
+                    dwarf_fun_var_info[fun.name] = temp_var_list.copy()
+                    fun_entry_to_args[fun.begin] = temp_var_count
+                    dwarf_var_count += temp_var_count
+        print(dwarf_var_count)
+        generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir)
+        for file_item in target_files:
+            # print("Binary ninja input:", file_item.obj_path)
+            # with load(file_item.obj_path.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
+            #     arch = Architecture['x86_64']
+            #     bn = BinAnalysis(bv)
+            #     bn.analyze_binary(funlist)
+            # process_file(funlist, None, file_item)
+            gen_obj_file(file_item)
+                # print(fun)
         # for dir_file in dir_list:
         #     if (dir_file.endswith('.s')):
         #         process_file(funlist, target_dir, dir_file)
@@ -571,6 +613,7 @@ def process_binary(filename, taintfile, dirloc, funfile):
         # pprint(dwarf_output, width=1)
         for fun in dwarf_output:
             if funfile_list == None:
+                # In this case, we will try to c14n all functions
                 funlist.append(fun.name)
                 temp_var_count = fun.var_count
                 # Make copy of var_list to make modification and copy it to dwarf_fun_var_info
@@ -998,147 +1041,160 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
         return line
                 
 def process_file(funlist, target_dir, target_file):
-        print(os.path.join(target_dir, target_file))
+    file_path = None
+    if target_dir != None:
+        # This is for a single binary c14n. 
+        file_path = os.path.join(target_dir, target_file)
+        print(file_path)
         debug_file = target_file + ".bak"
         if os.path.isfile(os.path.join(target_dir, debug_file)):
             print("Copying debug file")
             shutil.copyfile(os.path.join(target_dir, debug_file), os.path.join(target_dir, target_file))
         else:
             print("No debug file exists")
+    elif target_dir == None:
+        # This is for a binary with multiple object files and they are in their own separate location
+        file_path = target_file.asm_path
+        file_path_dir = os.path.dirname(file_path)
+        debug_file = file_path + ".bak"
+        if os.path.isfile(debug_file):
+            print("Copying debug file")
+            shutil.copyfile(debug_file, file_path_dir)
+        else:
+            print("No debug file exists")
+        # print(file_path, file_path_dir, debug_file)
+        # exit()
         
-        debug = False
-        patch_count = 0
-        with fileinput.input(os.path.join(target_dir, target_file), 
-                             inplace=(not debug), encoding="utf-8", backup='.bak') as f:
-            file_pattern = re.compile(r'\.file\s+"([^"]+)"')
-            fun_begin_regex = r'(?<=.type\t)(.*)(?=,\s@function)'
-            fun_end_regex   = r'(\t.cfi_endproc)'
-            # dis_line_regex  = r'(mov|movz|lea|sub|add|cmp|sal|and|imul)([l|b|w|q|bl|xw|wl]*)\t(.*),\s(.*)'
-            dis_line_regex = r'(mov|movz|lea|sub|add|cmp|sal|and|imul)([l|b|w|q|bl|xw|wl]*)\s+(\S+)(?:,\s*(\S+))?(?:,\s*(\S+))?\n'
-            # 	salq	-40(%rbp) or shl $1, -40(%rbp), if no immediate -> $1
-            sh_line_regex   = r'\t(sal)([a-z]*)\t(.*)'
-            sing_line_regex = r'\t(div)([a-z]*)\t(.*)'
-            check = False
-            currFun = str()
-            patch_targets = list()
-            offset_targets = list()
-            struct_targets = set()
-            # print(funlist)
-            
-            for line in f:
-                if file_pattern.findall(line): #.startswith('\t.file\t"%s.c"' % target_file.rsplit('.', maxsplit=1)[0]):
-                    print(asm_macros, end='')
-                fun_begin = re.search(fun_begin_regex, line)
-                if fun_begin is not None:
-                    if fun_begin.group(1) in funlist:
-                        currFun = fun_begin.group(1)
-                        log.warning(currFun)
-                        try:
-                            dwarf_var_info   = dwarf_fun_var_info[currFun]
-                            bninja_info     = bn_fun_var_info[currFun]
-                            offset_targets  = fun_table_offsets[currFun]
-                            check = True
-                        except Exception as err:
-                            log.error("Skipping", type(err))
+    
+    debug = False
+    patch_count = 0
+    with fileinput.input(file_path, 
+                            inplace=(not debug), encoding="utf-8", backup='.bak') as f:
+        file_pattern = re.compile(r'\.file\s+"([^"]+)"')
+        fun_begin_regex = r'(?<=.type\t)(.*)(?=,\s@function)'
+        fun_end_regex   = r'(\t.cfi_endproc)'
+        # dis_line_regex  = r'(mov|movz|lea|sub|add|cmp|sal|and|imul)([l|b|w|q|bl|xw|wl]*)\t(.*),\s(.*)'
+        dis_line_regex = r'(mov|movz|lea|sub|add|cmp|sal|and|imul)([l|b|w|q|bl|xw|wl]*)\s+(\S+)(?:,\s*(\S+))?(?:,\s*(\S+))?\n'
+        # 	salq	-40(%rbp) or shl $1, -40(%rbp), if no immediate -> $1
+        sh_line_regex   = r'\t(sal)([a-z]*)\t(.*)'
+        sing_line_regex = r'\t(div)([a-z]*)\t(.*)'
+        check = False
+        currFun = str()
+        patch_targets = list()
+        offset_targets = list()
+        struct_targets = set()
+        # print(funlist)
+        
+        for line in f:
+            if file_pattern.findall(line): #.startswith('\t.file\t"%s.c"' % target_file.rsplit('.', maxsplit=1)[0]):
+                print(asm_macros, end='')
+            fun_begin = re.search(fun_begin_regex, line)
+            if fun_begin is not None:
+                if fun_begin.group(1) in funlist:
+                    currFun = fun_begin.group(1)
+                    log.warning(currFun)
+                    try:
+                        dwarf_var_info   = dwarf_fun_var_info[currFun]
+                        bninja_info     = bn_fun_var_info[currFun]
+                        offset_targets  = fun_table_offsets[currFun]
+                        check = True
+                    except Exception as err:
+                        log.error("Skipping", type(err))
+                        check = False
+                    if debug:
+                        if currFun != "sort": # Debug
                             check = False
-                        if debug:
-                            if currFun != "sort": # Debug
-                                check = False
-                            else:
-                                check = True
-                            None
-                            # pprint(dwarf_var_info, width = 1)
-                            # pprint(bninja_info, width = 1)
-                            pprint(offset_targets, width = 1)
                         else:
-                            if offset_targets != None:
-                                for tgt in offset_targets:
-                                    log.warning(tgt)
-                fun_end = re.search(fun_end_regex, line)
-                if fun_end is not None:
-                    check = False
-                    dwarf_var_info = None
-                    bninja_info = None
-                    offset_targets = None
-            
-                if check == True:
-                    # dis_line = line.rstrip('\n')
-                    dis_line = line
-                    # mnemonic source, destination AT&T
-                    log.debug(dis_line)
-                    dis_regex   = re.search(dis_line_regex, dis_line)
-                    if dis_regex is not None:
-                        inst_type   = dis_regex.group(1)
-                        suffix      = dis_regex.group(2)
-                        src         = dis_regex.group(3)
-                        dest        = dis_regex.group(4)
-                        # temp_inst = PatchingInst(conv_instr(inst_type), src, dest, expr, suffix)
-                        log.debug("%s %s %s %s", inst_type, suffix, src, dest)
-                        # Need to convert movzbl and movzxw to movzx + suffix (b or w)
-                        if inst_type == "movz":
-                            inst_type = "movzx"
-                        if suffix == "bl":
-                            suffix = "b"
-                        elif suffix == "xw" or suffix == "wl":
-                            suffix = "w"
+                            check = True
+                        None
+                        # pprint(dwarf_var_info, width = 1)
+                        # pprint(bninja_info, width = 1)
+                        pprint(offset_targets, width = 1)
+                    else:
+                        if offset_targets != None:
+                            for tgt in offset_targets:
+                                log.warning(tgt)
+            fun_end = re.search(fun_end_regex, line)
+            if fun_end is not None:
+                check = False
+                dwarf_var_info = None
+                bninja_info = None
+                offset_targets = None
+        
+            if check == True:
+                # dis_line = line.rstrip('\n')
+                dis_line = line
+                # mnemonic source, destination AT&T
+                log.debug(dis_line)
+                dis_regex   = re.search(dis_line_regex, dis_line)
+                if dis_regex is not None:
+                    inst_type   = dis_regex.group(1)
+                    suffix      = dis_regex.group(2)
+                    src         = dis_regex.group(3)
+                    dest        = dis_regex.group(4)
+                    # temp_inst = PatchingInst(conv_instr(inst_type), src, dest, expr, suffix)
+                    log.debug("%s %s %s %s", inst_type, suffix, src, dest)
+                    # Need to convert movzbl and movzxw to movzx + suffix (b or w)
+                    if inst_type == "movz":
+                        inst_type = "movzx"
+                    if suffix == "bl":
+                        suffix = "b"
+                    elif suffix == "xw" or suffix == "wl":
+                        suffix = "w"
+                    
+                    if dest != None:
+                        temp_inst = PatchingInst(inst_type=inst_type, suffix=suffix,
+                                                    dest=conv_imm(dest), src=conv_imm(src), ptr_op="")
+                    else:
+                        # For a single operand assembly instruction (e.g., salq)
+                        if inst_type == "sal":
+                            temp_inst = PatchingInst(inst_type="shl", suffix=suffix,
+                                                    dest=conv_imm(src), src="$1", ptr_op="")
                         
+                    if debug:
+                        log.warning(temp_inst.inst_print())
+                        if src != None:
+                            for offset in offset_targets:
+                                if src == offset[0]:
+                                    log.warning("Debug found")
                         if dest != None:
-                            temp_inst = PatchingInst(inst_type=inst_type, suffix=suffix,
-                                                        dest=conv_imm(dest), src=conv_imm(src), ptr_op="")
-                        else:
-                            # For a single operand assembly instruction (e.g., salq)
-                            if inst_type == "sal":
-                                temp_inst = PatchingInst(inst_type="shl", suffix=suffix,
-                                                        dest=conv_imm(src), src="$1", ptr_op="")
-                            
-                        if debug:
-                            log.warning(temp_inst.inst_print())
-                            if src != None:
-                                for offset in offset_targets:
-                                    if src == offset[0]:
-                                        log.warning("Debug found")
-                            if dest != None:
-                                for offset in offset_targets:
-                                    if dest == offset[0]:
-                                        log.warning("Debug found")
-                        new_inst = None
-                        for idx, bn_var in enumerate(bninja_info):
-                            # log.warning(bn_var.patch_inst.inst_print())
-                            # if debug:
-                            #     log.warning(bn_var.offset_expr)
-                            #     log.warning(bn_var.patch_inst.inst_print())
-                            if temp_inst.inst_check(bn_var.patch_inst):
-                                # print("Found\n", temp_inst.inst_print(), "\n", bn_var.patch_inst.inst_print())
-                                offset_expr = bn_var.offset_expr
-                                for offset in offset_targets:
-                                    if offset_expr == offset[0]:
-                                        # Found the offset target; need to patch this instruction
-                                        log.warning("Offset found")
-                                        new_inst = patch_inst(dis_line, temp_inst, bn_var, bninja_info, offset[1])
-                                        # bninja_info.pop(idx) # problem: for all patch, i'm popping rdx
-                                        if new_inst != None:
-                                            # log.debug("\n%s",new_inst)
-                                            break
-                                        else:
-                                            # Exit out of entire script if we find a missing instruction
-                                            import signal
-                                            log.error(temp_inst.inst_print())
-                                            os.kill(os.getppid(),signal.SIGTERM)
-                                            sys.exit(2)
-                                else:
-                                    continue
-                                break
-                            # print("Here")
-                                # if offset_expr in 
-                                # parse_ast(bn_var.asm_syntax_tree)
-                        if new_inst != None:
-                            patch_count += 1
-                            log.debug("\n%s",new_inst)
-                            print(new_inst, end='')
-                        else:
-                            if debug != True:
-                                print(line, end='')
-                            None
+                            for offset in offset_targets:
+                                if dest == offset[0]:
+                                    log.warning("Debug found")
+                    new_inst = None
+                    for idx, bn_var in enumerate(bninja_info):
+                        # log.warning(bn_var.patch_inst.inst_print())
+                        # if debug:
+                        #     log.warning(bn_var.offset_expr)
+                        #     log.warning(bn_var.patch_inst.inst_print())
+                        if temp_inst.inst_check(bn_var.patch_inst):
+                            # print("Found\n", temp_inst.inst_print(), "\n", bn_var.patch_inst.inst_print())
+                            offset_expr = bn_var.offset_expr
+                            for offset in offset_targets:
+                                if offset_expr == offset[0]:
+                                    # Found the offset target; need to patch this instruction
+                                    log.warning("Offset found")
+                                    new_inst = patch_inst(dis_line, temp_inst, bn_var, bninja_info, offset[1])
+                                    # bninja_info.pop(idx) # problem: for all patch, i'm popping rdx
+                                    if new_inst != None:
+                                        # log.debug("\n%s",new_inst)
+                                        break
+                                    else:
+                                        # Exit out of entire script if we find a missing instruction
+                                        import signal
+                                        log.error(temp_inst.inst_print())
+                                        os.kill(os.getppid(),signal.SIGTERM)
+                                        sys.exit(2)
+                            else:
+                                continue
+                            break
+                        # print("Here")
+                            # if offset_expr in 
+                            # parse_ast(bn_var.asm_syntax_tree)
+                    if new_inst != None:
+                        patch_count += 1
+                        log.debug("\n%s",new_inst)
+                        print(new_inst, end='')
                     else:
                         if debug != True:
                             print(line, end='')
@@ -1147,8 +1203,12 @@ def process_file(funlist, target_dir, target_file):
                     if debug != True:
                         print(line, end='')
                     None
-                                      
-            log.critical("Patch count %d", patch_count)
+            else:
+                if debug != True:
+                    print(line, end='')
+                None
+                                    
+        log.critical("Patch count %d", patch_count)
                                 
 # Debug options here
 debug_level = logging.DEBUG
@@ -1621,10 +1681,10 @@ class BinAnalysis:
             self.bn_var_list.clear()
             # pprint(bn_fun_var_info[self.fun], width=1)
             # print(len(bn_fun_var_info[self.fun]))
-        for bn_var in bn_fun_var_info[debug_fun]:
-            print(bn_var)
-            print(bn_var.patch_inst.inst_print())
-            print("")
+        # for bn_var in bn_fun_var_info[debug_fun]:
+        #     print(bn_var)
+        #     print(bn_var.patch_inst.inst_print())
+        #     print("")
         # exit()
         # DEBUG       movq    -8(%rbp), %rsi 
     def __init__(self, bv):

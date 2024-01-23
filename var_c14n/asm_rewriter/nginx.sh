@@ -20,6 +20,9 @@ patch()
 {
     echo "Patch"
     python3 binary_patch.py --fun fun.list --dir ${nginx_path}
+    cp ${input_path}/libMakefile ${nginx_path}/Makefile
+    cd ${nginx_path}
+    make lib
 }
 
 compile()

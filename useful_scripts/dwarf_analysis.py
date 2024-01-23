@@ -444,8 +444,9 @@ def dwarf_analysis(input_binary):
                                                     last_var.append(temp_var)
                                         else:
                                             trip_ptr_type_die = get_dwarf_type(dwarfinfo, dbl_ptr_type_die.attributes, dbl_ptr_type_die.cu, dbl_ptr_type_die.cu.cu_offset)
-                                            if 'DW_AT_name' in trip_ptr_type_die.attributes:
-                                                type_name = trip_ptr_type_die.attributes['DW_AT_name'].value.decode()
+                                            if trip_ptr_type_die != None:
+                                                if 'DW_AT_name' in trip_ptr_type_die.attributes:
+                                                    type_name = trip_ptr_type_die.attributes['DW_AT_name'].value.decode()
                                 else:
                                     type_name = "null"
                                 log.error("ptr_type: %s", type_name)
@@ -794,7 +795,7 @@ def dwarf_analysis(input_binary):
     # for item in struct_list:
     #     print(item.name)
     # print(vars(struct_list))
-    pprint.pprint(fun_list, width=1)
+    # pprint.pprint(fun_list, width=1)
     # pprint.pprint(var_list, width=1)
     # exit()
 
