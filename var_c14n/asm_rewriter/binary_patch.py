@@ -114,12 +114,22 @@ class PatchingInst:
         info = "Inst type: %s | Suffix: %s | Source: %s | Dest: %s | Ptr: %s" % (self.inst_type, self.suffix, self.src, self.dest, self.ptr_op)
         return info
     def inst_check(self, tgt_inst):
-        if (self.inst_type == tgt_inst.inst_type and
-            self.suffix == tgt_inst.suffix and
-            self.src == tgt_inst.src and
-            self.dest == tgt_inst.dest):
-            return True
+        # print(self.inst_print())
+        # print(tgt_inst.inst_print())
+        if (self.inst_type == tgt_inst.inst_type):
+            if (self.suffix == tgt_inst.suffix):
+                if (self.src == tgt_inst.src):
+                    if (self.dest == tgt_inst.dest):
+                        return True
+                # else:
+                #     print(self.src, tgt_inst.src)
+                #     print(self.src == tgt_inst.src)
         else:
+            # log.debug("%s %s %s %s", 
+            #           self.inst_type == tgt_inst.inst_type,
+            #           self.suffix == tgt_inst.suffix,
+            #           self.src == tgt_inst.src,
+            #           self.dest == tgt_inst.dest)
             return False
         
 
@@ -199,7 +209,7 @@ class SizeType(Enum):
     
 def generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir):
     varlist = list()
-    log.info("Generating the table")
+    log.info("Generating the table %d", dwarf_var_count)
     if dwarf_var_count % 2 != 0 and dwarf_var_count != 1:
         # This is to avoid malloc(): corrupted top size error, malloc needs to happen in mod 2
         dwarf_var_count += 1
@@ -216,37 +226,68 @@ def generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir):
 #define HWCAP2_FSGSBASE        (1 << 1)
 #endif
 #define _GNU_SOURCE
+#define PAGE_SIZE 4096
 """
     begin_table="""
-void __attribute__((constructor)) table()
+void **table;
+void __attribute__((constructor)) create_table()
 {    
-    void **table = malloc(sizeof(void*)*%d);\n
+    table = malloc(sizeof(void*)*%d);\n
+    if (!table) {
+        perror("Failed to allocate memory for page table");
+        exit(EXIT_FAILURE);
+    }
     /*Pointer to shared memory region*/    
 """ % (dwarf_var_count)
 
-    count = 0
-    while count <= dwarf_var_count: # May need to make this <= in order to avoid mod 2 bug
-        varentry = "\tvoid *addr_%d;" % count
-        mmapentry = """
-    addr_%d = mmap(NULL, getpagesize(), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS | MAP_32BIT, -1, 0);     
-    if (addr_%d == MAP_FAILED) {     
-        fprintf(stderr, "mmap() failed\\n");     
-        exit(EXIT_FAILURE);
+    loop_table="""
+    // Map each page
+    for (int i = 0; i < %d; ++i) {
+        table[i] = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+        if (table[i] == MAP_FAILED) {
+            perror("Memory mapping failed");
+            // Clean up previously mapped pages
+            for (int j = 0; j < i; ++j) {
+                munmap(table[j], PAGE_SIZE);
+            }
+            free(table);
+            exit(EXIT_FAILURE);
+        }
     }
-    table[%d] = addr_%d;\n
-""" % (count, count, count, count) #  | MAP_32BIT
-        varlist.append((varentry, mmapentry))
-        count += 1
+""" % (dwarf_var_count)
+#     count = 0
+#     while count <= dwarf_var_count: # May need to make this <= in order to avoid mod 2 bug
+#         varentry = "\tvoid *addr_%d;" % count
+#         mmapentry = """
+#     addr_%d = mmap(NULL, getpagesize(), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS | MAP_32BIT, -1, 0);     
+#     if (addr_%d == MAP_FAILED) {     
+#         fprintf(stderr, "mmap() failed\\n");     
+#         exit(EXIT_FAILURE);
+#     }
+#     table[%d] = addr_%d;\n
+# """ % (count, count, count, count) #  | MAP_32BIT
+#         varlist.append((varentry, mmapentry))
+#         count += 1
 
     end_table="""\t_writegsbase_u64((long long unsigned int)table);
 }
-"""
+void __attribute__((destructor)) cleanup_table() {
+    // Unmap each page and free the table
+    for (int i = 0; i < %d; ++i) {
+        if (table[i]) {
+            munmap(table[i], PAGE_SIZE);
+        }
+    }
+    free(table);
+}
+""" % (dwarf_var_count)
     table_file = open("%s/table.c" % target_dir, "w")
     table_file.write(include_lib_flags)
     table_file.write(begin_table)
-    for item in varlist:
-        table_file.write(item[0])
-        table_file.write(item[1])
+    table_file.write(loop_table)
+    # for item in varlist:
+    #     table_file.write(item[0])
+    #     table_file.write(item[1])
     table_file.write(end_table)
     table_file.close()
     log.info("Based on offsets, generate offsets per respective variables")
@@ -259,7 +300,7 @@ void __attribute__((constructor)) table()
     # Variable that is going to be patched
     off_var_count = 0
     # Variable count to patch
-    var_patch = 9999
+    var_patch = 9
     # Function count to patch
     fun_patch = 0
     # print("Total variables to patch: ", count)
@@ -270,8 +311,8 @@ void __attribute__((constructor)) table()
             vars = dwarf_fun_var_info[fun]
             # print(fun)
             for var_idx, var in enumerate(vars):
-                if True:
-                # if var_idx == 2:
+                # if True:
+                if var_idx == 8:
                     #     print(var)
                     #     exit()
                     if var_idx < var_patch: # and var_idx == 6: # (and var_idx is used to debug)
@@ -363,7 +404,7 @@ def conv_suffix(suffix):
     
         
 def conv_imm(imm):
-    # print("Converting: ", imm)
+    # log.debug("Converting: %s", imm)
     imm_pattern = r"(\$)(0x.*)"
     imm_regex = re.search(imm_pattern, imm)
     new_imm = str()
@@ -557,20 +598,22 @@ def process_binary(filename, taintfile, dirloc, funfile):
                 if fun.name in funfile_list:
                     funlist.append(fun.name)
                     temp_var_count = fun.var_count
+                    # pprint(fun)
                     # Make copy of var_list to make modification and copy it to dwarf_fun_var_info
                     temp_var_list = fun.var_list.copy()
                     dwarf_fun_var_info[fun.name] = temp_var_list.copy()
                     fun_entry_to_args[fun.begin] = temp_var_count
                     dwarf_var_count += temp_var_count
 
-        pprint(dwarf_fun_var_info, width=1)
+        # pprint(dwarf_fun_var_info, width=1)
+        # print(dwarf_var_count)
 
         # Based on variable counts and targets found by dwarf analysis, generate table.
         generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir)
 
-        # pprint(dwarf_fun_var_info, width=1)
+        pprint(dwarf_fun_var_info, width=1)
         # --- Binary Ninja Analysis --- #
-        # print("Binary ninja input:", filename)
+        print("Binary ninja input:", filename)
         with load(filename.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
             # print("Here")                  
             arch = Architecture['x86_64']
@@ -622,6 +665,64 @@ asm_macros = """# var_c14n macros
 \t\tmovzbl (%r11), \dest  # 8-bit 
 \t.elseif \\value == 16
 \t\tmovzx (%r11), \dest  # 16-bit
+\t.endif
+.endm
+
+# Comparison / Shift macros
+# ---- Comparison ---- #
+.macro cmp_store_gs operand, offset, value
+\trdgsbase %r11
+\tmov \offset(%r11), %r11
+\t.if \\value == 8
+\t\tcmpb \operand, (%r11)  # 8-bit 
+\t.elseif \\value == 16
+\t\tcmpw \operand, (%r11)  # 16-bit
+\t.elseif \\value == 32
+\t\tcmpl \operand, (%r11)  # 32-bit
+\t.elseif \\value == 64
+\t\tcmpq \operand, (%r11)  # 64-bit
+\t.endif
+.endm
+
+.macro cmp_load_gs operand, offset, value
+\trdgsbase %r11
+\tmov \offset(%r11), %r11
+\t.if \\value == 8
+\t\tcmpb (%r11), \operand  # 8-bit 
+\t.elseif \\value == 16
+\t\tcmpw (%r11), \operand  # 16-bit
+\t.elseif \\value == 32
+\t\tcmpl (%r11), \operand  # 32-bit
+\t.elseif \\value == 64
+\t\tcmpq (%r11), \operand  # 64-bit
+\t.endif
+.endm
+
+.macro and_store_gs operand, offset, value
+\trdgsbase %r11
+\tmov \offset(%r11), %r11
+\t.if \\value == 8
+\t\tandb \operand, (%r11)  # 8-bit 
+\t.elseif \\value == 16
+\t\tandw \operand, (%r11)  # 16-bit
+\t.elseif \\value == 32
+\t\tandl \operand, (%r11)  # 32-bit
+\t.elseif \\value == 64
+\t\tandq \operand, (%r11)  # 64-bit
+\t.endif
+.endm
+
+.macro and_load_gs operand, offset, value
+\trdgsbase %r11
+\tmov \offset(%r11), %r11
+\t.if \\value == 8
+\t\tandb (%r11), \operand  # 8-bit 
+\t.elseif \\value == 16
+\t\tandw (%r11), \operand  # 16-bit
+\t.elseif \\value == 32
+\t\tandl (%r11), \operand  # 32-bit
+\t.elseif \\value == 64
+\t\tandq (%r11), \operand  # 64-bit
 \t.endif
 .endm
 
@@ -703,6 +804,67 @@ asm_macros = """# var_c14n macros
 \t.elseif \\value == 64
 \tmov (%r11), %r11
 \tsub %r11, \dest   # 64-bit 
+\t.endif
+.endm
+
+# ---- Multiplication ---- #
+.macro imul_store_gs operand, offset, value
+\trdgsbase %r12
+\tmov	\offset(%r12), %r12 
+\trdgsbase %r11
+\tmov	\offset(%r11), %r11
+\tmov (%r11), %r11
+\t.if \\value == 8
+\timul \\operand, %r13b  # 8-bit 
+\tmov %r13b, (%r12)
+\t.elseif \\value == 16
+\timul \\operand, %r13w  # 16-bit 
+\tmov %r13w, (%r12)
+\t.elseif \\value == 32
+\timul \\operand, %r13d  # 32-bit 
+\tmov %r13d, (%r12)
+\t.elseif \\value == 64
+\timul \\operand, %r13   # 64-bit 
+\tmov %r13, (%r12)
+\t.endif
+.endm
+
+.macro imul_load_gs dest, offset, value
+\trdgsbase %r11
+\tmov \offset(%r11), %r11
+\t.if \\value == 8
+\tmov (%r11), %r12b
+\timul %r12b, \dest  # 8-bit 
+\t.elseif \\value == 16
+\tmov (%r11), %r12w
+\timul %r12w, \dest  # 16-bit 
+\t.elseif \\value == 32
+\tmov (%r11), %r12d
+\timul %r12d, \dest  # 32-bit 
+\t.elseif \\value == 64
+\tmov (%r11), %r12
+\timul %r12, \dest   # 64-bit 
+\t.endif
+.endm
+
+.macro shl_set_gs operand, offset, value
+\trdgsbase %r12
+\tmov	\offset(%r12), %r12 
+\trdgsbase %r11
+\tmov	\offset(%r11), %r11
+\tmov (%r11), %r11
+\t.if \\value == 8
+\tshl \\operand, %r11b  # 8-bit 
+\tmov %r11b, (%r12)
+\t.elseif \\value == 16
+\tshl \\operand, %r11w  # 16-bit 
+\tmov %r11w, (%r12)
+\t.elseif \\value == 32
+\tshl \\operand, %r11d  # 32-bit 
+\tmov %r11d, (%r12)
+\t.elseif \\value == 64
+\tshl \\operand, %r11   # 64-bit 
+\tmov %r11, (%r12)
 \t.endif
 .endm
 """
@@ -799,6 +961,39 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
             elif store_or_load == "load":
                 new_inst_type = "sub_load_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+        elif bn_var.patch_inst.inst_type == "imul": # Signed multiply (two's comp arith)
+            log.info("Patching with imul_gs")
+            if store_or_load == "store":
+                new_inst_type = "imul_store_gs"
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+            elif store_or_load == "load":
+                new_inst_type = "imul_load_gs"
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+        elif bn_var.patch_inst.inst_type == "shl": # shift left
+            log.info("Patching with shl_gs")
+            if store_or_load == "store":
+                new_inst_type = "shl_store_gs"
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+            elif store_or_load == "load":
+                new_inst_type = "shl_load_gs"
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+        elif bn_var.patch_inst.inst_type == "cmp":
+            log.info("Patching with cmp_gs")
+            if store_or_load == "store":
+                new_inst_type = "cmp_store_gs"
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+            elif store_or_load == "load":
+                new_inst_type = "cmp_load_gs"
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+        elif bn_var.patch_inst.inst_type == "and":
+            log.info("Patching with and_gs")
+            if store_or_load == "store":
+                new_inst_type = "and_store_gs"
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+            elif store_or_load == "load":
+                new_inst_type = "and_load_gs"
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+            
     if line != None:
         return line
                 
@@ -811,14 +1006,15 @@ def process_file(funlist, target_dir, target_file):
         else:
             print("No debug file exists")
         
-        debug = False
+        debug = True
         patch_count = 0
         with fileinput.input(os.path.join(target_dir, target_file), 
                              inplace=(not debug), encoding="utf-8", backup='.bak') as f:
             file_pattern = re.compile(r'\.file\s+"([^"]+)"')
             fun_begin_regex = r'(?<=.type\t)(.*)(?=,\s@function)'
             fun_end_regex   = r'(\t.cfi_endproc)'
-            dis_line_regex  = r'(mov|movz|lea|sub|add|cmp|sal|imul)([l|b|w|q|bl|xw|wl]*)\t(.*),\s(.*)'
+            # dis_line_regex  = r'(mov|movz|lea|sub|add|cmp|sal|and|imul)([l|b|w|q|bl|xw|wl]*)\t(.*),\s(.*)'
+            dis_line_regex = r'(mov|movz|lea|sub|add|cmp|sal|and|imul)([l|b|w|q|bl|xw|wl]*)\s+(\S+)(?:,\s*(\S+))?(?:,\s*(\S+))?\n'
             # 	salq	-40(%rbp) or shl $1, -40(%rbp), if no immediate -> $1
             sh_line_regex   = r'\t(sal)([a-z]*)\t(.*)'
             sing_line_regex = r'\t(div)([a-z]*)\t(.*)'
@@ -846,7 +1042,7 @@ def process_file(funlist, target_dir, target_file):
                             log.error("Skipping", type(err))
                             check = False
                         if debug:
-                            if currFun != "main": # Debug
+                            if currFun != "sort": # Debug
                                 check = False
                             else:
                                 check = True
@@ -866,7 +1062,8 @@ def process_file(funlist, target_dir, target_file):
                     offset_targets = None
             
                 if check == True:
-                    dis_line = line.rstrip('\n')
+                    # dis_line = line.rstrip('\n')
+                    dis_line = line
                     # mnemonic source, destination AT&T
                     log.debug(dis_line)
                     dis_regex   = re.search(dis_line_regex, dis_line)
@@ -876,7 +1073,7 @@ def process_file(funlist, target_dir, target_file):
                         src         = dis_regex.group(3)
                         dest        = dis_regex.group(4)
                         # temp_inst = PatchingInst(conv_instr(inst_type), src, dest, expr, suffix)
-                        
+                        log.debug("%s %s %s %s", inst_type, suffix, src, dest)
                         # Need to convert movzbl and movzxw to movzx + suffix (b or w)
                         if inst_type == "movz":
                             inst_type = "movzx"
@@ -885,10 +1082,17 @@ def process_file(funlist, target_dir, target_file):
                         elif suffix == "xw" or suffix == "wl":
                             suffix = "w"
                         
-                        temp_inst = PatchingInst(inst_type=inst_type, suffix=suffix,
-                                                    dest=conv_imm(dest), src=conv_imm(src), ptr_op="")
+                        if dest != None:
+                            temp_inst = PatchingInst(inst_type=inst_type, suffix=suffix,
+                                                        dest=conv_imm(dest), src=conv_imm(src), ptr_op="")
+                        else:
+                            # For a single operand assembly instruction (e.g., salq)
+                            if inst_type == "sal":
+                                temp_inst = PatchingInst(inst_type="shl", suffix=suffix,
+                                                        dest=conv_imm(src), src="$1", ptr_op="")
+                            
                         if debug:
-                            print(temp_inst.inst_print())
+                            log.warning(temp_inst.inst_print())
                             if src != None:
                                 for offset in offset_targets:
                                     if src == offset[0]:
@@ -899,7 +1103,9 @@ def process_file(funlist, target_dir, target_file):
                                         log.warning("Debug found")
                         new_inst = None
                         for idx, bn_var in enumerate(bninja_info):
+                            # log.warning(bn_var.patch_inst.inst_print())
                             # if debug:
+                            #     log.warning(bn_var.offset_expr)
                             #     log.warning(bn_var.patch_inst.inst_print())
                             if temp_inst.inst_check(bn_var.patch_inst):
                                 # print("Found\n", temp_inst.inst_print(), "\n", bn_var.patch_inst.inst_print())
@@ -913,6 +1119,12 @@ def process_file(funlist, target_dir, target_file):
                                         if new_inst != None:
                                             # log.debug("\n%s",new_inst)
                                             break
+                                        else:
+                                            # Exit out of entire script if we find a missing instruction
+                                            import signal
+                                            log.error(temp_inst.inst_print())
+                                            os.kill(os.getppid(),signal.SIGTERM)
+                                            sys.exit(2)
                                 else:
                                     continue
                                 break
@@ -1031,8 +1243,12 @@ class BinAnalysis:
                             if offset_reg:
                                 base_offset = offset_reg.group(1)
                                 base_reg = offset_reg.group(2)
-            
-            if base_reg is not None:
+            # print(type(inst_ssa.right) )
+            if base_reg is not None and type(inst_ssa.right) == binaryninja.lowlevelil.LowLevelILLoadSsa:
+                offset = self.calc_ssa_off_expr(inst_ssa.right)
+                expr = offset
+            elif base_reg is not None:
+                # print("Here 2")
                 try:
                     offset = str(int(inst_ssa.right.__str__(), base=16) + int(base_offset))
                     expr = offset + "(" + base_reg + ")"
@@ -1041,6 +1257,7 @@ class BinAnalysis:
                     expr = "(" + inst_ssa.left.__str__() + "," + inst_ssa.right.__str__() + ")"
             # need to hanlde %rax#33.%eax - [%rbp#1 - 4 {var_c_1}].d case
             elif type(inst_ssa.right) == binaryninja.lowlevelil.LowLevelILLoadSsa:
+                # print("Here 3")
                 offset = self.calc_ssa_off_expr(inst_ssa.right)
                 expr = offset
             else:
@@ -1262,8 +1479,8 @@ class BinAnalysis:
             log.debug(patch_inst.inst_print())
         
         log.debug("%s", dis_inst)
-        if (hex(llil_inst.address) == "0x11b7"):
-                print("Here")
+        # if (hex(llil_inst.address) == "0x11b7"):
+        #         print("Here")
         # If LLIL is provided
         if llil_inst != None:
             log.debug("\t%s %s", chr(int(arrow[2:], 16)), llil_inst)
@@ -1303,7 +1520,7 @@ class BinAnalysis:
     # Need debug info to handle static functions
     def analyze_binary(self, funlist):
         # print("Step: Binary Ninja")
-        debug_fun = "do_copy"
+        debug_fun = "sort"
         gen_regs = {"%rax","%rbx","%rcx","%rdx","%rdi","%rsi",
                     "%eax","%ebx","%ecx","%edx","%edi","%esi",
                     "%ax", "%bx", "%cx", "%dx"}
@@ -1316,15 +1533,15 @@ class BinAnalysis:
                 log.info("Function: %s | begin: %s | end: %s", func.name, hex(begin), hex(end))
                 llil_fun = func.low_level_il
                 for llil_bb in llil_fun:
-                    if True: 
-                    # if self.fun == debug_fun: # Specific function
+                    # if True: 
+                    if self.fun == debug_fun: # Specific function
                         for llil_inst in llil_bb:
                             # print(llil_inst, llil_inst.operation)
                             mapped_il = llil_inst.mapped_medium_level_il
                             # log.debug("%s | %s", llil_inst, mapped_il)
-                            if hex(llil_inst.address) == "0x11b7":
-                                print(llil_inst, llil_inst.operation)
-                                log.error("%s | %s", llil_inst, mapped_il)
+                            # if hex(llil_inst.address) == "0xbe27":
+                            #     print(llil_inst, llil_inst.operation)
+                            #     log.error("%s | %s", llil_inst, mapped_il)
                                 # exit()
                             if llil_inst.operation == LowLevelILOperation.LLIL_SET_REG:
                                 # print(llil_inst, llil_inst.operation)
@@ -1365,6 +1582,9 @@ class BinAnalysis:
                                             log.warning("Not the target")
                             # If store -> vars written
                             elif llil_inst.operation == LowLevelILOperation.LLIL_STORE:
+                                if hex(llil_inst.address) == "0xbe27":
+                                    print(llil_inst, llil_inst.operation)
+                                    log.error("%s | %s", llil_inst, mapped_il)
                                 if len(mapped_il.vars_written) > 0:
                                     # print(llil_inst)
                                     result = any("var" in var.name for var in mapped_il.vars_written)
@@ -1397,16 +1617,16 @@ class BinAnalysis:
                                     bn_var = self.asm_lex_analysis(var_name, None, None, self.bv.get_disassembly(dis_inst.address), func)
                                     self.bn_var_list.append(bn_var)
                     
-
             bn_fun_var_info[self.fun] = self.bn_var_list.copy()
             self.bn_var_list.clear()
             # pprint(bn_fun_var_info[self.fun], width=1)
             # print(len(bn_fun_var_info[self.fun]))
-        # for bn_var in bn_fun_var_info[debug_fun]:
-        #     print(bn_var)
-        #     print(bn_var.patch_inst.inst_print())
-        #     print("")
-                
+        for bn_var in bn_fun_var_info[debug_fun]:
+            print(bn_var)
+            print(bn_var.patch_inst.inst_print())
+            print("")
+        # exit()
+        # DEBUG       movq    -8(%rbp), %rsi 
     def __init__(self, bv):
         self.bv = bv
         self.fun = None

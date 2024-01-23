@@ -33,6 +33,7 @@ migrate()
     fi
     cp ${coreutils_src_path}/${input} ${coreutils_src_path}/${input}.def
     cp ${coreutils_src_path}/${input}.def $result_path/${input}.out
+    cp ${coreutils_src_path}/${input}.def $result_path/${input}.def
     cp ${coreutils_src_path}/${input}.s ${coreutils_src_path}/${input}.s.bak
     cp ${coreutils_src_path}/${input}.s.bak $result_path
 
@@ -54,7 +55,7 @@ patch()
         cp ${result_path}/${input}.s.bak ${result_path}/${input}.s
     fi
     sleep 1.5
-    python3 binary_patch.py --binary ${input}.out --fun fun.list
+    python3 binary_patch.py --binary ${input}.def --fun fun.list
     #--fun list.out --dir=tests/${input}
 }
 
