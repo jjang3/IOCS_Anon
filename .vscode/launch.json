@@ -13,9 +13,11 @@
             "console": "integratedTerminal",
             "cwd": "${fileDirname}",
             "justMyCode": true,
-            // "args": ["--binary", "/home/jaewon/ARCS_Final/var_c14n/result/cp/cp.out"]
+            "args": ["--binary", "sort.def"]
+            // "args": ["--binary", "scanf.out"]
             // "args": ["--binary", "tiny.out", "--taint", "dft.out"]
-            "args": ["--binary", "cp.out", "--fun", "fun.list"]
+            
+            // "args": ["--binary", "cp.out", "--fun", "fun.list"]
         }
     ]
 }

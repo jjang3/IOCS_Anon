@@ -759,6 +759,10 @@ def dwarf_analysis(input_binary):
                         temp_typedef = None
                 
                 if (DIE.tag == None):
+                    # This is used for single function application (disable it for larger app)
+                    # if temp_fun != None:
+                    #     if temp_fun not in fun_list:
+                    #         fun_list.append(temp_fun)
                     last_tag = last_die_tag.pop()
                     if (last_tag == "DW_TAG_member"):
                         if temp_struct != None and temp_struct.name != None:
@@ -790,7 +794,7 @@ def dwarf_analysis(input_binary):
     # for item in struct_list:
     #     print(item.name)
     # print(vars(struct_list))
-
+    pprint.pprint(fun_list, width=1)
     # pprint.pprint(var_list, width=1)
     # exit()
 
@@ -817,7 +821,7 @@ def dwarf_analysis(input_binary):
                     # if var.fun_name == "open_listenfd":
                     #     print(var)
                     temp_count += 1
-        # fun.struct_list = temp_struct_list.copy()
+        fun.struct_list = temp_struct_list.copy()
         fun.var_list = temp_var_list.copy()
         fun.var_count = temp_count
         temp_var_list.clear()
@@ -829,6 +833,7 @@ def dwarf_analysis(input_binary):
     # In second iteration, we will write it to the file pointer
     fp.write("FunCount: %s" % len(fun_list))
     for fun in fun_list:
+        # print(fun)
         fp.write("\n-------------FunBegin-----------------\nfun_name: %s\nFunBegin: %s\nFunEnd: %s\nVarCount: %s\n" % (fun.name, fun.begin, fun.end, fun.var_count))
         
         for idx, var in enumerate(fun.var_list):

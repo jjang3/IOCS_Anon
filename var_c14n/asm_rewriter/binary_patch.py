@@ -300,7 +300,7 @@ void __attribute__((destructor)) cleanup_table() {
     # Variable that is going to be patched
     off_var_count = 0
     # Variable count to patch
-    var_patch = 9
+    var_patch = 9999
     # Function count to patch
     fun_patch = 0
     # print("Total variables to patch: ", count)
@@ -312,7 +312,7 @@ void __attribute__((destructor)) cleanup_table() {
             # print(fun)
             for var_idx, var in enumerate(vars):
                 # if True:
-                if var_idx == 8:
+                if var_idx == 1:
                     #     print(var)
                     #     exit()
                     if var_idx < var_patch: # and var_idx == 6: # (and var_idx is used to debug)
@@ -358,10 +358,10 @@ void __attribute__((destructor)) cleanup_table() {
     
     print("Total function: ", len(dwarf_fun_var_info))
     print("Total variables getting patched: ", off_var_count)
-    
-        # if fun_idx == fun_patch:
-        #     # pprint(fun_table_offsets[fun], width=1)
-        #     break
+
+    # if fun_idx == fun_patch:
+    pprint(fun_table_offsets["sequential_sort"], width=1)
+        # break
     
 def conv_expr(expr):
     print("Converting expression", expr)
@@ -847,7 +847,7 @@ asm_macros = """# var_c14n macros
 \t.endif
 .endm
 
-.macro shl_set_gs operand, offset, value
+.macro shl_store_gs operand, offset, value
 \trdgsbase %r12
 \tmov	\offset(%r12), %r12 
 \trdgsbase %r11
@@ -933,66 +933,66 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
             log.info("Patching with mov_gs")
             if store_or_load == "store":
                 new_inst_type = "mov_set_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
             elif store_or_load == "load":
                 new_inst_type = "mov_load_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
         elif bn_var.patch_inst.inst_type == "movzx":
             log.info("Patching with movzx_gs")
             if store_or_load == "store":
                 new_inst_type = "movzx_set_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
             elif store_or_load == "load":
                 new_inst_type = "movzx_load_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
         elif bn_var.patch_inst.inst_type == "add":
             log.info("Patching with add_gs")
             if store_or_load == "store":
                 new_inst_type = "add_store_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
             elif store_or_load == "load":
                 new_inst_type = "add_load_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
         elif bn_var.patch_inst.inst_type == "sub":
             log.info("Patching with sub_gs")
             if store_or_load == "store":
                 new_inst_type = "sub_store_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
             elif store_or_load == "load":
                 new_inst_type = "sub_load_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
         elif bn_var.patch_inst.inst_type == "imul": # Signed multiply (two's comp arith)
             log.info("Patching with imul_gs")
             if store_or_load == "store":
                 new_inst_type = "imul_store_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
             elif store_or_load == "load":
                 new_inst_type = "imul_load_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
         elif bn_var.patch_inst.inst_type == "shl": # shift left
             log.info("Patching with shl_gs")
             if store_or_load == "store":
                 new_inst_type = "shl_store_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
             elif store_or_load == "load":
                 new_inst_type = "shl_load_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
         elif bn_var.patch_inst.inst_type == "cmp":
             log.info("Patching with cmp_gs")
             if store_or_load == "store":
                 new_inst_type = "cmp_store_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
             elif store_or_load == "load":
                 new_inst_type = "cmp_load_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
         elif bn_var.patch_inst.inst_type == "and":
             log.info("Patching with and_gs")
             if store_or_load == "store":
                 new_inst_type = "and_store_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
             elif store_or_load == "load":
                 new_inst_type = "and_load_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d, %d\n" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
             
     if line != None:
         return line
@@ -1006,7 +1006,7 @@ def process_file(funlist, target_dir, target_file):
         else:
             print("No debug file exists")
         
-        debug = True
+        debug = False
         patch_count = 0
         with fileinput.input(os.path.join(target_dir, target_file), 
                              inplace=(not debug), encoding="utf-8", backup='.bak') as f:
@@ -1533,8 +1533,8 @@ class BinAnalysis:
                 log.info("Function: %s | begin: %s | end: %s", func.name, hex(begin), hex(end))
                 llil_fun = func.low_level_il
                 for llil_bb in llil_fun:
-                    # if True: 
-                    if self.fun == debug_fun: # Specific function
+                    if True: 
+                    # if self.fun == debug_fun: # Specific function
                         for llil_inst in llil_bb:
                             # print(llil_inst, llil_inst.operation)
                             mapped_il = llil_inst.mapped_medium_level_il
