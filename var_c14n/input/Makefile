@@ -12,7 +12,7 @@ result_dir = ${parent_dir}/result
 	print ${name}
 	print ${parent_dir} ${result_dir}
 	if [ ! -d  ${result_dir}/${name} ]; then \
-		mkdir ${name} ;\
+		mkdir ${result_dir}/${name} ;\
 	fi ;\
 	cp libMakefile  ${result_dir}/${name}/Makefile ;\
 	$(CC) $(ASMFLAGS) $< -o ${result_dir}/${name}/$@ ;\

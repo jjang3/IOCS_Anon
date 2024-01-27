@@ -8,6 +8,8 @@ options=("Patch" "Compile")
 
 # This is coreutils path
 nginx_path="/home/jaewon/Downloads/nginx-1.3.9/objs/src"
+nginx_home_path="/home/jaewon/Downloads/nginx-1.3.9/"
+nginx_install_path="/home/jaewon/Downloads/nginx-1.3.9/debug_x86_64/sbin"
 
 # This is used to setup test path
 parent_path=$( cd ../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
@@ -18,6 +20,14 @@ result_path=${test_path}/$1
 
 patch()
 {
+    # Copy original backup files every time before rewriting
+    find "$nginx_path" -type f -name "*.s.bak" -exec bash -c 'file_path="$1"; 
+    dir_path=$(dirname "$file_path"); 
+    file_name=$(basename "$file_path" .s.bak); 
+    new_file_path="$dir_path/${file_name}.s";
+    object_file_path="$dir_path/${file_name}.o"; 
+    cp "$file_path" "$new_file_path";
+    as "$new_file_path" -o "$object_file_path"' _ {} \;
     echo "Patch"
     python3 binary_patch.py --fun fun.list --dir ${nginx_path}
     cp ${input_path}/libMakefile ${nginx_path}/Makefile
@@ -27,23 +37,10 @@ patch()
 
 compile()
 {
-    echo "Compile"
-    # echo "Migrate back to coreutils and compile" 
-    # if [ -z ${result_path}/${input}.s ]
-    # then
-    #     echo "No source file, please use other option"
-    #     exit
-    # fi
-    # cp ${input_path}/libMakefile ${result_path}/Makefile
-    # cd ${result_path}
-    # make lib
-    # cp -rf ${result_path}/lib ${coreutils_src_path}
-    # echo ${result_path}/${input}.s
-    # as -o ${coreutils_src_path}/${input}.o ${result_path}/${input}.s
-    # sleep 3
-    # cd ${coreutils_build_path}
-    # pwd
-    # make src/${input}
+    echo "Compile nginx app" 
+    cd ${nginx_home_path}
+    make && make install
+    cp ${nginx_install_path}/nginx ${result_path}/nginx
 }
 
 while true; do

@@ -42,17 +42,6 @@ import re
 import shutil
 from pathlib import Path
 
-
-# @dataclass
-# class PatchingInst:
-#     inst_type: Optional[str] = None
-#     src: Optional[str] = None
-#     dest: Optional[str] = None
-#     offset: Optional[str] = None
-#     suffix: Optional[str] = None
-#     # fun: Optional[str] = None
-
-
 @dataclass(unsafe_hash = True)
 class FileData:
     name: str = None
@@ -103,12 +92,14 @@ class TargetData:
 
 
 class PatchingInst:
-    def __init__(self, inst_type, suffix, src, dest, ptr_op):
+    def __init__(self, inst_type, suffix, src, dest, ptr_op):#, struct_bool):
         self.inst_type = inst_type
         self.suffix = suffix
         self.src = src
         self.dest = dest
         self.ptr_op = ptr_op # This indicates whether ptr access is either src/dest 
+        #self.struct = struct_bool # This indicates whether offset that is being accessed here is struct or not
+    
     def inst_print(self):
         # print("Inst type: %s | Suffix: %s | Source: %s | Dest: %s" % (self.inst_type, self.suffix, self.src, self.dest))
         info = "Inst type: %s | Suffix: %s | Source: %s | Dest: %s | Ptr: %s" % (self.inst_type, self.suffix, self.src, self.dest, self.ptr_op)
@@ -154,6 +145,7 @@ class BnVarData:
     patch_inst: PatchingInst = None
     offset_expr: str = None
     asm_syntax_tree: BnSSAOp = None
+    llil_inst: LowLevelILInstruction = None
 
 @dataclass(unsafe_hash=True)
 class BnFunData:
@@ -227,10 +219,10 @@ def generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir):
             # print(fun)
             for var_idx, var in enumerate(vars):
                 if True:
-                # if var_idx == 1:
+                # if var_idx == 6: #Not work: 4,5
                     #     print(var)
                     #     exit()
-                    if var_idx < var_patch: # and var_idx == 6: # (and var_idx is used to debug)
+                    if var_idx < var_patch: #and var_idx != 5: # and var_idx == 6: # (and var_idx is used to debug)
                         if var.base_type == "DW_TAG_base_type":
                             if var.offset_expr != None:
                                 offset_expr_to_table.add((var.offset_expr, table_offset))
@@ -245,6 +237,8 @@ def generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir):
                                 if member.base_type != None:
                                     if member.base_type == "DW_TAG_structure_type":
                                         result = True
+                                    # elif member.base_type == "DW_TAG_pointer_type":    
+                                        # result = True
                             # If none of the struct members are structure, then it's fine
                             if not result:
                                 for mem_idx, member in enumerate(var_struct.member_list):
@@ -254,11 +248,13 @@ def generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir):
                                     #     member.base_type != "DW_TAG_array_type"): 
                                     #     None
                                         if True:
-                                        # if mem_idx == 0:
-                                            if member.offset_expr != None:
-                                                offset_expr_to_table.add((member.offset_expr, table_offset))
-                                                table_offset += 8
-                                                off_var_count += 1
+                                            # if mem_idx == 0:
+                                            if (member.base_type != "DW_TAG_structure_type" and 
+                                                member.base_type != "DW_TAG_array_type"): #  and member.base_type != "DW_TAG_pointer_type"
+                                                if member.offset_expr != None:
+                                                    offset_expr_to_table.add((member.offset_expr, table_offset))
+                                                    table_offset += 8
+                                                    off_var_count += 1
                         elif (var.base_type == "DW_TAG_typedef" and
                               var.struct == None):
                             if var.offset_expr != None:
@@ -303,12 +299,12 @@ void __attribute__((constructor)) create_table()
         exit(EXIT_FAILURE);
     }
     /*Pointer to shared memory region*/    
-""" % (off_var_count)
+""" % (off_var_count) #(dwarf_var_count) #
 
     loop_table="""
     // Map each page
     for (int i = 0; i < %d; ++i) {
-        table[i] = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+        table[i] = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_32BIT | MAP_PRIVATE, -1, 0);
         if (table[i] == MAP_FAILED) {
             perror("Memory mapping failed");
             // Clean up previously mapped pages
@@ -319,7 +315,7 @@ void __attribute__((constructor)) create_table()
             exit(EXIT_FAILURE);
         }
     }
-""" % (off_var_count)
+""" % (off_var_count) # (dwarf_var_count) 
 #     count = 0
 #     while count <= dwarf_var_count: # May need to make this <= in order to avoid mod 2 bug
 #         varentry = "\tvoid *addr_%d;" % count
@@ -345,7 +341,7 @@ void __attribute__((destructor)) cleanup_table() {
     }
     free(table);
 }
-""" % (dwarf_var_count)
+""" % (off_var_count)# (dwarf_var_count) 
     table_file = open("%s/table.c" % target_dir, "w")
     table_file.write(include_lib_flags)
     table_file.write(begin_table)
@@ -468,6 +464,8 @@ fun_list = list() # This list contains all functions analyzed per asm file
 
 file_list = list()
 
+patch_count = 0
+
 def find_funs(file_list):
     fun_regex = re.compile(r'\t\.type\s+.*,\s*@function\n\b(^.[a-zA-Z_.\d]+)\s*:', re.MULTILINE)
     for file_item in file_list:
@@ -575,10 +573,11 @@ def process_binary(filename, taintfile, dirloc, funfile):
     pprint(target_files)
     print(target_dir)
     # exit()
-    time.sleep(1.5)
+    # time.sleep(1.5)
     funlist = list()
     if dirloc != None:
         for file_item in target_files:
+            print(file_item)
             dwarf_output = dwarf_analysis.dwarf_analysis(file_item.obj_path)
             # pprint(dwarf_output)
             for fun in dwarf_output:
@@ -595,13 +594,14 @@ def process_binary(filename, taintfile, dirloc, funfile):
         print(dwarf_var_count)
         generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir)
         for file_item in target_files:
-            # print("Binary ninja input:", file_item.obj_path)
-            # with load(file_item.obj_path.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
-            #     arch = Architecture['x86_64']
-            #     bn = BinAnalysis(bv)
-            #     bn.analyze_binary(funlist)
-            # process_file(funlist, None, file_item)
+            print("Binary ninja input:", file_item.obj_path)
+            with load(file_item.obj_path.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
+                arch = Architecture['x86_64']
+                bn = BinAnalysis(bv)
+                bn.analyze_binary(funlist)
+            process_file(funlist, None, file_item)
             gen_obj_file(file_item)
+        log.critical("Patch count %d", patch_count)
                 # print(fun)
         # for dir_file in dir_list:
         #     if (dir_file.endswith('.s')):
@@ -662,7 +662,8 @@ def process_binary(filename, taintfile, dirloc, funfile):
             arch = Architecture['x86_64']
             bn = BinAnalysis(bv)
             bn.analyze_binary(funlist)
-        process_file(funlist, target_dir, str(target_file))
+        # process_file(funlist, target_dir, str(target_file))
+        # log.critical("Patch count %d", patch_count)
 
 asm_macros = """# var_c14n macros
 # Load effective address macro
@@ -914,24 +915,24 @@ asm_macros = """# var_c14n macros
 
 def traverse_ast(tgt_ast, bn_var_info, depth):
     # log.debug("Traversing the AST to patch")
-    # parse_ast(tgt_ast)
+    parse_ast(tgt_ast)
     # print("Depth = ", depth)
+    
     if repr(tgt_ast.right) == 'BnSSAOp':
         return traverse_ast(tgt_ast.right, bn_var_info, depth+1)
-        
+                        
     if repr(tgt_ast.left) == 'RegNode' and depth != 0:
         for var in bn_var_info:
             var_ast = var.asm_syntax_tree
             try:
                 if var_ast.left.value == tgt_ast.left.value:
-                    # print("Found", tgt_ast.left.value)
+                    print("Found", tgt_ast.left.value)
                     return var
             except Exception as err:
                 None
     else:
         return None
     
-                    
 def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt_offset):
     log.critical("Patch the instruction %s | Offset: %d", dis_inst, tgt_offset)
     # parse_ast(bn_var.asm_syntax_tree)
@@ -1039,8 +1040,9 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
             
     if line != None:
         return line
-                
+    
 def process_file(funlist, target_dir, target_file):
+    global patch_count
     file_path = None
     if target_dir != None:
         # This is for a single binary c14n. 
@@ -1059,31 +1061,28 @@ def process_file(funlist, target_dir, target_file):
         debug_file = file_path + ".bak"
         if os.path.isfile(debug_file):
             print("Copying debug file")
-            shutil.copyfile(debug_file, file_path_dir)
+            shutil.copyfile(debug_file, file_path)
+            time.sleep(2)
         else:
             print("No debug file exists")
         # print(file_path, file_path_dir, debug_file)
         # exit()
         
     
-    debug = False
-    patch_count = 0
+    debug = True
     with fileinput.input(file_path, 
                             inplace=(not debug), encoding="utf-8", backup='.bak') as f:
         file_pattern = re.compile(r'\.file\s+"([^"]+)"')
         fun_begin_regex = r'(?<=.type\t)(.*)(?=,\s@function)'
         fun_end_regex   = r'(\t.cfi_endproc)'
-        # dis_line_regex  = r'(mov|movz|lea|sub|add|cmp|sal|and|imul)([l|b|w|q|bl|xw|wl]*)\t(.*),\s(.*)'
+        
         dis_line_regex = r'(mov|movz|lea|sub|add|cmp|sal|and|imul)([l|b|w|q|bl|xw|wl]*)\s+(\S+)(?:,\s*(\S+))?(?:,\s*(\S+))?\n'
-        # 	salq	-40(%rbp) or shl $1, -40(%rbp), if no immediate -> $1
-        sh_line_regex   = r'\t(sal)([a-z]*)\t(.*)'
-        sing_line_regex = r'\t(div)([a-z]*)\t(.*)'
+        # sing_line_regex = r'\t(div)([a-z]*)\t(.*)'
         check = False
         currFun = str()
         patch_targets = list()
         offset_targets = list()
         struct_targets = set()
-        # print(funlist)
         
         for line in f:
             if file_pattern.findall(line): #.startswith('\t.file\t"%s.c"' % target_file.rsplit('.', maxsplit=1)[0]):
@@ -1102,13 +1101,13 @@ def process_file(funlist, target_dir, target_file):
                         log.error("Skipping", type(err))
                         check = False
                     if debug:
-                        if currFun != "sort": # Debug
-                            check = False
-                        else:
-                            check = True
+                        # if currFun != "sort": # Debug
+                        #     check = False
+                        # else:
+                        #     check = True
                         None
-                        # pprint(dwarf_var_info, width = 1)
-                        # pprint(bninja_info, width = 1)
+                        pprint(dwarf_var_info, width = 1)
+                        pprint(bninja_info, width = 1)
                         pprint(offset_targets, width = 1)
                     else:
                         if offset_targets != None:
@@ -1164,9 +1163,9 @@ def process_file(funlist, target_dir, target_file):
                     new_inst = None
                     for idx, bn_var in enumerate(bninja_info):
                         # log.warning(bn_var.patch_inst.inst_print())
-                        # if debug:
-                        #     log.warning(bn_var.offset_expr)
-                        #     log.warning(bn_var.patch_inst.inst_print())
+                        if debug:
+                            log.warning(bn_var.offset_expr)
+                            log.warning(bn_var.patch_inst.inst_print())
                         if temp_inst.inst_check(bn_var.patch_inst):
                             # print("Found\n", temp_inst.inst_print(), "\n", bn_var.patch_inst.inst_print())
                             offset_expr = bn_var.offset_expr
@@ -1207,8 +1206,9 @@ def process_file(funlist, target_dir, target_file):
                 if debug != True:
                     print(line, end='')
                 None
-                                    
-        log.critical("Patch count %d", patch_count)
+        
+        # if target_dir != None:
+        #     log.critical("Patch count %d", patch_count)
                                 
 # Debug options here
 debug_level = logging.DEBUG
@@ -1242,6 +1242,21 @@ def parse_ast(ast, depth=0):
 class BinAnalysis:
     # Binary ninja variable list; list is used to make it stack and remove instructions in orderily fashion
     bn_var_list      = list()
+    
+    def get_ssa_reg(self, inst_ssa):
+        arrow = 'U+21B3'
+        log.info("Finding the SSA register of %s %s", inst_ssa, type(inst_ssa)) 
+        if type(inst_ssa) == binaryninja.lowlevelil.SSARegister:
+            return inst_ssa
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILRegSsa:
+            return self.get_ssa_reg(inst_ssa.src)
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILRegSsaPartial:
+            return self.get_ssa_reg(inst_ssa.full_reg)
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILLoadSsa:
+            log.debug("%s LoadReg", chr(int(arrow[2:], 16)))
+            return inst_ssa
+        else:
+            print(inst_ssa.__class__.__bases__)
     
     def calc_ssa_off_expr(self, inst_ssa):
         # This is for binary ninja diassembly
@@ -1372,12 +1387,13 @@ class BinAnalysis:
                 if reg_def != None:
                     try:
                         # Try to find whether we are dealing with global variable
-                        log.debug("Reg ref %s", reg_def)
+                        # log.debug("Reg ref %s", reg_def)
                         if type(reg_def.src) == binaryninja.lowlevelil.LowLevelILConstPtr:
                             log.error("Global")
                             return None
                         else:
-                            node = RegNode(llil_inst)
+                            # for the case of %rcx#1.%ecx, we just return rcx#1 
+                            node = RegNode(llil_inst.full_reg)
                             return node   
                     except:
                         # If not successful, just create a node based on the instruction
@@ -1558,7 +1574,7 @@ class BinAnalysis:
             
             # src_offset_expr [0] | dest_offset_expr [1]
             bn_var = BnVarData(var_name, dis_inst, patch_inst, 
-                            offset_expr, asm_syntax_tree)
+                            offset_expr, asm_syntax_tree, llil_inst)
             print(colored("bn_var %s\nbn_var inst: %s" % (bn_var, bn_var.patch_inst.inst_print()), 'blue', attrs=['reverse']))
             # print(bn_var)
             # print(bn_var.patch_inst.inst_print())
@@ -1572,7 +1588,7 @@ class BinAnalysis:
             elif offset_src_dest == "src":
                 offset_expr = patch_inst.src
             bn_var = BnVarData(var_name, dis_inst, patch_inst, 
-                            offset_expr, asm_syntax_tree)
+                            offset_expr, asm_syntax_tree, llil_inst)
             # parse_ast(asm_syntax_tree)
             # print(bn_var)
             return bn_var
@@ -1581,9 +1597,12 @@ class BinAnalysis:
     def analyze_binary(self, funlist):
         # print("Step: Binary Ninja")
         debug_fun = "sort"
-        gen_regs = {"%rax","%rbx","%rcx","%rdx","%rdi","%rsi",
-                    "%eax","%ebx","%ecx","%edx","%edi","%esi",
-                    "%ax", "%bx", "%cx", "%dx"}
+        gen_regs = {"%rax", "%rbx", "%rcx", "%rdx","%rdi","%rsi",
+                    "%eax", "%ebx", "%ecx", "%edx","%edi","%esi",
+                    "%ax",  "%bx",  "%cx" , "%dx"}
+        arg_regs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9",
+                    "%ecx", "%edx"}
+        addr_to_llil = dict()
         for func in self.bv.functions:
             self.fun = func.name
             if self.fun in funlist:
@@ -1592,10 +1611,16 @@ class BinAnalysis:
                 end     = addr_range.end
                 log.info("Function: %s | begin: %s | end: %s", func.name, hex(begin), hex(end))
                 llil_fun = func.low_level_il
+                # Clear dict per function
+                addr_to_llil.clear()
                 for llil_bb in llil_fun:
                     if True: 
                     # if self.fun == debug_fun: # Specific function
+                        # Making these variable per basic block level
+                        arg_idx = 0
+                        call_args = 1
                         for llil_inst in llil_bb:
+                            addr_to_llil[llil_inst.address] = llil_inst
                             # print(llil_inst, llil_inst.operation)
                             mapped_il = llil_inst.mapped_medium_level_il
                             # log.debug("%s | %s", llil_inst, mapped_il)
@@ -1604,9 +1629,23 @@ class BinAnalysis:
                             #     log.error("%s | %s", llil_inst, mapped_il)
                                 # exit()
                             if llil_inst.operation == LowLevelILOperation.LLIL_SET_REG:
-                                # print(llil_inst, llil_inst.operation)
+                                # try:
+                                #     # Try to catch argument register
+                                #     # if llil_inst.dest.name.__str__() in arg_regs and arg_idx < call_args:
+                                #     #     # 64-bit arg register
+                                #     #     # print("ARG", llil_inst, mapped_il, llil_inst.operation)
+                                #     #     log.debug(llil_inst.ssa_form)
+                                #     #     # Determine how many arguments is for a call; Upon reaching call instruction
+                                #     #     # this both arg_idx and call_args should reset
+                                #     #     call_fun = llil_fun.get_ssa_reg_uses(llil_inst.ssa_form.dest)
+                                #     #     call_args = len(llil_fun.high_level_il.params)
+                                #     #     # print(call_fun)
+                                #     #     arg_idx += 1
+                                #     None
+                                # except: 
+                                    # Else here
                                 if len(mapped_il.vars_read) > 0:
-                                    # print(inst)
+                                    print("NON ARG", llil_inst, mapped_il, llil_inst.operation)
                                     var_idx = None
                                     result = any("var" in var.name for var in mapped_il.vars_read)
                                     if result:
@@ -1618,7 +1657,7 @@ class BinAnalysis:
                                         temp_var = mapped_il.vars_read[var_idx]
                                         var_name = temp_var.name
                                         dest_reg = llil_inst.ssa_form.dest
-                                    # Avoid RSP registers
+                                        # Avoid RSP registers
                                         try:
                                             if type(dest_reg) == binaryninja.lowlevelil.ILRegister:
                                                 reg_name = dest_reg.name
@@ -1628,7 +1667,7 @@ class BinAnalysis:
                                             if (temp_var.core_variable.source_type == VariableSourceType.StackVariableSourceType and "var" in var_name 
                                                 and reg_name in gen_regs):
                                                 bn_var = self.asm_lex_analysis(var_name, llil_fun, llil_inst)
-                                                print(bn_var)
+                                                # print(bn_var)
                                                 self.bn_var_list.append(bn_var)
                                             # elif (temp_var.core_variable.source_type == VariableSourceType.StackVariableSourceType and "var" in var_name 
                                             #     and reg_name in gen_regs):
@@ -1642,9 +1681,9 @@ class BinAnalysis:
                                             log.warning("Not the target")
                             # If store -> vars written
                             elif llil_inst.operation == LowLevelILOperation.LLIL_STORE:
-                                if hex(llil_inst.address) == "0xbe27":
-                                    print(llil_inst, llil_inst.operation)
-                                    log.error("%s | %s", llil_inst, mapped_il)
+                                # if hex(llil_inst.address) == "0xbe27": For debugging
+                                #     print(llil_inst, llil_inst.operation)
+                                #     log.error("%s | %s", llil_inst, mapped_il)
                                 if len(mapped_il.vars_written) > 0:
                                     # print(llil_inst)
                                     result = any("var" in var.name for var in mapped_il.vars_written)
@@ -1657,11 +1696,31 @@ class BinAnalysis:
                                 else:
                                     None
                                     # print(llil_inst, llil_inst.operation)
+                            elif llil_inst.operation == LowLevelILOperation.LLIL_CALL:
+                                # print(llil_inst)
+                                call_ops = llil_inst.medium_level_il.operands[2]
+                                log.info("Handling call instruction")
+                                for op in call_ops:
+                                    arg_llil_inst = addr_to_llil[op.address]
+                                    ssa_reg = self.get_ssa_reg(arg_llil_inst.src.ssa_form)
+                                    
+                                    if type(ssa_reg) != binaryninja.lowlevelil.LowLevelILLoadSsa:
+                                        print(ssa_reg)
+                                        print(llil_fun.get_ssa_reg_definition(ssa_reg).ssa_form)
+                                        for var in self.bn_var_list:
+                                            print(var.llil_inst.ssa_form)
+                                    # asm_syntax_tree = self.gen_ast(llil_fun, arg_llil_inst)
+                                    # parse_ast(asm_syntax_tree)
+                                    # for var in self.bn_var_list:
+                                    # traverse_ast(asm_syntax_tree, self.bn_var_list, 0)
+                                    #print(op, addr_to_llil[op.address])
                             else:
                                 log.error("%s, %s", llil_inst, llil_inst.operation)
                                 None
 
-                # Control transfer instructions (e.g., cmp) cannot be referenced using the SSA form due to theta function; hence we use dis_inst for these.
+
+                # Control transfer instructions (e.g., cmp) cannot be referenced using the SSA form 
+                # due to theta function; hence we use dis_inst for these.
                 for bb in func:
                     if True:
                     # if self.fun == debug_fun:
