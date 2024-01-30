@@ -36,12 +36,13 @@ void f(cat_t c)
 
 #else
 
-void f(struct cat c, int name, int color)
+void f(struct cat c, int *name, int *color)
 
 #endif
 
 {
-
+                *name = 17;
+                *color = 71;
                 printf("name %d, color %d\n", name, color);
 
 }
@@ -74,9 +75,10 @@ int main()
                 // local_name = marly.name;
                 // local_color = marly.color;
 
-                f(marly, marly.name, marly.color);
+                f(marly, &marly.name, &marly.color);
 
- 
+                marly.name = marly.color;
+                marly.color = marly.name;
 
                 return 0;
 

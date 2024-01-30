@@ -146,6 +146,7 @@ class BnVarData:
     offset_expr: str = None
     asm_syntax_tree: BnSSAOp = None
     llil_inst: LowLevelILInstruction = None
+    arg: bool = None # Whether this bn_var is used for argument or not
 
 @dataclass(unsafe_hash=True)
 class BnFunData:
@@ -662,15 +663,23 @@ def process_binary(filename, taintfile, dirloc, funfile):
             arch = Architecture['x86_64']
             bn = BinAnalysis(bv)
             bn.analyze_binary(funlist)
-        # process_file(funlist, target_dir, str(target_file))
-        # log.critical("Patch count %d", patch_count)
+        process_file(funlist, target_dir, str(target_file))
+        log.critical("Patch count %d", patch_count)
 
 asm_macros = """# var_c14n macros
 # Load effective address macro
 .macro lea_gs dest, offset
 \trdgsbase %r11
-\tmov	\offset(%r11), %r11
-\tlea (%r11), \dest
+\tmov   \offset(%r11), %r11
+\tlea   (%r11), \dest
+.endm
+
+.macro lea_set_gs src, offset
+\tleaq  \src, %r11
+\tmovq  (%r11), %r12
+\trdgsbase %r11
+\tmovq  \offset(%r11), %r11
+\tmovq  %r12, (%r11)
 .endm
 
 # Data movement macros
@@ -915,7 +924,7 @@ asm_macros = """# var_c14n macros
 
 def traverse_ast(tgt_ast, bn_var_info, depth):
     # log.debug("Traversing the AST to patch")
-    parse_ast(tgt_ast)
+    # parse_ast(tgt_ast)
     # print("Depth = ", depth)
     
     if repr(tgt_ast.right) == 'BnSSAOp':
@@ -926,13 +935,16 @@ def traverse_ast(tgt_ast, bn_var_info, depth):
             var_ast = var.asm_syntax_tree
             try:
                 if var_ast.left.value == tgt_ast.left.value:
-                    print("Found", tgt_ast.left.value)
+                    # print("Found", tgt_ast.left.value)
                     return var
             except Exception as err:
                 None
     else:
         return None
     
+# This list will contain lea_set_gs insts that will be used to update the value after reference returns
+lea_list = list()
+
 def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt_offset):
     log.critical("Patch the instruction %s | Offset: %d", dis_inst, tgt_offset)
     # parse_ast(bn_var.asm_syntax_tree)
@@ -947,21 +959,35 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
     # print(bn_var, store_or_load)
     line = None
     # print(bn_var.patch_inst.inst_print())
+    
     ssa_var = traverse_ast(tgt_ast, bn_var_info, 0)
     if ssa_var != None:
         # Found SSA register    
         if ssa_var.patch_inst.inst_type == "lea":
             new_inst_type = "lea_gs"
             log.info("Patching with lea_gs w/ base obj")
-            line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d\n" % 
-                        (dis_inst,new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
+            line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d" % 
+                        (dis_inst, new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
+            # log.debug(temp_inst.inst_print())
+            # log.debug(bn_var)
     else:
         if bn_var.patch_inst.inst_type == "lea":
             new_inst_type = "lea_gs"
             log.info("Patching with lea_gs w/o base obj")
-            line = re.sub(r"(\b[a-z]+\b).*", "#%s\n\t%s\t%s, %d\n" % 
-                        (dis_inst,new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
+            line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d" % 
+                        (dis_inst, new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
     
+    if bn_var.arg == True and bn_var.patch_inst.inst_type != "lea":
+        return dis_inst
+    elif bn_var.arg == True and bn_var.patch_inst.inst_type == "lea":
+        new_inst_type = "lea_set_gs" 
+        line = "\t%s\t%s, %d\n" % (new_inst_type, bn_var.offset_expr, tgt_offset)
+        lea_list.append(line)
+        # print(lea_list)
+        return dis_inst
+    
+    
+
     if line == None:
         # If line is None by now, it means patching without any context register
         value = 0
@@ -973,11 +999,12 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
             value = 32
         elif bn_var.patch_inst.suffix == "q":
             value = 64
+        # Only store should comment out macro to update value, loading value should be from the page
         if bn_var.patch_inst.inst_type == "mov":
             log.info("Patching with mov_gs")
             if store_or_load == "store":
                 new_inst_type = "mov_set_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
             elif store_or_load == "load":
                 new_inst_type = "mov_load_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
@@ -985,7 +1012,7 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
             log.info("Patching with movzx_gs")
             if store_or_load == "store":
                 new_inst_type = "movzx_set_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
             elif store_or_load == "load":
                 new_inst_type = "movzx_load_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
@@ -993,7 +1020,7 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
             log.info("Patching with add_gs")
             if store_or_load == "store":
                 new_inst_type = "add_store_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
             elif store_or_load == "load":
                 new_inst_type = "add_load_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
@@ -1001,7 +1028,7 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
             log.info("Patching with sub_gs")
             if store_or_load == "store":
                 new_inst_type = "sub_store_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
             elif store_or_load == "load":
                 new_inst_type = "sub_load_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
@@ -1009,7 +1036,7 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
             log.info("Patching with imul_gs")
             if store_or_load == "store":
                 new_inst_type = "imul_store_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
             elif store_or_load == "load":
                 new_inst_type = "imul_load_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
@@ -1017,7 +1044,7 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
             log.info("Patching with shl_gs")
             if store_or_load == "store":
                 new_inst_type = "shl_store_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
             elif store_or_load == "load":
                 new_inst_type = "shl_load_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
@@ -1025,7 +1052,7 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
             log.info("Patching with cmp_gs")
             if store_or_load == "store":
                 new_inst_type = "cmp_store_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
             elif store_or_load == "load":
                 new_inst_type = "cmp_load_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
@@ -1033,7 +1060,7 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
             log.info("Patching with and_gs")
             if store_or_load == "store":
                 new_inst_type = "and_store_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
             elif store_or_load == "load":
                 new_inst_type = "and_load_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
@@ -1069,14 +1096,14 @@ def process_file(funlist, target_dir, target_file):
         # exit()
         
     
-    debug = True
+    debug = False
     with fileinput.input(file_path, 
                             inplace=(not debug), encoding="utf-8", backup='.bak') as f:
         file_pattern = re.compile(r'\.file\s+"([^"]+)"')
         fun_begin_regex = r'(?<=.type\t)(.*)(?=,\s@function)'
         fun_end_regex   = r'(\t.cfi_endproc)'
         
-        dis_line_regex = r'(mov|movz|lea|sub|add|cmp|sal|and|imul)([l|b|w|q|bl|xw|wl]*)\s+(\S+)(?:,\s*(\S+))?(?:,\s*(\S+))?\n'
+        dis_line_regex = r'(mov|movz|lea|sub|add|cmp|sal|and|imul|call)([l|b|w|q|bl|xw|wl]*)\s+(\S+)(?:,\s*(\S+))?(?:,\s*(\S+))?\n'
         # sing_line_regex = r'\t(div)([a-z]*)\t(.*)'
         check = False
         currFun = str()
@@ -1115,6 +1142,7 @@ def process_file(funlist, target_dir, target_file):
                                 log.warning(tgt)
             fun_end = re.search(fun_end_regex, line)
             if fun_end is not None:
+                lea_list.clear() # Clear the lea_list per function and also after rewriting the call instruction
                 check = False
                 dwarf_var_info = None
                 bninja_info = None
@@ -1136,10 +1164,24 @@ def process_file(funlist, target_dir, target_file):
                     # Need to convert movzbl and movzxw to movzx + suffix (b or w)
                     if inst_type == "movz":
                         inst_type = "movzx"
+                    # elif inst_type == "call" and len(lea_list) > 0:
+                    #     # log.critical("Patch the instruction %s", dis_line)
+                    #     # lea_set_line = ""
+                    #     # for lea_inst in lea_list:
+                    #     #     lea_set_line += lea_inst
+                    #     #     patch_count += 1
+                    #     # # print(lea_set_line)
+                    #     # new_inst = re.sub(r"(\b[a-z]+\b).*", "%s%s" % (dis_line, lea_set_line), dis_line)
+                    #     # # Clear the list once your done patching
+                    #     # print(new_inst, end='')
+                    #     # lea_list.clear()
+                    #     continue
+                        
                     if suffix == "bl":
                         suffix = "b"
                     elif suffix == "xw" or suffix == "wl":
                         suffix = "w"
+                    
                     
                     if dest != None:
                         temp_inst = PatchingInst(inst_type=inst_type, suffix=suffix,
@@ -1151,7 +1193,7 @@ def process_file(funlist, target_dir, target_file):
                                                     dest=conv_imm(src), src="$1", ptr_op="")
                         
                     if debug:
-                        log.warning(temp_inst.inst_print())
+                        # log.warning(temp_inst.inst_print())
                         if src != None:
                             for offset in offset_targets:
                                 if src == offset[0]:
@@ -1243,9 +1285,19 @@ class BinAnalysis:
     # Binary ninja variable list; list is used to make it stack and remove instructions in orderily fashion
     bn_var_list      = list()
     
+    def find_ssa_reg(self, ssa_form, llil_insts, mlil_fun):
+        log.info("Finding the SSA register among LLIL insts for %s", ssa_form)
+        for addr in llil_insts:
+            llil_inst = llil_insts[addr]
+            # try:
+            #     print(llil_inst, mlil_fun.get_ssa_var_uses(llil_inst.mapped_medium_level_il.ssa_form.src))
+            # except:
+            #     None
+            # log.debug(llil_inst.ssa_form)
+    
     def get_ssa_reg(self, inst_ssa):
         arrow = 'U+21B3'
-        log.info("Finding the SSA register of %s %s", inst_ssa, type(inst_ssa)) 
+        log.info("Getting the SSA register of %s %s", inst_ssa, type(inst_ssa)) 
         if type(inst_ssa) == binaryninja.lowlevelil.SSARegister:
             return inst_ssa
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILRegSsa:
@@ -1255,6 +1307,10 @@ class BinAnalysis:
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILLoadSsa:
             log.debug("%s LoadReg", chr(int(arrow[2:], 16)))
             return inst_ssa
+        elif binaryninja.commonil.Arithmetic in inst_ssa.__class__.__bases__:
+            # this is where we should handle %rax#3 + 4 case;
+            return self.get_ssa_reg(inst_ssa.left.src)
+            # return inst_ssa
         else:
             print(inst_ssa.__class__.__bases__)
     
@@ -1574,8 +1630,8 @@ class BinAnalysis:
             
             # src_offset_expr [0] | dest_offset_expr [1]
             bn_var = BnVarData(var_name, dis_inst, patch_inst, 
-                            offset_expr, asm_syntax_tree, llil_inst)
-            print(colored("bn_var %s\nbn_var inst: %s" % (bn_var, bn_var.patch_inst.inst_print()), 'blue', attrs=['reverse']))
+                            offset_expr, asm_syntax_tree, llil_inst, False)
+            print(colored("bn_var %s\nbn_var: %s" % (bn_var, bn_var.patch_inst.inst_print()), 'blue', attrs=['reverse']))
             # print(bn_var)
             # print(bn_var.patch_inst.inst_print())
             return bn_var
@@ -1588,7 +1644,7 @@ class BinAnalysis:
             elif offset_src_dest == "src":
                 offset_expr = patch_inst.src
             bn_var = BnVarData(var_name, dis_inst, patch_inst, 
-                            offset_expr, asm_syntax_tree, llil_inst)
+                            offset_expr, asm_syntax_tree, llil_inst, False)
             # parse_ast(asm_syntax_tree)
             # print(bn_var)
             return bn_var
@@ -1699,21 +1755,66 @@ class BinAnalysis:
                             elif llil_inst.operation == LowLevelILOperation.LLIL_CALL:
                                 # print(llil_inst)
                                 call_ops = llil_inst.medium_level_il.operands[2]
+                                # Try to implement using llil_inst.medium_level_il.low_level_il.operands[3].operands[0]
+                                # <binaryninja.lowlevelil.LowLevelILCallParam object at 0x7fae2098e710>
                                 log.info("Handling call instruction")
+                                print(call_ops)
                                 for op in call_ops:
-                                    arg_llil_inst = addr_to_llil[op.address]
-                                    ssa_reg = self.get_ssa_reg(arg_llil_inst.src.ssa_form)
-                                    
-                                    if type(ssa_reg) != binaryninja.lowlevelil.LowLevelILLoadSsa:
-                                        print(ssa_reg)
-                                        print(llil_fun.get_ssa_reg_definition(ssa_reg).ssa_form)
-                                        for var in self.bn_var_list:
-                                            print(var.llil_inst.ssa_form)
-                                    # asm_syntax_tree = self.gen_ast(llil_fun, arg_llil_inst)
-                                    # parse_ast(asm_syntax_tree)
-                                    # for var in self.bn_var_list:
-                                    # traverse_ast(asm_syntax_tree, self.bn_var_list, 0)
-                                    #print(op, addr_to_llil[op.address])
+                                    print(hex(op.address), type(op), op.ssa_form)
+                                    if (type(op) == binaryninja.mediumlevelil.MediumLevelILConst or
+                                        type(op) == binaryninja.mediumlevelil.MediumLevelILConstPtr):
+                                        # %rsi = -1
+                                        continue
+                                    elif type(op) != binaryninja.mediumlevelil.MediumLevelILVar:
+                                        arg_llil_inst = addr_to_llil[op.address]
+                                        print(arg_llil_inst)
+                                        ssa_reg = self.get_ssa_reg(arg_llil_inst.src.ssa_form)
+                                        log.debug(ssa_reg)
+                                        if type(ssa_reg) != binaryninja.lowlevelil.LowLevelILLoadSsa:
+                                            def_llil_inst = llil_fun.get_ssa_reg_definition(ssa_reg).ssa_form
+                                            for var in self.bn_var_list:
+                                                # print(var.llil_inst.ssa_form)
+                                                if def_llil_inst == var.llil_inst.ssa_form:
+                                                    var.arg = True
+                                        else:
+                                            def_llil_inst = arg_llil_inst.ssa_form
+                                            for var in self.bn_var_list:
+                                                # print(var.llil_inst.ssa_form)
+                                                if def_llil_inst == var.llil_inst.ssa_form:
+                                                    var.arg = True
+                                    elif (type(op) == binaryninja.mediumlevelil.MediumLevelILVar and
+                                          len(op.llils) < 1):
+                                        # arg4 - ngx_hash_init
+                                        ssa_reg = self.find_ssa_reg(op, addr_to_llil, llil_fun.mlil)
+                                        # inst_var = llil_fun.mlil.get_ssa_var_uses(op.ssa_form.src)
+                                        # log.debug(inst_var)
+                                        # exit()
+                                    else:
+                                        arg_llil_inst = op.llils[len(op.llils)-1].ssa_form
+                                        # , addr_to_llil
+                                        try:
+                                            print(arg_llil_inst)
+                                            ssa_reg = self.get_ssa_reg(arg_llil_inst.src.ssa_form)
+                                            log.debug(ssa_reg)
+                                        # if (type(ssa_reg) != binaryninja.lowlevelil.LowLevelILLoadSsa):
+                                            def_llil_inst = llil_fun.get_ssa_reg_definition(ssa_reg).ssa_form
+                                            for var in self.bn_var_list:
+                                                if arg_llil_inst == var.llil_inst.ssa_form:
+                                                    # %rdx#1 = %rax#3 + 4 {var_c}
+                                                    log.critical(var.llil_inst.ssa_form)
+                                                    var.arg = True
+                                                if def_llil_inst == var.llil_inst.ssa_form:
+                                                    #  %rax#3 = %rbp#1 - 8 {var_10}
+                                                    log.critical(var.llil_inst.ssa_form)
+                                                    var.arg = True
+                                        # else:
+                                        except:
+                                            def_llil_inst = arg_llil_inst.ssa_form
+                                            for var in self.bn_var_list:
+                                                if def_llil_inst == var.llil_inst.ssa_form:
+                                                    log.critical(var.llil_inst.ssa_form)
+                                                    var.arg = True
+                                # exit()
                             else:
                                 log.error("%s, %s", llil_inst, llil_inst.operation)
                                 None
@@ -1736,6 +1837,7 @@ class BinAnalysis:
                                     bn_var = self.asm_lex_analysis(var_name, None, None, self.bv.get_disassembly(dis_inst.address), func)
                                     self.bn_var_list.append(bn_var)
                     
+            # pprint(self.bn_var_list)
             bn_fun_var_info[self.fun] = self.bn_var_list.copy()
             self.bn_var_list.clear()
             # pprint(bn_fun_var_info[self.fun], width=1)
