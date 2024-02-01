@@ -220,7 +220,7 @@ def generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir):
             # print(fun)
             for var_idx, var in enumerate(vars):
                 if True:
-                # if var_idx == 6: #Not work: 4,5
+                # if var_idx == 4: #Not work: 1,4,5
                     #     print(var)
                     #     exit()
                     if var_idx < var_patch: #and var_idx != 5: # and var_idx == 6: # (and var_idx is used to debug)
@@ -602,6 +602,7 @@ def process_binary(filename, taintfile, dirloc, funfile):
                 bn.analyze_binary(funlist)
             process_file(funlist, None, file_item)
             gen_obj_file(file_item)
+        pprint(patch_inst_list)
         log.critical("Patch count %d", patch_count)
                 # print(fun)
         # for dir_file in dir_list:
@@ -664,6 +665,7 @@ def process_binary(filename, taintfile, dirloc, funfile):
             bn = BinAnalysis(bv)
             bn.analyze_binary(funlist)
         process_file(funlist, target_dir, str(target_file))
+        pprint(patch_inst_list)
         log.critical("Patch count %d", patch_count)
 
 asm_macros = """# var_c14n macros
@@ -944,11 +946,13 @@ def traverse_ast(tgt_ast, bn_var_info, depth):
     
 # This list will contain lea_set_gs insts that will be used to update the value after reference returns
 lea_list = list()
+patch_inst_list = list()
 
-def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt_offset):
+def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt_offset, dwarf_var_info, offset_targets: set):
     log.critical("Patch the instruction %s | Offset: %d", dis_inst, tgt_offset)
     # parse_ast(bn_var.asm_syntax_tree)
     off_regex       = r"(-|\$|)(-?[0-9].*\(%r..\))"
+    offset_expr_regex = r'(\-[0-9].*)\((.*)\)'
     store_or_load   = str()
     if re.search(off_regex, bn_var.patch_inst.src):
         store_or_load = "load"
@@ -958,6 +962,7 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
     tgt_ast = bn_var.asm_syntax_tree
     # print(bn_var, store_or_load)
     line = None
+    patch_inst_line = None
     # print(bn_var.patch_inst.inst_print())
     
     ssa_var = traverse_ast(tgt_ast, bn_var_info, 0)
@@ -968,25 +973,67 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
             log.info("Patching with lea_gs w/ base obj")
             line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d" % 
                         (dis_inst, new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
+            patch_inst_line = "\t%s\t%s, %d" % (new_inst_type, temp_inst.dest, tgt_offset)
             # log.debug(temp_inst.inst_print())
             # log.debug(bn_var)
     else:
         if bn_var.patch_inst.inst_type == "lea":
             new_inst_type = "lea_gs"
             log.info("Patching with lea_gs w/o base obj")
-            line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d" % 
-                        (dis_inst, new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
-    
+            # If there is no stack offset being set as a value, we cannot use the LEA_GS for such case
+            for var_item in bn_var_info:
+                # print(bn_var)
+                if var_item.offset_expr == temp_inst.dest:
+                    if repr(var_item.asm_syntax_tree.left) == 'BnSSAOp':
+                        # If left is a stack offset, extract the offset value and check whether it is being set
+                        offset_num = var_item.asm_syntax_tree.left.right.value
+                        offset_reg = re.search(offset_expr_regex, var_item.offset_expr)
+                        base_offset = offset_reg.group(1)
+                        if offset_num == base_offset:
+                            # If stack offset is set before, then it is safe to use the new macro
+                            line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d" % 
+                            (dis_inst, new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
+                            patch_inst_line = "\t%s\t%s, %d" % (new_inst_type, temp_inst.dest, tgt_offset)
+                else:
+                    # Else, we need to use the original stack offset.
+                    line = re.sub(r"(\b[a-z]+\b).*", "%s\t#%s\t%s, %d" % 
+                            (dis_inst, new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
+                    patch_inst_line = "\t%s\t%s, %d" % (new_inst_type, temp_inst.dest, tgt_offset)
+                    
+            # line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d" % 
+            #             (dis_inst, new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
+    # log.debug(bn_var)
     if bn_var.arg == True and bn_var.patch_inst.inst_type != "lea":
         return dis_inst
     elif bn_var.arg == True and bn_var.patch_inst.inst_type == "lea":
+        log.debug("Here")
         new_inst_type = "lea_set_gs" 
-        line = "\t%s\t%s, %d\n" % (new_inst_type, bn_var.offset_expr, tgt_offset)
-        lea_list.append(line)
-        # print(lea_list)
+        line = ""
+        for var in dwarf_var_info:
+            if var.offset_expr == bn_var.offset_expr:
+                # Found that base struct object is being passed as an argument, need to lea_set_gs all the members as well
+                log.error("Found struct object")
+                if var.struct != None:
+                    for member in var.struct.member_list:
+                        # log.debug(offset_targets)
+                        offset_value = 0
+                        for offset in offset_targets:
+                            if offset[0] == member.offset_expr:
+                                offset_value = offset[1]
+                        if offset_value != None and member.offset_expr != None:
+                            line = "\t%s\t%s, %d\n" % (new_inst_type, member.offset_expr, offset_value)
+                            patch_inst_line = "\t%s\t%s, %d" % (new_inst_type, member.offset_expr, offset_value)
+                        
+                        if line != "":
+                            lea_list.append(line)
+        if line == "" and bn_var.offset_expr != None:
+            line = "\t%s\t%s, %d\n" % (new_inst_type, bn_var.offset_expr, tgt_offset)
+            patch_inst_line = "\t%s\t%s, %d" % (new_inst_type, bn_var.offset_expr, tgt_offset)
+            if line != "":
+                lea_list.append(line)
+        log.debug(bn_var)
+        log.debug(lea_list)
         return dis_inst
-    
-    
 
     if line == None:
         # If line is None by now, it means patching without any context register
@@ -1005,67 +1052,96 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
             if store_or_load == "store":
                 new_inst_type = "mov_set_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
             elif store_or_load == "load":
                 new_inst_type = "mov_load_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                log.debug(bn_var)
+                for var in dwarf_var_info:
+                    if var.offset_expr == bn_var.offset_expr:
+                        # Found that base struct object is being copied into a value, then, just load stack offset
+                        if var.struct != None:
+                            log.error("Found struct object")
+                            line = re.sub(r"(\b[a-z]+\b).*", "%s\t#%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                            patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
+                        else:
+                            line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                            patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
+                if line == None:
+                    line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                    patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
         elif bn_var.patch_inst.inst_type == "movzx":
             log.info("Patching with movzx_gs")
             if store_or_load == "store":
                 new_inst_type = "movzx_set_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
             elif store_or_load == "load":
                 new_inst_type = "movzx_load_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
         elif bn_var.patch_inst.inst_type == "add":
             log.info("Patching with add_gs")
             if store_or_load == "store":
                 new_inst_type = "add_store_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
             elif store_or_load == "load":
                 new_inst_type = "add_load_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
         elif bn_var.patch_inst.inst_type == "sub":
             log.info("Patching with sub_gs")
             if store_or_load == "store":
                 new_inst_type = "sub_store_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
             elif store_or_load == "load":
                 new_inst_type = "sub_load_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
         elif bn_var.patch_inst.inst_type == "imul": # Signed multiply (two's comp arith)
             log.info("Patching with imul_gs")
             if store_or_load == "store":
                 new_inst_type = "imul_store_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
             elif store_or_load == "load":
                 new_inst_type = "imul_load_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
         elif bn_var.patch_inst.inst_type == "shl": # shift left
             log.info("Patching with shl_gs")
             if store_or_load == "store":
                 new_inst_type = "shl_store_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
             elif store_or_load == "load":
                 new_inst_type = "shl_load_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
         elif bn_var.patch_inst.inst_type == "cmp":
             log.info("Patching with cmp_gs")
             if store_or_load == "store":
                 new_inst_type = "cmp_store_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
             elif store_or_load == "load":
                 new_inst_type = "cmp_load_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
         elif bn_var.patch_inst.inst_type == "and":
             log.info("Patching with and_gs")
             if store_or_load == "store":
                 new_inst_type = "and_store_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
             elif store_or_load == "load":
                 new_inst_type = "and_load_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
             
     if line != None:
+        patch_inst_list.append(patch_inst_line)
         return line
     
 def process_file(funlist, target_dir, target_file):
@@ -1164,24 +1240,26 @@ def process_file(funlist, target_dir, target_file):
                     # Need to convert movzbl and movzxw to movzx + suffix (b or w)
                     if inst_type == "movz":
                         inst_type = "movzx"
-                    # elif inst_type == "call" and len(lea_list) > 0:
-                    #     # log.critical("Patch the instruction %s", dis_line)
-                    #     # lea_set_line = ""
-                    #     # for lea_inst in lea_list:
-                    #     #     lea_set_line += lea_inst
-                    #     #     patch_count += 1
-                    #     # # print(lea_set_line)
-                    #     # new_inst = re.sub(r"(\b[a-z]+\b).*", "%s%s" % (dis_line, lea_set_line), dis_line)
-                    #     # # Clear the list once your done patching
-                    #     # print(new_inst, end='')
-                    #     # lea_list.clear()
-                    #     continue
+                    elif inst_type == "call" and len(lea_list) > 0:
+                        log.critical("Patch the instruction %s", dis_line)
+                        lea_set_line = ""
+                        for lea_inst in lea_list:
+                            lea_set_line += lea_inst
+                            patch_count += 1
+                        # print(lea_set_line)
+                        new_inst = re.sub(r"(\b[a-z]+\b).*", "%s%s" % (dis_line, lea_set_line), dis_line)
+                        # Clear the list once your done patching
+                        if new_inst != None:
+                            print(new_inst, end='')
+                        else:
+                            print(line, end='')
+                        lea_list.clear()
+                        continue
                         
                     if suffix == "bl":
                         suffix = "b"
                     elif suffix == "xw" or suffix == "wl":
                         suffix = "w"
-                    
                     
                     if dest != None:
                         temp_inst = PatchingInst(inst_type=inst_type, suffix=suffix,
@@ -1206,8 +1284,9 @@ def process_file(funlist, target_dir, target_file):
                     for idx, bn_var in enumerate(bninja_info):
                         # log.warning(bn_var.patch_inst.inst_print())
                         if debug:
-                            log.warning(bn_var.offset_expr)
-                            log.warning(bn_var.patch_inst.inst_print())
+                            # log.warning(bn_var.offset_expr)
+                            # log.warning(bn_var.patch_inst.inst_print())
+                            None
                         if temp_inst.inst_check(bn_var.patch_inst):
                             # print("Found\n", temp_inst.inst_print(), "\n", bn_var.patch_inst.inst_print())
                             offset_expr = bn_var.offset_expr
@@ -1215,7 +1294,7 @@ def process_file(funlist, target_dir, target_file):
                                 if offset_expr == offset[0]:
                                     # Found the offset target; need to patch this instruction
                                     log.warning("Offset found")
-                                    new_inst = patch_inst(dis_line, temp_inst, bn_var, bninja_info, offset[1])
+                                    new_inst = patch_inst(dis_line, temp_inst, bn_var, bninja_info, offset[1], dwarf_var_info, offset_targets)
                                     # bninja_info.pop(idx) # problem: for all patch, i'm popping rdx
                                     if new_inst != None:
                                         # log.debug("\n%s",new_inst)
@@ -1307,6 +1386,8 @@ class BinAnalysis:
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILLoadSsa:
             log.debug("%s LoadReg", chr(int(arrow[2:], 16)))
             return inst_ssa
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILZx:
+            return self.get_ssa_reg(inst_ssa.src.full_reg)
         elif binaryninja.commonil.Arithmetic in inst_ssa.__class__.__bases__:
             # this is where we should handle %rax#3 + 4 case;
             return self.get_ssa_reg(inst_ssa.left.src)
@@ -1757,7 +1838,10 @@ class BinAnalysis:
                                 call_ops = llil_inst.medium_level_il.operands[2]
                                 # Try to implement using llil_inst.medium_level_il.low_level_il.operands[3].operands[0]
                                 # <binaryninja.lowlevelil.LowLevelILCallParam object at 0x7fae2098e710>
-                                log.info("Handling call instruction")
+                                if (llil_inst.address == int(0x56e)):
+
+                                    log.error("Here")
+                                log.warning("Handling call instruction %s", llil_inst.medium_level_il)
                                 print(call_ops)
                                 for op in call_ops:
                                     print(hex(op.address), type(op), op.ssa_form)
@@ -1803,10 +1887,12 @@ class BinAnalysis:
                                                     # %rdx#1 = %rax#3 + 4 {var_c}
                                                     log.critical(var.llil_inst.ssa_form)
                                                     var.arg = True
+                                                    print(var)
                                                 if def_llil_inst == var.llil_inst.ssa_form:
                                                     #  %rax#3 = %rbp#1 - 8 {var_10}
                                                     log.critical(var.llil_inst.ssa_form)
                                                     var.arg = True
+                                                    print(var)
                                         # else:
                                         except:
                                             def_llil_inst = arg_llil_inst.ssa_form
@@ -1829,7 +1915,7 @@ class BinAnalysis:
                         for dis_inst in dis_bb:
                             # Check tokens for cmp instruction
                             if dis_inst.tokens[0].text == "cmp":
-                                print("cmp", dis_inst)
+                                # print("cmp", dis_inst)
                                 target = "var"
                                 indices = [index for index, token in enumerate(dis_inst.tokens) if target in token.text]
                                 if indices:
