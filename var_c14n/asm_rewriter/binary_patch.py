@@ -573,6 +573,7 @@ def process_binary(filename, taintfile, dirloc, funfile):
     print(funfile_list)
     pprint(target_files)
     print(target_dir)
+    patch_inst_file = target_dir.joinpath("insts.out")
     # exit()
     # time.sleep(1.5)
     funlist = list()
@@ -603,6 +604,9 @@ def process_binary(filename, taintfile, dirloc, funfile):
             process_file(funlist, None, file_item)
             gen_obj_file(file_item)
         pprint(patch_inst_list)
+        with open(patch_inst_file, 'w') as file:
+            for patch_inst in patch_inst_list:
+                file.write(patch_inst + '\n')
         log.critical("Patch count %d", patch_count)
                 # print(fun)
         # for dir_file in dir_list:
@@ -666,6 +670,9 @@ def process_binary(filename, taintfile, dirloc, funfile):
             bn.analyze_binary(funlist)
         process_file(funlist, target_dir, str(target_file))
         pprint(patch_inst_list)
+        with open(patch_inst_file, 'w') as file:
+            for patch_inst in patch_inst_list:
+                file.write(patch_inst + '\n')
         log.critical("Patch count %d", patch_count)
 
 asm_macros = """# var_c14n macros
@@ -676,7 +683,7 @@ asm_macros = """# var_c14n macros
 \tlea   (%r11), \dest
 .endm
 
-.macro lea_set_gs src, offset
+.macro lea_store_gs src, offset
 \tleaq  \src, %r11
 \tmovq  (%r11), %r12
 \trdgsbase %r11
@@ -685,7 +692,7 @@ asm_macros = """# var_c14n macros
 .endm
 
 # Data movement macros
-.macro mov_set_gs src, offset, value
+.macro mov_store_gs src, offset, value
 \trdgsbase %r11
 \tmov \offset(%r11), %r11
 \t.if \\value == 8
@@ -944,7 +951,7 @@ def traverse_ast(tgt_ast, bn_var_info, depth):
     else:
         return None
     
-# This list will contain lea_set_gs insts that will be used to update the value after reference returns
+# This list will contain lea_store_gs insts that will be used to update the value after reference returns
 lea_list = list()
 patch_inst_list = list()
 
@@ -1007,11 +1014,11 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
         return dis_inst
     elif bn_var.arg == True and bn_var.patch_inst.inst_type == "lea":
         log.debug("Here")
-        new_inst_type = "lea_set_gs" 
+        new_inst_type = "lea_store_gs" 
         line = ""
         for var in dwarf_var_info:
             if var.offset_expr == bn_var.offset_expr:
-                # Found that base struct object is being passed as an argument, need to lea_set_gs all the members as well
+                # Found that base struct object is being passed as an argument, need to lea_store_gs all the members as well
                 log.error("Found struct object")
                 if var.struct != None:
                     for member in var.struct.member_list:
@@ -1050,7 +1057,7 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
         if bn_var.patch_inst.inst_type == "mov":
             log.info("Patching with mov_gs")
             if store_or_load == "store":
-                new_inst_type = "mov_set_gs"
+                new_inst_type = "mov_store_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
                 patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
             elif store_or_load == "load":
@@ -1072,7 +1079,7 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
         elif bn_var.patch_inst.inst_type == "movzx":
             log.info("Patching with movzx_gs")
             if store_or_load == "store":
-                new_inst_type = "movzx_set_gs"
+                new_inst_type = "movzx_store_gs"
                 line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
                 patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
             elif store_or_load == "load":
@@ -1143,7 +1150,22 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
     if line != None:
         patch_inst_list.append(patch_inst_line)
         return line
+
+def remove_duplicate_lines(lines):
+    """
+    Remove duplicate lines from a list while preserving the order.
     
+    :param lines: List of lines (strings)
+    :return: List of lines with duplicates removed
+    """
+    seen = set()
+    result = []
+    for line in lines:
+        if line not in seen:
+            result.append(line)
+            seen.add(line)
+    return result
+  
 def process_file(funlist, target_dir, target_file):
     global patch_count
     file_path = None
@@ -1241,9 +1263,10 @@ def process_file(funlist, target_dir, target_file):
                     if inst_type == "movz":
                         inst_type = "movzx"
                     elif inst_type == "call" and len(lea_list) > 0:
+                        uniq_lea_list = remove_duplicate_lines(lea_list)
                         log.critical("Patch the instruction %s", dis_line)
                         lea_set_line = ""
-                        for lea_inst in lea_list:
+                        for lea_inst in uniq_lea_list:
                             lea_set_line += lea_inst
                             patch_count += 1
                         # print(lea_set_line)
@@ -1254,6 +1277,7 @@ def process_file(funlist, target_dir, target_file):
                         else:
                             print(line, end='')
                         lea_list.clear()
+                        uniq_lea_list.clear()
                         continue
                         
                     if suffix == "bl":

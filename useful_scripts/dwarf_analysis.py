@@ -488,7 +488,7 @@ def dwarf_analysis(input_binary):
                                         # If typedef is a struct, then enable struct_var and disable base_var
                                         struct_var  = True
                                         base_var    = False
-                                        # print(typedef_die)
+                                        print(typedef_die)
                                         if 'DW_AT_name' in typedef_die.attributes:
                                             type_name = typedef_die.attributes['DW_AT_name'].value.decode()
                                         if 'DW_AT_byte_size' in typedef_die.attributes:

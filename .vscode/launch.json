@@ -13,11 +13,16 @@
             "console": "integratedTerminal",
             "cwd": "${fileDirname}",
             "justMyCode": true,
-            "args": ["--binary", "sort.def"]
+            "args": ["--fun", "fun.list", "--dir", "/home/jaewon/Downloads/nginx-1.3.9/objs/src"]
+            // "args": ["--binary", "xw.out"]
+            
+            // "args": ["--binary", "cp.out", "--fun", "fun.list"]
+            
+            // "args": ["--binary", "sort.def"]
             // "args": ["--binary", "scanf.out"]
             // "args": ["--binary", "tiny.out", "--taint", "dft.out"]
             
-            // "args": ["--binary", "cp.out", "--fun", "fun.list"]
+            
         }
     ]
 }
