@@ -263,6 +263,7 @@ def generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir):
                                 table_offset += 8
                                 off_var_count += 1
                         else:
+                            # Currently skipping arrays and pointers
                             log.error("Skipping: %s", var)
             fun_table_offsets[fun] = offset_expr_to_table.copy()
             offset_expr_to_table.clear()
@@ -1031,13 +1032,15 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
                             line = "\t%s\t%s, %d\n" % (new_inst_type, member.offset_expr, offset_value)
                             patch_inst_line = "\t%s\t%s, %d" % (new_inst_type, member.offset_expr, offset_value)
                         
-                        if line != "":
+                        if line != "" and line not in lea_list:
                             lea_list.append(line)
+                            patch_inst_list.append(patch_inst_line)
         if line == "" and bn_var.offset_expr != None:
             line = "\t%s\t%s, %d\n" % (new_inst_type, bn_var.offset_expr, tgt_offset)
             patch_inst_line = "\t%s\t%s, %d" % (new_inst_type, bn_var.offset_expr, tgt_offset)
-            if line != "":
+            if line != "" and line not in lea_list:
                 lea_list.append(line)
+                patch_inst_list.append(patch_inst_line)
         log.debug(bn_var)
         log.debug(lea_list)
         return dis_inst

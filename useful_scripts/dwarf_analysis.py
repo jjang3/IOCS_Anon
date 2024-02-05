@@ -761,9 +761,9 @@ def dwarf_analysis(input_binary):
                 
                 if (DIE.tag == None):
                     # This is used for single function application (disable it for larger app)
-                    # if temp_fun != None:
-                    #     if temp_fun not in fun_list:
-                    #         fun_list.append(temp_fun)
+                    if temp_fun != None:
+                        if temp_fun not in fun_list:
+                            fun_list.append(temp_fun)
                     last_tag = last_die_tag.pop()
                     if (last_tag == "DW_TAG_member"):
                         if temp_struct != None and temp_struct.name != None:
