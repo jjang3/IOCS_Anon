@@ -262,6 +262,11 @@ def generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir):
                                 offset_expr_to_table.add((var.offset_expr, table_offset))
                                 table_offset += 8
                                 off_var_count += 1
+                        elif (var.base_type == "DW_TAG_array_type"):
+                            if var.offset_expr != None:
+                                offset_expr_to_table.add((var.offset_expr, table_offset))
+                                table_offset += 8
+                                off_var_count += 1
                         else:
                             # Currently skipping arrays and pointers
                             log.error("Skipping: %s", var)
@@ -401,7 +406,9 @@ def conv_suffix(suffix):
     
         
 def conv_imm(imm):
-    # log.debug("Converting: %s", imm)
+    log.debug("Converting: %s", imm)
+    arr_pattern = r"(-\d+)\((%\w+)(?:,(%\w+))?\)"
+    arr_regex = re.search(arr_pattern, str(imm))
     imm_pattern = r"(\$)(0x.*)"
     imm_regex = re.search(imm_pattern, imm)
     new_imm = str()
@@ -419,6 +426,10 @@ def conv_imm(imm):
             offset = -131
         # print(imm_regex.group(1))
         new_imm = imm_regex.group(1) + str(offset)
+        return new_imm
+    elif arr_regex != None and arr_regex.group(3) != None:
+        offset = arr_regex.group(1)
+        new_imm = str(offset) + "(" + arr_regex.group(2) + "+" + arr_regex.group(3) + ")"
         return new_imm
     else:
         return imm
@@ -721,6 +732,36 @@ asm_macros = """# var_c14n macros
 \t.endif
 .endm
 
+.macro mov_arr_store_gs src, offset, disp, value
+\trdgsbase %r11
+\tmov \offset(%r11), %r11
+\tadd \disp, %r11
+\t.if \\value == 8
+\t\tmovb \src, (%r11)  # 8-bit 
+\t.elseif \\value == 16
+\t\tmovw \src, (%r11)  # 16-bit 
+\t.elseif \\value == 32
+\t\tmovl \src, (%r11)  # 32-bit 
+\t.elseif \\value == 64
+\t\tmovq \src, (%r11)  # 64-bit 
+\t.endif
+.endm
+
+.macro mov_arr_load_gs src, offset, disp, value
+\trdgsbase %r11
+\tmov \offset(%r11), %r11
+\tadd \disp, %r11
+\t.if \\value == 8
+\t\tmovb (%r11), \dest  # 8-bit
+\t.elseif \\value == 16
+\t\tmovw (%r11), \dest  # 16-bit
+\t.elseif \\value == 32
+\t\tmovl (%r11), \dest  # 32-bit
+\t.elseif \\value == 64
+\t\tmovq (%r11), \dest  # 64-bit
+\t.endif
+.endm
+
 .macro movzx_load_gs dest, offset, value
 \trdgsbase %r11
 \tmov \offset(%r11), %r11
@@ -959,14 +1000,23 @@ patch_inst_list = list()
 def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt_offset, dwarf_var_info, offset_targets: set):
     log.critical("Patch the instruction %s | Offset: %d", dis_inst, tgt_offset)
     # parse_ast(bn_var.asm_syntax_tree)
-    off_regex       = r"(-|\$|)(-?[0-9].*\(%r..\))"
-    offset_expr_regex = r'(\-[0-9].*)\((.*)\)'
+    off_regex       = r"(-|\$|)(-?[0-9].*\(%r..*\))"
+    array_regex = r"(-\d+)\((%\w+)(?:\+(%\w+))?\)"
+    #offset_expr_regex = r'(\-[0-9].*)\((.*)\)'
+    offset_expr_regex = r'(-[0-9]+)\((%rbp)(,%r[a-d]x)?\)'
     store_or_load   = str()
     if re.search(off_regex, bn_var.patch_inst.src):
         store_or_load = "load"
     elif re.search(off_regex, bn_var.patch_inst.dest):
         store_or_load = "store"
 
+    arr_regex = None
+    # print(bn_var.patch_inst.dest)
+    if store_or_load == "load":
+        arr_regex = re.search(array_regex, bn_var.patch_inst.src)
+    elif store_or_load == "store":
+        arr_regex = re.search(array_regex, bn_var.patch_inst.dest)
+        
     tgt_ast = bn_var.asm_syntax_tree
     # print(bn_var, store_or_load)
     line = None
@@ -997,6 +1047,9 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
                         offset_num = var_item.asm_syntax_tree.left.right.value
                         offset_reg = re.search(offset_expr_regex, var_item.offset_expr)
                         base_offset = offset_reg.group(1)
+                        array_indx  = offset_reg.group(3)
+                        if array_indx != None:
+                            log.critical("Array found")
                         if offset_num == base_offset:
                             # If stack offset is set before, then it is safe to use the new macro
                             line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d" % 
@@ -1058,27 +1111,39 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
             value = 64
         # Only store should comment out macro to update value, loading value should be from the page
         if bn_var.patch_inst.inst_type == "mov":
-            log.info("Patching with mov_gs")
-            if store_or_load == "store":
-                new_inst_type = "mov_store_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
-                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
-            elif store_or_load == "load":
-                new_inst_type = "mov_load_gs"
-                log.debug(bn_var)
-                for var in dwarf_var_info:
-                    if var.offset_expr == bn_var.offset_expr:
-                        # Found that base struct object is being copied into a value, then, just load stack offset
-                        if var.struct != None:
-                            log.error("Found struct object")
-                            line = re.sub(r"(\b[a-z]+\b).*", "%s\t#%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
-                            patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
-                        else:
-                            line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
-                            patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
-                if line == None:
-                    line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
-                    patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
+            log.debug(store_or_load)
+            if arr_regex != None and arr_regex.group(3) == None:
+                log.info("Patching with mov_gs")
+                if store_or_load == "store":
+                    new_inst_type = "mov_store_gs"
+                    line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                    patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
+                elif store_or_load == "load":
+                    new_inst_type = "mov_load_gs"
+                    log.debug(bn_var)
+                    for var in dwarf_var_info:
+                        if var.offset_expr == bn_var.offset_expr:
+                            # Found that base struct object is being copied into a value, then, just load stack offset
+                            if var.struct != None:
+                                log.error("Found struct object")
+                                line = re.sub(r"(\b[a-z]+\b).*", "%s\t#%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
+                            else:
+                                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
+                    if line == None:
+                        line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                        patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
+            elif arr_regex != None and arr_regex.group(3) != None:
+                log.info("Patching with mov_arr_gs")
+                if store_or_load == "store":
+                    new_inst_type = "mov_arr_store_gs"
+                    line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %s, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, arr_regex.group(3), value), dis_inst)
+                    patch_inst_line = "\t%s\t%s, %d, %s, %d" % (new_inst_type, temp_inst.src, tgt_offset, arr_regex.group(3), value)
+                elif store_or_load == "load":
+                    new_inst_type = "mov_arr_load_gs"
+                    line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %s, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, arr_regex.group(3), value), dis_inst)
+                    patch_inst_line = "\t%s\t%s, %d, %s, %d" % (new_inst_type, temp_inst.dest, tgt_offset, arr_regex.group(3), value)
         elif bn_var.patch_inst.inst_type == "movzx":
             log.info("Patching with movzx_gs")
             if store_or_load == "store":
@@ -1298,25 +1363,35 @@ def process_file(funlist, target_dir, target_file):
                                                     dest=conv_imm(src), src="$1", ptr_op="")
                         
                     if debug:
-                        # log.warning(temp_inst.inst_print())
+                        log.warning(temp_inst.inst_print())
                         if src != None:
                             for offset in offset_targets:
-                                if src == offset[0]:
+                                if conv_imm(src) == offset[0]:
+                                    # log.warning(temp_inst.inst_print())
                                     log.warning("Debug found")
                         if dest != None:
                             for offset in offset_targets:
-                                if dest == offset[0]:
+                                if conv_imm(dest) == offset[0]:
+                                    # log.warning(temp_inst.inst_print())
                                     log.warning("Debug found")
                     new_inst = None
                     for idx, bn_var in enumerate(bninja_info):
                         # log.warning(bn_var.patch_inst.inst_print())
                         if debug:
-                            # log.warning(bn_var.offset_expr)
-                            # log.warning(bn_var.patch_inst.inst_print())
+                            log.warning(temp_inst.inst_print())
+                            log.warning(bn_var.offset_expr)
+                            log.warning(bn_var.patch_inst.inst_print())
                             None
                         if temp_inst.inst_check(bn_var.patch_inst):
                             # print("Found\n", temp_inst.inst_print(), "\n", bn_var.patch_inst.inst_print())
                             offset_expr = bn_var.offset_expr
+                            offset_regex = r"(-\d+)\((%\w+)(?:,(%\w+))?\)"
+                            offset_search = re.search(offset_regex, offset_expr)
+                            if offset_search and offset_search.group(3) != None:
+                                log.error("Fix offset")
+                                offset = offset_search.group(1)
+                                new_offset = str(offset) + "(" + offset_search.group(2) + ")"
+                                offset_expr = new_offset
                             for offset in offset_targets:
                                 if offset_expr == offset[0]:
                                     # Found the offset target; need to patch this instruction
@@ -1499,6 +1574,13 @@ class BinAnalysis:
                 # print("Here 3")
                 offset = self.calc_ssa_off_expr(inst_ssa.right)
                 expr = offset
+            elif (binaryninja.commonil.Arithmetic in inst_ssa.left.__class__.__bases__ and 
+                  type(inst_ssa.right) == binaryninja.lowlevelil.LowLevelILConst):
+                print("Array access found")
+                base_reg    = inst_ssa.left.left.src.reg.__str__()
+                array_reg   = inst_ssa.left.right.src.reg.__str__()
+                offset      = inst_ssa.right.constant
+                expr = str(offset) + "(" + base_reg + "," + array_reg + ")"
             else:
                 # print(inst_ssa.right, type(inst_ssa.right))
                 offset = str(int(inst_ssa.right.__str__(), base=16))
@@ -1857,6 +1939,13 @@ class BinAnalysis:
                                     if (temp_var.core_variable.source_type == VariableSourceType.StackVariableSourceType and "var" in var_name):
                                         bn_var = self.asm_lex_analysis(var_name, llil_fun, llil_inst)
                                         self.bn_var_list.append(bn_var)
+                                elif (mapped_il.dest.operation == MediumLevelILOperation.MLIL_ADD):
+                                    # <mlil: [&var_78 + %rax].b = 0x41>, array operation where %rax is used as an index; need to handle such case
+                                    var_name = None # No variable name for this kind of case
+                                    bn_var = self.asm_lex_analysis(var_name, llil_fun, llil_inst)
+                                    self.bn_var_list.append(bn_var)
+                                    # print(bn_var)
+                                    # exit()
                                 else:
                                     None
                                     # print(llil_inst, llil_inst.operation)
