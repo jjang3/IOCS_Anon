@@ -15,9 +15,15 @@ int main() {
 
     // printf("%c",b[11]);
     // // Declare a float
-    float c = 10.0;
+    float c = 20.0;
 
     // int d = a + 8;
+
+    c = 17.0;
+
+    float d = c +2.0;
+
+    printf("%f", c);
 
     // // Print the addresses of the variables
     // printf("Address of int a: %p\n", (void*)&a);

@@ -762,6 +762,18 @@ asm_macros = """# var_c14n macros
 \t.endif
 .endm
 
+.macro movss_store_gs src, offset, value
+\trdgsbase %r11
+\tmov \offset(%r11), %r11
+\t\tmovss \src, (%r11)  # 64-bit
+.endm
+
+.macro movss_load_gs dest, offset, value
+\trdgsbase %r11
+\tmov \offset(%r11), %r11
+\tmovss (%r11), \dest  # 64-bit
+.endm
+
 .macro movzx_load_gs dest, offset, value
 \trdgsbase %r11
 \tmov \offset(%r11), %r11
@@ -1144,6 +1156,15 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
                     new_inst_type = "mov_arr_load_gs"
                     line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %s, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, arr_regex.group(3), value), dis_inst)
                     patch_inst_line = "\t%s\t%s, %d, %s, %d" % (new_inst_type, temp_inst.dest, tgt_offset, arr_regex.group(3), value)
+        elif bn_var.patch_inst.inst_type == "movss":
+            if store_or_load == "store":
+                new_inst_type = "movss_store_gs"
+                line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
+            elif store_or_load == "load":
+                new_inst_type = "movss_load_gs"
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
         elif bn_var.patch_inst.inst_type == "movzx":
             log.info("Patching with movzx_gs")
             if store_or_load == "store":
@@ -1269,7 +1290,7 @@ def process_file(funlist, target_dir, target_file):
         fun_begin_regex = r'(?<=.type\t)(.*)(?=,\s@function)'
         fun_end_regex   = r'(\t.cfi_endproc)'
         
-        dis_line_regex = r'(mov|movz|lea|sub|add|cmp|sal|and|imul|call)([l|b|w|q|bl|xw|wl]*)\s+(\S+)(?:,\s*(\S+))?(?:,\s*(\S+))?\n'
+        dis_line_regex = r'(mov|movz|lea|sub|add|cmp|sal|and|imul|call|movss)([l|b|w|q|bl|xw|wl]*)\s+(\S+)(?:,\s*(\S+))?(?:,\s*(\S+))?\n'
         # sing_line_regex = r'\t(div)([a-z]*)\t(.*)'
         check = False
         currFun = str()
@@ -1821,6 +1842,8 @@ class BinAnalysis:
             # src_offset_expr [0] | dest_offset_expr [1]
             bn_var = BnVarData(var_name, dis_inst, patch_inst, 
                             offset_expr, asm_syntax_tree, llil_inst, False)
+            if bn_var.patch_inst.inst_type == "movss":
+                bn_var.patch_inst.suffix = ""
             print(colored("bn_var %s\nbn_var: %s" % (bn_var, bn_var.patch_inst.inst_print()), 'blue', attrs=['reverse']))
             # print(bn_var)
             # print(bn_var.patch_inst.inst_print())
@@ -1835,6 +1858,8 @@ class BinAnalysis:
                 offset_expr = patch_inst.src
             bn_var = BnVarData(var_name, dis_inst, patch_inst, 
                             offset_expr, asm_syntax_tree, llil_inst, False)
+            if bn_var.patch_inst.inst_type == "movss":
+                bn_var.patch_inst.suffix = ""
             # parse_ast(asm_syntax_tree)
             # print(bn_var)
             return bn_var
@@ -1843,9 +1868,13 @@ class BinAnalysis:
     def analyze_binary(self, funlist):
         # print("Step: Binary Ninja")
         debug_fun = "sort"
-        gen_regs = {"%rax", "%rbx", "%rcx", "%rdx","%rdi","%rsi",
-                    "%eax", "%ebx", "%ecx", "%edx","%edi","%esi",
-                    "%ax",  "%bx",  "%cx" , "%dx"}
+        gen_regs = {"%rax", "%rbx", "%rcx", "%rdx", "%rdi", "%rsi",
+            "%eax", "%ebx", "%ecx", "%edx", "%edi", "%esi",
+            "%ax",  "%bx",  "%cx",  "%dx",
+            "%xmm0", "%xmm1", "%xmm2", "%xmm3",
+            "%xmm4", "%xmm5", "%xmm6", "%xmm7",
+            "%xmm8", "%xmm9", "%xmm10", "%xmm11",
+            "%xmm12", "%xmm13", "%xmm14", "%xmm15"}
         arg_regs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9",
                     "%ecx", "%edx"}
         addr_to_llil = dict()
