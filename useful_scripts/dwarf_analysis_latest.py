@@ -105,6 +105,7 @@ class TypedefData:
     line: int = None
     base_type: str = None
     struct: Optional[StructData] = None
+    type_size: Optional[str] = None
 
 
 var_list = list()
@@ -117,6 +118,7 @@ class VarData:
     fun_name: str = None
     offset_expr: str = None
     struct: Optional[StructData] = None
+    type_size: Optional[str] = None
 
 fun_list = list()
 @dataclass(unsafe_hash=True)
@@ -127,6 +129,8 @@ class FunData:
     var_count: Optional[int] = None
     begin: Optional[str] = None
     end: Optional[str] = None
+
+type_dict = dict()
 
 def get_base_type(dwarfinfo: DWARFInfo, dwarf_die_atts, dwarf_die_cu, dwarf_die_cu_offset):
     # print(dwarf_die_atts)
@@ -294,6 +298,19 @@ def dwarf_analysis(input_binary):
                                                 reg_to_use = "rsp"
                                     idx += 1
                 
+                if (DIE.tag == "DW_TAG_base_type"):
+                    type_name       = None
+                    type_size       = None
+                    for type_attr in DIE.attributes.values():
+                        if (type_attr.name == "DW_AT_name"):
+                            type_name = DIE.attributes["DW_AT_name"].value.decode()
+                        if (type_attr.name == "DW_AT_byte_size"):
+                            type_size = DIE.attributes["DW_AT_byte_size"].value
+                    # log.critical("%s %s", type_name, type_size)
+                    type_dict[type_name] =  type_size
+                    type_dict["float"] = 4 # Manually adding float because for some reason, DWARF puts this at last
+                    type_dict["double"] = 8 # Manually adding double because for some reason, DWARF puts this at last
+                
                 if (DIE.tag == "DW_TAG_variable"):
                     # This is used for variable that is declared within the function
                     var_name        = None
@@ -376,6 +393,7 @@ def dwarf_analysis(input_binary):
                                     working_var.offset = var_offset #(var_offset)
                                     working_var.offset_expr = reg_offset
                                     log.critical("Inserting base var %s", working_var.name)
+                                    log.info(working_var)
                                     var_list.append(working_var)
                             elif isinstance(loc, list):
                                 # If variableis directly accessed by the register itself without offset.
@@ -388,10 +406,16 @@ def dwarf_analysis(input_binary):
                             # print(type_die.tag)
                             if type_die.tag == "DW_TAG_base_type":
                                 type_name = type_die.attributes['DW_AT_name'].value.decode()
-                                log.error("base_type: %s ",type_name)
+                                log.error("base_type: %s | size: %d",type_name, type_dict[type_name])
                                 struct_var  = False
                                 base_var    = True
-                                temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
+                                try:
+                                    print("Type size")
+                                    temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name, type_size=str(type_dict[type_name]))
+                                except:
+                                    print("No type size")
+                                    temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
+                                print(temp_var)
                                 last_var.append(temp_var)
                             elif (type_die.tag == "DW_TAG_pointer_type" or
                                   type_die.tag == "DW_TAG_array_type"):
@@ -458,6 +482,7 @@ def dwarf_analysis(input_binary):
                                 temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
                                 last_var.append(temp_var)
                             elif type_die.tag == "DW_TAG_typedef":
+                                log.info(type_die.attributes)
                                 typedef_name = type_die.attributes['DW_AT_name'].value.decode()
                                 try:
                                     typedef_name = typedef_name.decode('utf-8')
@@ -488,7 +513,7 @@ def dwarf_analysis(input_binary):
                                         # If typedef is a struct, then enable struct_var and disable base_var
                                         struct_var  = True
                                         base_var    = False
-                                        # print(typedef_die)
+                                        print(typedef_die)
                                         if 'DW_AT_name' in typedef_die.attributes:
                                             type_name = typedef_die.attributes['DW_AT_name'].value.decode()
                                         if 'DW_AT_byte_size' in typedef_die.attributes:
@@ -509,7 +534,12 @@ def dwarf_analysis(input_binary):
                                     
                                 if struct_var == False:
                                     base_var    = True
-                                    temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
+                                    try:
+                                        print("Type size")
+                                        temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name, type_size=type_dict[type_name])
+                                    except:
+                                        print("No type size")
+                                        temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
                                     last_var.append(temp_var)
                                                 # print(struct_item.line, struct_item.size)
                                 # Debug purpose
@@ -674,6 +704,7 @@ def dwarf_analysis(input_binary):
                 if (DIE.tag == "DW_TAG_typedef"):
                     typedef_name = None
                     typedef_type = None
+                    typedef_type_size = None
                     last_tag = last_die_tag.pop()
                     
                     if last_tag == None:
@@ -761,9 +792,9 @@ def dwarf_analysis(input_binary):
                 
                 if (DIE.tag == None):
                     # This is used for single function application (disable it for larger app)
-                    # if temp_fun != None:
-                    #     if temp_fun not in fun_list:
-                    #         fun_list.append(temp_fun)
+                    if temp_fun != None:
+                        if temp_fun not in fun_list:
+                            fun_list.append(temp_fun)
                     last_tag = last_die_tag.pop()
                     if (last_tag == "DW_TAG_member"):
                         if temp_struct != None and temp_struct.name != None:
@@ -842,6 +873,8 @@ def dwarf_analysis(input_binary):
             fp.write("\tOffset: %s\n" % var.offset)
             fp.write("\tVarType: %s\n" % var.var_type)
             fp.write("\tBaseType: %s\n" % var.base_type)
+            if var.type_size != None:
+                fp.write("\tTypeSize: %s\n" % var.type_size)
             if var.base_type == "DW_TAG_structure_type":
                 fp.write("        --------------------------\n\t\tStructName: %s" % var.struct.name)
                 fp.write("                                  \n\t\tStructBegin: %s" % var.struct.begin)
