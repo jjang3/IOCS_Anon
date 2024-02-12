@@ -63,6 +63,7 @@ class BnVarData:
     flow_distance:  Optional[int] = None
     arg_use:        Optional[bool] = False 
     # How is a variable used throughout the function, should I expand on this somehow?
+    sec_sensitive:  Optional[bool] = False
     
 fun_var_dict    = dict()
 
@@ -72,10 +73,32 @@ def display_var(var: BnVarData):
     log.debug("\tExposure num: %d", var.exposure)
     log.debug("\tUsed as an arg: %s", var.arg_use)
     log.debug("\tOrigin: %s", var.origin)
-    pprint.pprint(var.dis_insts)
+    log.debug("\tSecurity sensitive: %s", var.sec_sensitive)
+    # pprint.pprint(var.dis_insts)
     print()
     
-
+def get_ssa_reg(inst_ssa):
+        arrow = 'U+21B3'
+        log.info("Getting the SSA register of %s %s", inst_ssa, type(inst_ssa)) 
+        if type(inst_ssa) == binaryninja.lowlevelil.SSARegister:
+            return inst_ssa
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILRegSsa:
+            return get_ssa_reg(inst_ssa.src)
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILRegSsaPartial:
+            return get_ssa_reg(inst_ssa.full_reg)
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILLoadSsa:
+            log.debug("%s LoadReg", chr(int(arrow[2:], 16)))
+            return inst_ssa
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILZx:
+            return get_ssa_reg(inst_ssa.src.full_reg)
+        elif binaryninja.commonil.Arithmetic in inst_ssa.__class__.__bases__:
+            # this is where we should handle %rax#3 + 4 case;
+            return get_ssa_reg(inst_ssa.left.src)
+            # return inst_ssa
+        else:
+            None
+            # print(inst_ssa.__class__.__bases__)
+            
 def update_var(**kwargs):
     log.info("Updating variable")
     for var in kwargs["set"]:
@@ -167,6 +190,13 @@ def c14n_analysis(bv: binaryninja.BinaryView, bn_fun: binaryninja.Function):
             "%ax",  "%bx",  "%cx",  "%dx"}
     arg_regs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9",
                 "%ecx", "%edx", "%edi", "%esi"}
+    sec_sen_funs = { 'atoi', 'calloc', 'execve', 'fclose', 'fgetc', 'fopen',
+                    'fread', 'free', 'freopen', 'fscanf', 'fwrite', 'getchar',
+                    'gets', 'malloc', 'memcmp', 'memcpy', 'memset', 'popen',
+                    'printf', 'realloc', 'scanf', 'snprintf', 'sprintf', 'sscanf',
+                    'strcat', 'strcpy', 'strncat', 'strncpy', 'system',
+                    '__isoc99_scanf', '__isoc99_printf', '__isoc99_sprintf'}
+
     var_set = set()
     
     for var in bn_fun.vars:
@@ -176,17 +206,36 @@ def c14n_analysis(bv: binaryninja.BinaryView, bn_fun: binaryninja.Function):
             # at the end, we will clean them up.
             new_var = BnVarData(name=var.name, dis_insts=list(), exposure=0, var_type=var.type)
             # <TypeClass.IntegerTypeClass: 2>
+            
+            # This is used to find whether variable in this function is used or value is from security-sensitive functions
+            for ref in bn_fun.get_hlil_var_refs(var):
+                if bn_fun.is_call_instruction(ref.address):
+                    call_ref = bn_fun.get_llil_at(ref.address)
+                    try:
+                        call_fun_name = bv.get_function_at(call_ref.dest.constant).name
+                        # print(var, call_fun_name)
+                        if call_fun_name in sec_sen_funs:
+                            log.error("%s Security-sensitive fun detected", var)
+                            new_var.sec_sensitive = True
+                    except:
+                        None
+
             var_set.add(new_var)
     
+    # exit()
     for llil_bb in bn_fun.low_level_il:
         # if bn_fun.name == "client_error": # debug
         if True:
         # This part analyzes the exposure count and calculates the offset for each bninja variable
             for llil_inst in llil_bb:
-                try:
-                    print(bn_fun.low_level_il.mlil.get_ssa_var_definition(llil_inst.mapped_medium_level_il.ssa_form.src))
-                except:
-                    None
+                # This is going to be used to find definitions
+                # try:
+                #     ssa_reg = get_ssa_reg(llil_inst.src.ssa_form)
+                #     if type(ssa_reg) != binaryninja.lowlevelil.LowLevelILLoadSsa:
+                #         def_llil_inst = bn_fun.low_level_il.get_ssa_reg_definition(ssa_reg).ssa_form
+                #         log.debug("%s\nDefinition: %s", llil_inst, def_llil_inst)
+                # except:
+                #     None
                 dis_inst = bv.get_disassembly(llil_inst.address)
                 mapped_il = llil_inst.mapped_medium_level_il
                 if llil_inst.operation == LowLevelILOperation.LLIL_SET_REG:
@@ -257,9 +306,14 @@ def c14n_analysis(bv: binaryninja.BinaryView, bn_fun: binaryninja.Function):
                             print()
         
     # print(bn_fun.callee_addresses)
-    for callee_address in bn_fun.callee_addresses:
-        callee_fun = bv.get_function_at(callee_address)
-        # print(callee_fun)
+    # for callee_address in bn_fun.callee_addresses:
+    #     callee_fun = bv.get_function_at(callee_address)
+    #     # print(callee_fun.name)
+    #     # for var in bn_fun.vars:
+    #     #     for item in bn_fun.get_mlil_var_refs(var):
+    #     #         print(bv.get_disassembly(item.address))
+    #     # print(callee_fun.get_mlil_var_refs_from(callee_fun.lowest_address))
+    #     # print(callee_fun.high_level_il)
     
     for var in var_set:
         display_var(var)
