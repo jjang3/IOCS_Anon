@@ -38,7 +38,7 @@ arcs_bin_file=${arcs_i_result_path}/$1.out
 arcs_out_file=${arcs_i_result_path}/${1}_arcs.out
 arcs_config_file=${arcs_i_result_path}/$1.config
 arcs_dwarf_file=${arcs_i_result_path}/dwarf.out
-arcs_analysis_file=${arcs_i_result_path}/analysis.txt
+arcs_analysis_file=${arcs_i_result_path}/$1.analysis
 arcs_vuln_file=${arcs_i_result_path}/vuln.txt
 
 rewrite_path=${current_path}/asm_rewriter
@@ -89,7 +89,8 @@ taint()
     # file ${arcs_dwarf_file}
     $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file} 
     #$PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file} -c ~/Downloads/nginx-1.3.9/conf/nginx_taint.conf
-    mv dft.out ${arcs_i_result_path} 
+    #mv dft.out ${arcs_i_result_path} 
+    mv dft.out ${arcs_analysis_file}
     # --custom_arg ${arcs_dwarf_file}
 
 }
@@ -140,6 +141,7 @@ analyze()
         # Print the captured information including the instruction without the trailing parenthesis
         print "file: " file " - line_num: " line_num " - fun_name: " fun_name "\n\t\t\t- vuln_type: " vuln_type "\n\t\t\t- instruction: " instruction "\n";
     }' > $arcs_vuln_file
+
 }
 
 rewrite()
@@ -147,7 +149,8 @@ rewrite()
     echo "Assembly rewriting the application" 
     cd ${arcs_input_path} && make ${input}.out
     # echo ${current_path}
-    cd ${rewrite_path} && python3 binary_patch.py --binary ${input}.out 
+    # cd ${rewrite_path} && python3 binary_patch.py --binary ${input}.out 
+    cd ${rewrite_path} && python3 main.py --binary ${input}.out 
     #--fun fun.list
     cd ${arcs_i_result_path} && make lib && make ${input}.new
 }
