@@ -29,7 +29,8 @@ patch()
     cp "$file_path" "$new_file_path";
     as "$new_file_path" -o "$object_file_path"' _ {} \;
     echo "Patch"
-    python3 binary_patch.py --fun fun.list --dir ${nginx_path}
+    #python3 binary_patch_old.py --fun fun.list --dir ${nginx_path}
+    #python3 binary_patch.py --fun fun.list --dir ${nginx_path}
     cp ${input_path}/libMakefile ${nginx_path}/Makefile
     cd ${nginx_path}
     make lib

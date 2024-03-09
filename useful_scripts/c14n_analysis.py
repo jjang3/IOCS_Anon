@@ -190,7 +190,7 @@ def c14n_analysis(bv: binaryninja.BinaryView, bn_fun: binaryninja.Function):
             "%ax",  "%bx",  "%cx",  "%dx"}
     arg_regs = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9",
                 "%ecx", "%edx", "%edi", "%esi"}
-    sec_sen_funs = { 'atoi', 'calloc', 'execve', 'fclose', 'fgetc', 'fopen',
+    sec_sen_funs = {'atoi', 'calloc', 'execve', 'fclose', 'fgetc', 'fopen',
                     'fread', 'free', 'freopen', 'fscanf', 'fwrite', 'getchar',
                     'gets', 'malloc', 'memcmp', 'memcpy', 'memset', 'popen',
                     'printf', 'realloc', 'scanf', 'snprintf', 'sprintf', 'sscanf',

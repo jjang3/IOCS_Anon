@@ -14,6 +14,9 @@ grandp_path=$( cd ../../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 parent_path=$( cd ../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 current_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 
+# Need to streamline this somehow
+suture_path=/home/jaewon/Downloads/suture
+
 PIN_ROOT=$parent_path/pin-3.27_build
 
 taint_path=$parent_path/taint_analysis
@@ -33,8 +36,10 @@ arcs_ll_file=${arcs_i_result_path}/$1.ll
 arcs_bc_file=${arcs_i_result_path}/$1.bc
 arcs_bin_file=${arcs_i_result_path}/$1.out
 arcs_out_file=${arcs_i_result_path}/${1}_arcs.out
+arcs_config_file=${arcs_i_result_path}/$1.config
 arcs_dwarf_file=${arcs_i_result_path}/dwarf.out
 arcs_analysis_file=${arcs_i_result_path}/analysis.txt
+arcs_vuln_file=${arcs_i_result_path}/vuln.txt
 
 rewrite_path=${current_path}/asm_rewriter
 
@@ -82,8 +87,8 @@ taint()
     sleep 1
     # python3 $useful_path/dwarf_analysis.py --binary ${arcs_bin_file} ${arcs_dwarf_file}
     # file ${arcs_dwarf_file}
-    # $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file} 
-    $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file} -c ~/Downloads/nginx-1.3.9/conf/nginx_taint.conf
+    $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file} 
+    #$PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file} -c ~/Downloads/nginx-1.3.9/conf/nginx_taint.conf
     mv dft.out ${arcs_i_result_path} 
     # --custom_arg ${arcs_dwarf_file}
 
@@ -91,12 +96,50 @@ taint()
 
 analyze()
 {
-    echo "Analyze using the ARCS pass"
-    if [ ! -f "${arcs_i_result_path}/taint.in" ]; then
-        printf "main" >> ${arcs_i_result_path}/taint.in
+    echo "Find vulnerable data"
+
+    python3 $useful_path/STA/main.py --binary ${arcs_bin_file}
+    cat $arcs_config_file
+    ${suture_path}/suture_build/llvm/build/bin/clang -emit-llvm -g -c -o ${arcs_bc_file} ${arcs_input_path}/${input}.c
+    cp ${arcs_bc_file} $arcs_config_file $suture_path/benchmark
+    cd $suture_path
+    pwd
+    source env.sh
+    local bc_name=$(basename ${arcs_bc_file})
+    local config_name=$(basename ${bc_name} .bc)
+    local current_date=$(date "+%Y-%m-%d")
+    local config_folder="warns-$config_name.config-$current_date"
+    if [ -d "./benchmark/$config_folder" ]; then
+        echo "Delete the existing folder"
+        rm -rf "./benchmark/$config_folder"
     fi
-    $LLVM_BUILD_DIR/bin/opt -load $arcs_lib_path/libarcs.so -load-pass-plugin $arcs_lib_path/libarcs.so -passes=arcs -S ${arcs_bc_file} -taint ${arcs_i_result_path}/taint.in  -o ${arcs_out_file}
-    #  &> ${arcs_analysis_file}
+    # echo $config_name.config
+    ./run_nohup.sh ./benchmark/$bc_name ./benchmark/$config_name.config
+    sleep 10
+    ./ext_warns.sh ./benchmark/$config_name.config.log
+
+    # Use grep to extract matching lines and awk to parse and format the output correctly
+    local input_file="./benchmark/$config_folder/all"
+    if [ -f "$arcs_vuln_file" ]; then
+        echo "Delete the existing vuln file"
+        rm "$arcs_vuln_file"
+    fi
+    grep -oP "([^ ]+) says: ([^@]+)@([0-9]+) \(([^:]+) :(.+)" "$input_file" |
+    awk -F' : ' '{
+        # Use regex matching to extract vuln_type, file, line_num, fun_name, and the instruction
+        match($0, /([^ ]+) says: ([^@]+)@([0-9]+) \(([^:]+) :(.+)/, matches);
+        vuln_type = matches[1];
+        file = matches[2];
+        line_num = matches[3];
+        fun_name = matches[4];
+        instruction = matches[5];
+        
+        # Remove the trailing parenthesis from the instruction
+        gsub(/\)$/, "", instruction);
+        
+        # Print the captured information including the instruction without the trailing parenthesis
+        print "file: " file " - line_num: " line_num " - fun_name: " fun_name "\n\t\t\t- vuln_type: " vuln_type "\n\t\t\t- instruction: " instruction "\n";
+    }' > $arcs_vuln_file
 }
 
 rewrite()

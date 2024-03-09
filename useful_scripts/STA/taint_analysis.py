@@ -311,7 +311,7 @@ class BinTaintAnalysis:
                 log.debug("Search through address of variable uses")
                 for bb in self.currFun.mlil.ssa_form:
                     for inst in bb:
-                        log.debug("%s %s", self.taint_inst, inst)
+                        # log.debug("%s %s", self.taint_inst, inst)
                         self.taint_inst.vars_address_taken[0]
                         if len(inst.vars_address_taken) > 0:
                             if self.taint_inst.src == inst.vars_address_taken[0]:

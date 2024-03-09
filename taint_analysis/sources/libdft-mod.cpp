@@ -219,7 +219,7 @@ void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 		RTN_Open(callRtn);
 		#if DBG_FLAG
 		if(!(strstr(routineName.c_str(),pltName.c_str()))) {
-			cerr << hex << ins_addr << " [*] " << RTN_Name(callRtn) << endl;
+			cerr << hex << ins_addr << " [*] " << RTN_Name(callRtn) << endl <<endl;
 			
 			fprintf(trace, "%s,", RTN_Name(callRtn).c_str());
 		}
@@ -235,7 +235,7 @@ VOID FunctionEntryRSPAnalysis(CONTEXT* ctx, char* ins_str, ADDRINT functionAddr)
 	ADDRINT val;
 	PIN_GetContextRegval(ctx, REG_STACK_PTR, reinterpret_cast<UINT8 *>(&val));
 	stack_rbp_addr = val;
-	std::cerr << ins_str << "\n" << "Entered function at address: " << std::hex << functionAddr-offset_addr << " "  << val << std::dec << std::endl;
+	// std::cerr << ins_str << "\n" << "Entered function at address: " << std::hex << functionAddr-offset_addr << " "  << val << std::dec << std::endl;
 }
 
 
@@ -681,7 +681,7 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end())
 	{
 		/* set the tag markings */
-		//cerr << "\t► read(2) taint set | " << unwindStack.top() << endl;
+		// cerr << "\t► read(2) taint set | " << unwindStack.top() << endl;
 		taintSrc = true;
 		auto addr = (uintptr_t)(addressStack.top()-offset_addr);
 		result = findVar(addr);
@@ -1045,7 +1045,7 @@ dta_tainted_mem_write(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg, ADDRI
 			// if (reg_name == "rsp") {
 			// cerr << "W " << std::hex << val << " " << endl;
 			// if (var_offset < fun_addr)
-			// printf("Tagged Mem Write (TMW) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
+			printf("Tagged Mem Write (TMW) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
 			result = findVar(var_offset);
 			if (result.found == true) {
 				printf("Tagged Mem Write (TMW) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
@@ -1092,7 +1092,7 @@ dta_tainted_mem_read(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg)
 			// 	cerr << "W " << std::hex << val << " " << disp << endl;
 			// }
 			// if (var_offset < fun_addr)
-			// printf("Tagged Mem Read (TMR) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
+			printf("Tagged Mem Read (TMR) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
 			result = findVar(var_offset);
 			if (result.found == true) {
 				printf("Tagged Mem Read (TMR) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
