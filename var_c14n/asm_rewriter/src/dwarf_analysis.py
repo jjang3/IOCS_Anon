@@ -519,56 +519,77 @@ def dwarf_analysis(input_binary):
                     type_dict["double"] = 8 # Manually adding double because for some reason, DWARF puts this at last
                     type_dict["char"] = 1   # Manually adding double because for some reason, DWARF puts this at last
                 
-                # if (DIE.tag == "DW_TAG_formal_parameter"):
-                #     var_name        = None
-                #     reg_offset      = None
-                #     type_name       = None
-                #     for var_attr in DIE.attributes.values():
-                #         # offset = None
-                #         if (var_attr.name == "DW_AT_name"):
-                #             var_name = DIE.attributes["DW_AT_name"].value.decode()
-                #             logger.debug("\tParam name: %s", var_name)
-                #         if (loc_parser.attribute_has_location(var_attr, CU['version'])):
-                #             loc = loc_parser.parse_from_attribute(var_attr,
-                #                                                 CU['version'])
-                #             if isinstance(loc, LocationExpr):
-                #                 offset = describe_DWARF_expr(loc.loc_expr, dwarfinfo.structs, CU.cu_offset)
-                #                 if offset_regex := re.search(reg_regex, offset):
-                #                     var_offset = int(offset_regex.group(1))
-                #                     var_offset += fun_frame_base
-                #                     # print(offset_regex.group(1))
-                #                     hex_var_offset = hex(var_offset)
-                #                     # reg_offset = str(var_offset) + "(%rbp)" 
-                #                     reg_offset = str(var_offset) + "(%" + str(reg_to_use) + ")" 
-                #                     logger.debug("\tOffset:\t%s (hex: %s)", reg_offset, hex_var_offset)
-                #         if (var_attr.name == "DW_AT_type"):
-                #             refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
-                #             type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
-                #             if type_die.tag == "DW_TAG_base_type":
-                #                 type_name = type_die.attributes['DW_AT_name'].value.decode()
-                #                 logger.error("base_type: %s | size: %d",type_name, type_dict[type_name])
-                #                 struct_var  = False
-                #                 base_var    = True
-                #                 try:
-                #                     # print("Type size")
-                #                     temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name, type_size=str(type_dict[type_name]))
-                #                 except:
-                #                     # print("No type size")
-                #                     temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
-                #                 print(temp_var)
-                #                 # last_var.append(temp_var)
-                #             elif (type_die.tag == "DW_TAG_pointer_type" or
-                #                   type_die.tag == "DW_TAG_array_type"):
-                #                 # This will return dereferenced DIE of a pointer type
-                #                 ptr_type_die = get_dwarf_type(dwarfinfo, type_die.attributes, 
-                #                                            type_die.cu, type_die.cu.cu_offset)
-                #                 print(ptr_type_die)
-                #                 if ptr_type_die != None:
-                #                     # There are cases where DW_TAG_pointer_type doesn't have type
-                #                     if 'DW_AT_name' in ptr_type_die.attributes:
-                #                         # If first deref is success, we can get the type name
-                #                         type_name = ptr_type_die.attributes['DW_AT_name'].value.decode()
-                #                         print(type_name)
+                if (DIE.tag == "DW_TAG_formal_parameter"):
+                    var_name        = None
+                    reg_offset      = None
+                    type_name       = None
+                    for var_attr in DIE.attributes.values():
+                        # offset = None
+                        if (var_attr.name == "DW_AT_name"):
+                            var_name = DIE.attributes["DW_AT_name"].value.decode()
+                            logger.debug("\tParam name: %s", var_name)
+                        if (loc_parser.attribute_has_location(var_attr, CU['version'])):
+                            loc = loc_parser.parse_from_attribute(var_attr,
+                                                                CU['version'])
+                            if isinstance(loc, LocationExpr):
+                                offset = describe_DWARF_expr(loc.loc_expr, dwarfinfo.structs, CU.cu_offset)
+                                if offset_regex := re.search(reg_regex, offset):
+                                    var_offset = int(offset_regex.group(1))
+                                    var_offset += fun_frame_base
+                                    # print(offset_regex.group(1))
+                                    hex_var_offset = hex(var_offset)
+                                    # reg_offset = str(var_offset) + "(%rbp)" 
+                                    reg_offset = str(var_offset) + "(%" + str(reg_to_use) + ")" 
+                                    logger.debug("\tOffset:\t%s (hex: %s)", reg_offset, hex_var_offset)
+                                if struct_var == True and gv_var == False:
+                                    working_var = last_var.pop()
+                                    working_var.fun_name = fun_name
+                                    working_var.offset = hex_var_offset
+                                    working_var.offset_expr = reg_offset
+                                    working_var.begin = hex(int(var_offset))
+                                    working_var.end = hex(int(var_offset) + int(working_var.size))
+                                    for i, member in enumerate(working_var.member_list):
+                                        if member.offset != None:
+                                            if i+1 < len(working_var.member_list):
+                                                # print(working_var.offset, member.offset)    
+                                                begin   = hex(int(var_offset) + int(member.offset))
+                                                end     = hex(int(var_offset) + int(working_var.member_list[i+1].offset))
+                                                # member_var_offset = str(int(begin, base=16)) + "(%rbp)" 
+                                                member_var_offset = str(int(begin, base=16)) + "(%" + reg_to_use + ")" 
+                                                member.begin    = begin
+                                                member.end      = end
+                                                member.offset_expr = member_var_offset
+                                                # pprint.pprint(var_list, width=1)
+                                            else:
+                                                begin   = hex(int(var_offset) + int(member.offset))
+                                                end     = hex(int(var_offset) + int(working_var.size))
+                                                # member_var_offset = str(int(begin, base=16)) + "(%rbp)" 
+                                                member_var_offset = str(int(begin, base=16)) + "(%" + reg_to_use + ")" 
+                                                member.begin    = begin
+                                                member.end      = end
+                                                member.offset_expr = member_var_offset
+                                    temp_var = VarData(var_name, var_offset, working_var.name, 
+                                                       "DW_TAG_structure_type", fun_name, reg_offset, working_var)
+                                    logger.critical("Inserting param struct var %s", temp_var.name)
+                                    struct_var = False
+                                    base_var = True
+                                    var_list.append(temp_var)
+                                elif base_var == True:
+                                    working_var = last_var.pop()
+                                    working_var.offset = var_offset #(var_offset)
+                                    working_var.offset_expr = reg_offset
+                                    logger.critical("Inserting param base var %s", working_var.name)
+                                    logger.info(working_var)
+                                    var_list.append(working_var)
+                        if (var_attr.name == "DW_AT_type"):
+                            if (var_attr.name == "DW_AT_type"):
+                            # temp_var_list = list()
+                                base_var, struct_var, temp_var = parse_dwarf_type(DIE, dwarfinfo,
+                                                                                    var_name, fun_name, type_name)
+                                print("Returns", temp_var)
+                                last_var.append(temp_var)
+                    logger.warning("DW_TAG_formal_paramter finished\n\t%s", temp_var)
+                    print()
 
                 if (DIE.tag == "DW_TAG_variable"):
                     # This is used for variable that is declared within the function
@@ -654,6 +675,7 @@ def dwarf_analysis(input_binary):
                                     logger.critical("Inserting base var %s", working_var.name)
                                     logger.info(working_var)
                                     var_list.append(working_var)
+                                
                             elif isinstance(loc, list):
                                 # If variableis directly accessed by the register itself without offset.
                                 print(show_loclist(loc,
@@ -831,9 +853,11 @@ def dwarf_analysis(input_binary):
                 
                 if (DIE.tag == None):
                     # This is used for single function application (disable it for larger app)
-                    # if temp_fun != None:
-                    #     if temp_fun not in fun_list:
-                    #         fun_list.append(temp_fun)
+                    temp_list = fun_list.copy()
+                    if temp_fun != None:
+                        fun_list.append(temp_fun)
+                        # if temp_fun not in fun_list:
+                            
                     last_tag = last_die_tag.pop()
                     if (last_tag == "DW_TAG_member"):
                         if temp_struct != None and temp_struct.name != None:
@@ -902,9 +926,15 @@ def dwarf_analysis(input_binary):
 
     # pprint.pprint(fun_list, width=1)
     # In second iteration, we will write it to the file pointer
-    fp.write("FunCount: %s" % len(fun_list))
-    for fun in fun_list:
-        # print(fun)
+    unique_list = []
+
+    for item in fun_list:
+        if item not in unique_list:
+            unique_list.append(item)
+    # pprint.pprint(unique_list)
+    fp.write("FunCount: %s" % len(unique_list))
+    for fun in unique_list:
+        # logger.warning(fun.name)
         fp.write("\n-------------FunBegin-----------------\nfun_name: %s\nFunBegin: %s\nFunEnd: %s\nVarCount: %s\n" % (fun.name, fun.begin, fun.end, fun.var_count))
         
         for idx, var in enumerate(fun.var_list):
