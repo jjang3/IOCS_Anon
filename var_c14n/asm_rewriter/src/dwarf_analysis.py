@@ -128,6 +128,247 @@ def get_dwarf_type(dwarfinfo: DWARFInfo, dwarf_die_atts, dwarf_die_cu, dwarf_die
         else:
             return type_die
 
+def parse_dwarf_type(DIE, dwarfinfo: DWARFInfo, var_name, fun_name, type_name):
+    refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
+    type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
+    logger.info(type_die.tag)
+    # var_list = list()
+    if type_die.tag == "DW_TAG_base_type":
+        type_name = type_die.attributes['DW_AT_name'].value.decode()
+        logger.error("base_type: %s | size: %d",type_name, type_dict[type_name])
+        struct_var  = False
+        base_var    = True
+        try:
+            # print("Type size")
+            temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name, type_size=str(type_dict[type_name]))
+        except:
+            # print("No type size")
+            temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
+        # var_list.append(temp_var)
+        logger.debug(temp_var)
+        return base_var, struct_var, temp_var
+    elif (type_die.tag == "DW_TAG_array_type" or type_die.tag == "DW_TAG_pointer_type"):
+        ptr_type_die = get_dwarf_type(dwarfinfo, type_die.attributes, 
+                                    type_die.cu, type_die.cu.cu_offset)
+        # print(ptr_type_die.tag)
+        if ptr_type_die != None:
+            if 'DW_AT_name' in ptr_type_die.attributes:
+                # If first deref is success, we can get the type name
+                type_name = ptr_type_die.attributes['DW_AT_name'].value.decode()
+            elif ptr_type_die.tag == "DW_TAG_structure_type":
+                if 'DW_AT_byte_size' in ptr_type_die.attributes:
+                    byte_size   = ptr_type_die.attributes['DW_AT_byte_size'].value
+                if 'DW_AT_decl_line' in ptr_type_die.attributes:
+                    line_num    = ptr_type_die.attributes['DW_AT_decl_line'].value
+                for struct_item in struct_list:
+                    # print(struct_item.size, struct_item.line)
+                    if (byte_size == struct_item.size and
+                        line_num == struct_item.line):
+                        type_name = struct_item.name
+                        type_name = struct_item.name
+                        temp_var = copy.deepcopy(struct_item)
+                        struct_var  = True
+                        base_var    = False
+                        logger.debug(temp_var)
+                        # last_var.append(temp_var)
+                        return base_var, struct_var, temp_var
+            elif 'DW_AT_type' in ptr_type_die.attributes:
+                # If we need to deref again because it is either struct or const
+                dbl_ptr_type_die = get_dwarf_type(dwarfinfo, ptr_type_die.attributes,
+                                                ptr_type_die.cu, ptr_type_die.cu.cu_offset)
+                if 'DW_AT_name' in dbl_ptr_type_die.attributes:
+                    type_name = dbl_ptr_type_die.attributes['DW_AT_name'].value.decode()
+                elif dbl_ptr_type_die.tag == "DW_TAG_subroutine_type":
+                    type_name = "subroutine"
+                elif dbl_ptr_type_die.tag == "DW_TAG_structure_type":
+                    if 'DW_AT_byte_size' in dbl_ptr_type_die.attributes:
+                        byte_size   = dbl_ptr_type_die.attributes['DW_AT_byte_size'].value
+                    if 'DW_AT_decl_line' in dbl_ptr_type_die.attributes:
+                        line_num    = dbl_ptr_type_die.attributes['DW_AT_decl_line'].value
+                    # print(byte_size, line_num)
+                    for struct_item in struct_list:
+                        # print(struct_item.size, struct_item.line)
+                        if (byte_size == struct_item.size and
+                            line_num == struct_item.line):
+                            type_name = struct_item.name
+                            temp_var = copy.deepcopy(struct_item)
+                            struct_var  = True
+                            base_var    = False
+                            logger.debug(temp_var)
+                            # last_var.append(temp_var)
+                            return base_var, struct_var, temp_var
+                else:
+                    trip_ptr_type_die = get_dwarf_type(dwarfinfo, dbl_ptr_type_die.attributes, dbl_ptr_type_die.cu, dbl_ptr_type_die.cu.cu_offset)
+                    if trip_ptr_type_die != None:
+                        if 'DW_AT_name' in trip_ptr_type_die.attributes:
+                            type_name = trip_ptr_type_die.attributes['DW_AT_name'].value.decode()
+        else:
+            type_name = "null"
+        logger.error("ptr_type: %s", type_name)
+        struct_var  = False
+        base_var    = True
+        temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
+        logger.debug(temp_var)
+        # last_var.append(temp_var)
+        return base_var, struct_var, temp_var
+    elif type_die.tag == "DW_TAG_typedef":
+        # logger.info(type_die.attributes)
+        typedef_name = type_die.attributes['DW_AT_name'].value.decode()
+        try:
+            typedef_name = typedef_name.decode('utf-8')
+        except:
+            None
+        for typedef_item in typedef_list:
+            if typedef_name == typedef_item.name:
+                type_name = typedef_item.base_type
+        # After searching through typedef list, if type_name is None, rec find
+        if type_name == None:
+            typedef_die = get_dwarf_type(dwarfinfo, type_die.attributes, 
+                                    type_die.cu, type_die.cu.cu_offset)
+            if (typedef_die.tag == "DW_TAG_array_type" or 
+                typedef_die.tag == "DW_TAG_pointer_type"):
+                struct_var  = False
+                base_var    = True
+                arr_type_die = get_dwarf_type(dwarfinfo, typedef_die.attributes,
+                                                typedef_die.cu, typedef_die.cu.cu_offset)
+                if arr_type_die != None:
+                    if arr_type_die.tag == "DW_TAG_base_type":
+                        type_name = arr_type_die.attributes['DW_AT_name'].value.decode()
+                    elif arr_type_die.tag == "DW_TAG_subroutine_type":
+                        type_name = "subroutine"
+                temp_var = VarData(var_name, None, type_name, 
+                                    type_die.tag, fun_name)
+                logger.debug(temp_var)
+                return base_var, struct_var, temp_var
+                # last_var.append(temp_var)
+            elif (typedef_die.tag == "DW_TAG_structure_type"):
+                # If typedef is a struct, then enable struct_var and disable base_var
+                struct_var  = True
+                base_var    = False
+                print(typedef_die)
+                if 'DW_AT_name' in typedef_die.attributes:
+                    type_name = typedef_die.attributes['DW_AT_name'].value.decode()
+                if 'DW_AT_byte_size' in typedef_die.attributes:
+                    byte_size   = typedef_die.attributes['DW_AT_byte_size'].value
+                if 'DW_AT_decl_line' in typedef_die.attributes:
+                    line_num    = typedef_die.attributes['DW_AT_decl_line'].value
+                # print(byte_size, line_num)
+                for struct_item in struct_list:
+                    # print(struct_item.size, struct_item.line)
+                    if (byte_size == struct_item.size and
+                        line_num == struct_item.line):
+                        type_name = struct_item.name
+                        temp_var = copy.deepcopy(struct_item)
+                        # last_var.append(temp_var)
+                        logger.debug(temp_var)
+                        return base_var, struct_var, temp_var
+        else:
+            struct_var  = False
+            base_var    = True
+            
+        if struct_var == False:
+            base_var    = True
+            try:
+                print("Type size")
+                temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name, type_size=type_dict[type_name])
+            except:
+                print("No type size")
+                temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
+            # last_var.append(temp_var)
+            logger.debug(temp_var)
+            return base_var, struct_var, temp_var
+                        # print(struct_item.line, struct_item.size)
+        # Debug purpose
+        # if type_name == None:
+        #     print(type_die.tag, type_name, typedef_die.tag)
+        #     exit()
+        logger.error("typedef_type: %s", type_name)
+    elif type_die.tag == "DW_TAG_const_type":
+        const_type_die = get_dwarf_type(dwarfinfo, type_die.attributes, 
+                                    type_die.cu, type_die.cu.cu_offset)
+        if const_type_die.tag == "DW_TAG_base_type":
+            if 'DW_AT_name' in const_type_die.attributes:
+                type_name = const_type_die.attributes['DW_AT_name'].value.decode()
+        elif const_type_die.tag == "DW_TAG_structure_type":
+            if 'DW_AT_name' in const_type_die.attributes:
+                type_name = const_type_die.attributes['DW_AT_name'].value.decode()
+        elif const_type_die.tag == "DW_TAG_array_type":
+            nested_tag = None
+            nested_die = None
+            arr_type_die = get_dwarf_type(dwarfinfo, const_type_die.attributes,
+                                            const_type_die.cu, const_type_die.cu.cu_offset)
+            nested_tag = arr_type_die.tag
+            nested_die = arr_type_die
+            if arr_type_die.tag == "DW_TAG_base_type":
+                type_name = arr_type_die.attributes['DW_AT_name'].value.decode()
+            elif 'DW_AT_type' in arr_type_die.attributes:
+                # If we need to deref again because it is either struct or const
+                dbl_const_type_die = get_dwarf_type(dwarfinfo, arr_type_die.attributes,
+                                                arr_type_die.cu, arr_type_die.cu.cu_offset)
+                nested_tag = dbl_const_type_die.tag
+                nested_die = dbl_const_type_die
+                if 'DW_AT_name' in dbl_const_type_die.attributes:
+                    type_name = dbl_const_type_die.attributes['DW_AT_name'].value.decode()
+                else:
+                    trip_const_type_die = get_dwarf_type(dwarfinfo, dbl_const_type_die.attributes, dbl_const_type_die.cu, dbl_const_type_die.cu.cu_offset)
+                    nested_tag = trip_const_type_die.tag
+                    nested_die = trip_const_type_die
+                    if 'DW_AT_name' in trip_const_type_die.attributes:
+                        type_name = trip_const_type_die.attributes['DW_AT_name'].value.decode()
+                    else:
+                        quad_const_type_die = get_dwarf_type(dwarfinfo, trip_const_type_die.attributes, trip_const_type_die.cu, trip_const_type_die.cu.cu_offset)
+                        nested_tag = quad_const_type_die.tag
+                        nested_die = quad_const_type_die
+                        if 'DW_AT_name' in quad_const_type_die.attributes:
+                            type_name = quad_const_type_die.attributes['DW_AT_name'].value.decode()
+        
+        logger.error("const_type: %s %s", type_name, nested_tag)
+        if nested_tag == "DW_TAG_structure_type":
+            struct_var  = True
+            base_var    = False
+            if 'DW_AT_byte_size' in nested_die.attributes:
+                byte_size   = nested_die.attributes['DW_AT_byte_size'].value
+            if 'DW_AT_decl_line' in nested_die.attributes:
+                line_num    = nested_die.attributes['DW_AT_decl_line'].value
+            for struct_item in struct_list:
+                if (byte_size == struct_item.size and
+                    line_num == struct_item.line):
+                    type_name = struct_item.name
+                    temp_var = copy.deepcopy(struct_item)
+                    logger.debug(temp_var)
+                    return base_var, struct_var, temp_var
+                    # last_var.append(temp_var)
+            # temp_var = VarData(var_name, None, type_name, nested_tag, fun_name)
+            # last_var.append(temp_var)
+        else:
+            struct_var  = False
+            base_var    = True
+            temp_var = VarData(var_name, None, type_name, nested_tag, fun_name)
+            logger.debug(temp_var)
+            return base_var, struct_var, temp_var
+            # last_var.append(temp_var)
+        # Debug purpose
+        # if type_name == None:
+        #     print(type_die.tag, type_name, const_type_die.tag)
+        #     exit()
+    
+    elif type_die.tag == "DW_TAG_structure_type":
+        if 'DW_AT_byte_size' in type_die.attributes:
+            byte_size   = type_die.attributes['DW_AT_byte_size'].value
+        if 'DW_AT_decl_line' in type_die.attributes:
+            line_num    = type_die.attributes['DW_AT_decl_line'].value
+
+        for struct_item in struct_list:
+            if (byte_size == struct_item.size and
+                line_num == struct_item.line):
+                type_name = struct_item.name
+                temp_var = copy.deepcopy(struct_item)
+                struct_var  = True
+                base_var    = False
+                # var_list.append(temp_var)
+                logger.debug(temp_var)
+                return base_var, struct_var, temp_var
+
 def show_loclist(loclist, dwarfinfo, indent, cu_offset):
     """ Display a location list nicely, decoding the DWARF expressions
         contained within.
@@ -262,6 +503,8 @@ def dwarf_analysis(input_binary):
                                                 reg_to_use = "rsp"
                                     idx += 1
                 
+                
+                            
                 if (DIE.tag == "DW_TAG_base_type"):
                     type_name       = None
                     type_size       = None
@@ -272,9 +515,61 @@ def dwarf_analysis(input_binary):
                             type_size = DIE.attributes["DW_AT_byte_size"].value
                     # logger.critical("%s %s", type_name, type_size)
                     type_dict[type_name] =  type_size
-                    type_dict["float"] = 4 # Manually adding float because for some reason, DWARF puts this at last
+                    type_dict["float"] = 4  # Manually adding float because for some reason, DWARF puts this at last
                     type_dict["double"] = 8 # Manually adding double because for some reason, DWARF puts this at last
+                    type_dict["char"] = 1   # Manually adding double because for some reason, DWARF puts this at last
                 
+                # if (DIE.tag == "DW_TAG_formal_parameter"):
+                #     var_name        = None
+                #     reg_offset      = None
+                #     type_name       = None
+                #     for var_attr in DIE.attributes.values():
+                #         # offset = None
+                #         if (var_attr.name == "DW_AT_name"):
+                #             var_name = DIE.attributes["DW_AT_name"].value.decode()
+                #             logger.debug("\tParam name: %s", var_name)
+                #         if (loc_parser.attribute_has_location(var_attr, CU['version'])):
+                #             loc = loc_parser.parse_from_attribute(var_attr,
+                #                                                 CU['version'])
+                #             if isinstance(loc, LocationExpr):
+                #                 offset = describe_DWARF_expr(loc.loc_expr, dwarfinfo.structs, CU.cu_offset)
+                #                 if offset_regex := re.search(reg_regex, offset):
+                #                     var_offset = int(offset_regex.group(1))
+                #                     var_offset += fun_frame_base
+                #                     # print(offset_regex.group(1))
+                #                     hex_var_offset = hex(var_offset)
+                #                     # reg_offset = str(var_offset) + "(%rbp)" 
+                #                     reg_offset = str(var_offset) + "(%" + str(reg_to_use) + ")" 
+                #                     logger.debug("\tOffset:\t%s (hex: %s)", reg_offset, hex_var_offset)
+                #         if (var_attr.name == "DW_AT_type"):
+                #             refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
+                #             type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
+                #             if type_die.tag == "DW_TAG_base_type":
+                #                 type_name = type_die.attributes['DW_AT_name'].value.decode()
+                #                 logger.error("base_type: %s | size: %d",type_name, type_dict[type_name])
+                #                 struct_var  = False
+                #                 base_var    = True
+                #                 try:
+                #                     # print("Type size")
+                #                     temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name, type_size=str(type_dict[type_name]))
+                #                 except:
+                #                     # print("No type size")
+                #                     temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
+                #                 print(temp_var)
+                #                 # last_var.append(temp_var)
+                #             elif (type_die.tag == "DW_TAG_pointer_type" or
+                #                   type_die.tag == "DW_TAG_array_type"):
+                #                 # This will return dereferenced DIE of a pointer type
+                #                 ptr_type_die = get_dwarf_type(dwarfinfo, type_die.attributes, 
+                #                                            type_die.cu, type_die.cu.cu_offset)
+                #                 print(ptr_type_die)
+                #                 if ptr_type_die != None:
+                #                     # There are cases where DW_TAG_pointer_type doesn't have type
+                #                     if 'DW_AT_name' in ptr_type_die.attributes:
+                #                         # If first deref is success, we can get the type name
+                #                         type_name = ptr_type_die.attributes['DW_AT_name'].value.decode()
+                #                         print(type_name)
+
                 if (DIE.tag == "DW_TAG_variable"):
                     # This is used for variable that is declared within the function
                     var_name        = None
@@ -365,233 +660,13 @@ def dwarf_analysis(input_binary):
                                                 dwarfinfo,
                                                 '      ', CU.cu_offset))
                         if (var_attr.name == "DW_AT_type"):
-                            refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
-                            type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
-                            # print(type_die.tag)
-                            if type_die.tag == "DW_TAG_base_type":
-                                type_name = type_die.attributes['DW_AT_name'].value.decode()
-                                logger.error("base_type: %s | size: %d",type_name, type_dict[type_name])
-                                struct_var  = False
-                                base_var    = True
-                                try:
-                                    # print("Type size")
-                                    temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name, type_size=str(type_dict[type_name]))
-                                except:
-                                    # print("No type size")
-                                    temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
-                                # print(temp_var)
-                                last_var.append(temp_var)
-                            elif (type_die.tag == "DW_TAG_pointer_type" or
-                                  type_die.tag == "DW_TAG_array_type"):
-                                # This will return dereferenced DIE of a pointer type
-                                ptr_type_die = get_dwarf_type(dwarfinfo, type_die.attributes, 
-                                                           type_die.cu, type_die.cu.cu_offset)
-                                
-                                if ptr_type_die != None:
-                                    # There are cases where DW_TAG_pointer_type doesn't have type
-                                    if 'DW_AT_name' in ptr_type_die.attributes:
-                                        # If first deref is success, we can get the type name
-                                        type_name = ptr_type_die.attributes['DW_AT_name'].value.decode()
-                                    elif ptr_type_die.tag == "DW_TAG_structure_type":
-                                        if 'DW_AT_byte_size' in ptr_type_die.attributes:
-                                            byte_size   = ptr_type_die.attributes['DW_AT_byte_size'].value
-                                        if 'DW_AT_decl_line' in ptr_type_die.attributes:
-                                            line_num    = ptr_type_die.attributes['DW_AT_decl_line'].value
-                                        for struct_item in struct_list:
-                                            # print(struct_item.size, struct_item.line)
-                                            if (byte_size == struct_item.size and
-                                                line_num == struct_item.line):
-                                                type_name = struct_item.name
-                                                type_name = struct_item.name
-                                                temp_var = copy.deepcopy(struct_item)
-                                                struct_var  = True
-                                                base_var    = False
-                                                last_var.append(temp_var)
-                                    elif 'DW_AT_type' in ptr_type_die.attributes:
-                                        # If we need to deref again because it is either struct or const
-                                        dbl_ptr_type_die = get_dwarf_type(dwarfinfo, ptr_type_die.attributes,
-                                                                        ptr_type_die.cu, ptr_type_die.cu.cu_offset)
-                                        if 'DW_AT_name' in dbl_ptr_type_die.attributes:
-                                            type_name = dbl_ptr_type_die.attributes['DW_AT_name'].value.decode()
-                                        elif dbl_ptr_type_die.tag == "DW_TAG_subroutine_type":
-                                            type_name = "subroutine"
-                                        elif dbl_ptr_type_die.tag == "DW_TAG_structure_type":
-                                            if 'DW_AT_byte_size' in dbl_ptr_type_die.attributes:
-                                                byte_size   = dbl_ptr_type_die.attributes['DW_AT_byte_size'].value
-                                            if 'DW_AT_decl_line' in dbl_ptr_type_die.attributes:
-                                                line_num    = dbl_ptr_type_die.attributes['DW_AT_decl_line'].value
-                                            # print(byte_size, line_num)
-                                            for struct_item in struct_list:
-                                                # print(struct_item.size, struct_item.line)
-                                                if (byte_size == struct_item.size and
-                                                    line_num == struct_item.line):
-                                                    type_name = struct_item.name
-                                                    temp_var = copy.deepcopy(struct_item)
-                                                    struct_var  = True
-                                                    base_var    = False
-                                                    last_var.append(temp_var)
-                                        else:
-                                            trip_ptr_type_die = get_dwarf_type(dwarfinfo, dbl_ptr_type_die.attributes, dbl_ptr_type_die.cu, dbl_ptr_type_die.cu.cu_offset)
-                                            if trip_ptr_type_die != None:
-                                                if 'DW_AT_name' in trip_ptr_type_die.attributes:
-                                                    type_name = trip_ptr_type_die.attributes['DW_AT_name'].value.decode()
-                                else:
-                                    type_name = "null"
-                                logger.error("ptr_type: %s", type_name)
-                            
-                                if struct_var == True:
-                                    continue
-                                struct_var  = False
-                                base_var    = True
-                                temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
-                                last_var.append(temp_var)
-                            elif type_die.tag == "DW_TAG_typedef":
-                                logger.info(type_die.attributes)
-                                typedef_name = type_die.attributes['DW_AT_name'].value.decode()
-                                try:
-                                    typedef_name = typedef_name.decode('utf-8')
-                                except:
-                                    None
-                                for typedef_item in typedef_list:
-                                    if typedef_name == typedef_item.name:
-                                        type_name = typedef_item.base_type
-                                # After searching through typedef list, if type_name is None, rec find
-                                if type_name == None:
-                                    typedef_die = get_dwarf_type(dwarfinfo, type_die.attributes, 
-                                                           type_die.cu, type_die.cu.cu_offset)
-                                    if (typedef_die.tag == "DW_TAG_array_type" or 
-                                        typedef_die.tag == "DW_TAG_pointer_type"):
-                                        struct_var  = False
-                                        base_var    = True
-                                        arr_type_die = get_dwarf_type(dwarfinfo, typedef_die.attributes,
-                                                                        typedef_die.cu, typedef_die.cu.cu_offset)
-                                        if arr_type_die != None:
-                                            if arr_type_die.tag == "DW_TAG_base_type":
-                                                type_name = arr_type_die.attributes['DW_AT_name'].value.decode()
-                                            elif arr_type_die.tag == "DW_TAG_subroutine_type":
-                                                type_name = "subroutine"
-                                        temp_var = VarData(var_name, None, type_name, 
-                                                           type_die.tag, fun_name)
-                                        last_var.append(temp_var)
-                                    elif (typedef_die.tag == "DW_TAG_structure_type"):
-                                        # If typedef is a struct, then enable struct_var and disable base_var
-                                        struct_var  = True
-                                        base_var    = False
-                                        print(typedef_die)
-                                        if 'DW_AT_name' in typedef_die.attributes:
-                                            type_name = typedef_die.attributes['DW_AT_name'].value.decode()
-                                        if 'DW_AT_byte_size' in typedef_die.attributes:
-                                            byte_size   = typedef_die.attributes['DW_AT_byte_size'].value
-                                        if 'DW_AT_decl_line' in typedef_die.attributes:
-                                            line_num    = typedef_die.attributes['DW_AT_decl_line'].value
-                                        # print(byte_size, line_num)
-                                        for struct_item in struct_list:
-                                            # print(struct_item.size, struct_item.line)
-                                            if (byte_size == struct_item.size and
-                                                line_num == struct_item.line):
-                                                type_name = struct_item.name
-                                                temp_var = copy.deepcopy(struct_item)
-                                                last_var.append(temp_var)
-                                else:
-                                    struct_var  = False
-                                    base_var    = True
-                                    
-                                if struct_var == False:
-                                    base_var    = True
-                                    try:
-                                        print("Type size")
-                                        temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name, type_size=type_dict[type_name])
-                                    except:
-                                        print("No type size")
-                                        temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
-                                    last_var.append(temp_var)
-                                                # print(struct_item.line, struct_item.size)
-                                # Debug purpose
-                                # if type_name == None:
-                                #     print(type_die.tag, type_name, typedef_die.tag)
-                                #     exit()
-                                logger.error("typedef_type: %s", type_name)
-                            elif type_die.tag == "DW_TAG_const_type":
-                                const_type_die = get_dwarf_type(dwarfinfo, type_die.attributes, 
-                                                           type_die.cu, type_die.cu.cu_offset)
-                                if const_type_die.tag == "DW_TAG_base_type":
-                                    if 'DW_AT_name' in const_type_die.attributes:
-                                        type_name = const_type_die.attributes['DW_AT_name'].value.decode()
-                                elif const_type_die.tag == "DW_TAG_structure_type":
-                                    if 'DW_AT_name' in const_type_die.attributes:
-                                        type_name = const_type_die.attributes['DW_AT_name'].value.decode()
-                                elif const_type_die.tag == "DW_TAG_array_type":
-                                    nested_tag = None
-                                    nested_die = None
-                                    arr_type_die = get_dwarf_type(dwarfinfo, const_type_die.attributes,
-                                                                    const_type_die.cu, const_type_die.cu.cu_offset)
-                                    nested_tag = arr_type_die.tag
-                                    nested_die = arr_type_die
-                                    if arr_type_die.tag == "DW_TAG_base_type":
-                                        type_name = arr_type_die.attributes['DW_AT_name'].value.decode()
-                                    elif 'DW_AT_type' in arr_type_die.attributes:
-                                        # If we need to deref again because it is either struct or const
-                                        dbl_const_type_die = get_dwarf_type(dwarfinfo, arr_type_die.attributes,
-                                                                        arr_type_die.cu, arr_type_die.cu.cu_offset)
-                                        nested_tag = dbl_const_type_die.tag
-                                        nested_die = dbl_const_type_die
-                                        if 'DW_AT_name' in dbl_const_type_die.attributes:
-                                            type_name = dbl_const_type_die.attributes['DW_AT_name'].value.decode()
-                                        else:
-                                            trip_const_type_die = get_dwarf_type(dwarfinfo, dbl_const_type_die.attributes, dbl_const_type_die.cu, dbl_const_type_die.cu.cu_offset)
-                                            nested_tag = trip_const_type_die.tag
-                                            nested_die = trip_const_type_die
-                                            if 'DW_AT_name' in trip_const_type_die.attributes:
-                                                type_name = trip_const_type_die.attributes['DW_AT_name'].value.decode()
-                                            else:
-                                                quad_const_type_die = get_dwarf_type(dwarfinfo, trip_const_type_die.attributes, trip_const_type_die.cu, trip_const_type_die.cu.cu_offset)
-                                                nested_tag = quad_const_type_die.tag
-                                                nested_die = quad_const_type_die
-                                                if 'DW_AT_name' in quad_const_type_die.attributes:
-                                                    type_name = quad_const_type_die.attributes['DW_AT_name'].value.decode()
-                                
-                                logger.error("const_type: %s %s", type_name, nested_tag)
-                                if nested_tag == "DW_TAG_structure_type":
-                                    struct_var  = True
-                                    base_var    = False
-                                    if 'DW_AT_byte_size' in nested_die.attributes:
-                                        byte_size   = nested_die.attributes['DW_AT_byte_size'].value
-                                    if 'DW_AT_decl_line' in nested_die.attributes:
-                                        line_num    = nested_die.attributes['DW_AT_decl_line'].value
-                                    for struct_item in struct_list:
-                                        if (byte_size == struct_item.size and
-                                            line_num == struct_item.line):
-                                            type_name = struct_item.name
-                                            temp_var = copy.deepcopy(struct_item)
-                                            last_var.append(temp_var)
-                                    # temp_var = VarData(var_name, None, type_name, nested_tag, fun_name)
-                                    # last_var.append(temp_var)
-                                else:
-                                    struct_var  = False
-                                    base_var    = True
-                                    temp_var = VarData(var_name, None, type_name, nested_tag, fun_name)
-                                    last_var.append(temp_var)
-                                # Debug purpose
-                                # if type_name == None:
-                                #     print(type_die.tag, type_name, const_type_die.tag)
-                                #     exit()
-                            elif type_die.tag == "DW_TAG_structure_type":
-                                struct_var  = True
-                                base_var    = False
-                                # print(type_die)
-                                if 'DW_AT_byte_size' in type_die.attributes:
-                                    byte_size   = type_die.attributes['DW_AT_byte_size'].value
-                                if 'DW_AT_decl_line' in type_die.attributes:
-                                    line_num    = type_die.attributes['DW_AT_decl_line'].value
-
-                                for struct_item in struct_list:
-                                    if (byte_size == struct_item.size and
-                                        line_num == struct_item.line):
-                                        type_name = struct_item.name
-                                        temp_var = copy.deepcopy(struct_item)
-                                        last_var.append(temp_var)
+                            # temp_var_list = list()
+                            base_var, struct_var, temp_var = parse_dwarf_type(DIE, dwarfinfo,
+                                                                                   var_name, fun_name, type_name)
+                            print("Returns", temp_var)
+                            last_var.append(temp_var)
                        
-                    # logger.warning("DW_TAG_Variable finished\n\t%s", temp_var)
+                    logger.warning("DW_TAG_Variable finished\n\t%s", temp_var)
                     print()
                             
                 if (DIE.tag == "DW_TAG_union_type"):

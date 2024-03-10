@@ -37,9 +37,10 @@ arcs_bc_file=${arcs_i_result_path}/$1.bc
 arcs_bin_file=${arcs_i_result_path}/$1.out
 arcs_out_file=${arcs_i_result_path}/${1}_arcs.out
 arcs_config_file=${arcs_i_result_path}/$1.config
-arcs_dwarf_file=${arcs_i_result_path}/dwarf.out
+arcs_dwarf_file=${arcs_i_result_path}/$1.dwarf
 arcs_analysis_file=${arcs_i_result_path}/$1.analysis
-arcs_vuln_file=${arcs_i_result_path}/vuln.txt
+arcs_vuln_file=${arcs_i_result_path}/$1.vuln
+arcs_taint_file=${arcs_i_result_path}/$1.taint
 
 rewrite_path=${current_path}/asm_rewriter
 
@@ -71,11 +72,13 @@ taint()
     fi
     if [ ! -f "$arcs_ll_file" ]; then
         echo "LLVM IR (.ll) file doesn't exist"
-        $LLVM_BUILD_DIR/bin/clang -emit-llvm -S -o ${arcs_ll_file} ${arcs_input_path}/${input}.c
+        #$LLVM_BUILD_DIR/bin/clang -emit-llvm -S -g -o ${arcs_ll_file} ${arcs_input_path}/${input}.c
+        ${suture_path}/suture_build/llvm/build/bin/clang -emit-llvm -S -g -c -o ${arcs_ll_file} ${arcs_input_path}/${input}.c
     fi
     if [ ! -f "$arcs_bc_file" ]; then
         echo "LLVM IR (.bc) file doesn't exist"
-        $LLVM_BUILD_DIR/bin/clang -emit-llvm -c -o ${arcs_bc_file} ${arcs_input_path}/${input}.c
+        #$LLVM_BUILD_DIR/bin/clang -emit-llvm -c -g -o ${arcs_bc_file} ${arcs_input_path}/${input}.c
+        ${suture_path}/suture_build/llvm/build/bin/clang -emit-llvm -g -c -o ${arcs_bc_file} ${arcs_input_path}/${input}.c
     fi
     if [ ! -f "$arcs_bin_file" ]; then
         echo "Input binary file doesn't exist"
@@ -101,7 +104,12 @@ analyze()
 
     python3 $useful_path/STA/main.py --binary ${arcs_bin_file}
     cat $arcs_config_file
-    ${suture_path}/suture_build/llvm/build/bin/clang -emit-llvm -g -c -o ${arcs_bc_file} ${arcs_input_path}/${input}.c
+    if [ ! -f "$arcs_bc_file" ]; then
+        echo "LLVM IR (.bc) file doesn't exist"
+        #$LLVM_BUILD_DIR/bin/clang -emit-llvm -c -g -o ${arcs_bc_file} ${arcs_input_path}/${input}.c
+        ${suture_path}/suture_build/llvm/build/bin/clang -emit-llvm -g -c -o ${arcs_bc_file} ${arcs_input_path}/${input}.c
+    fi
+    # ${suture_path}/suture_build/llvm/build/bin/clang -emit-llvm -g -c -o ${arcs_bc_file} ${arcs_input_path}/${input}.c
     cp ${arcs_bc_file} $arcs_config_file $suture_path/benchmark
     cd $suture_path
     pwd
@@ -121,11 +129,12 @@ analyze()
 
     # Use grep to extract matching lines and awk to parse and format the output correctly
     local input_file="./benchmark/$config_folder/all"
+    cp $input_file $arcs_taint_file
     if [ -f "$arcs_vuln_file" ]; then
         echo "Delete the existing vuln file"
         rm "$arcs_vuln_file"
     fi
-    grep -oP "([^ ]+) says: ([^@]+)@([0-9]+) \(([^:]+) :(.+)" "$input_file" |
+    grep -oP "([^ ]+) says: ([^@]+)@([0-9]+) \(([^:]+) :(.+)" "$arcs_taint_file" |
     awk -F' : ' '{
         # Use regex matching to extract vuln_type, file, line_num, fun_name, and the instruction
         match($0, /([^ ]+) says: ([^@]+)@([0-9]+) \(([^:]+) :(.+)/, matches);
@@ -141,7 +150,6 @@ analyze()
         # Print the captured information including the instruction without the trailing parenthesis
         print "file: " file " - line_num: " line_num " - fun_name: " fun_name "\n\t\t\t- vuln_type: " vuln_type "\n\t\t\t- instruction: " instruction "\n";
     }' > $arcs_vuln_file
-
 }
 
 rewrite()

@@ -80,6 +80,62 @@ file_list = list()
 
 patch_count = 0
 
+
+def extract_taints_from_file(file_path, vuln_file):
+    
+    # Dictionary to store the function names and their instructions
+    taint_insts = {}
+
+    # Temporary variable to store current function name
+    curr_fun_name = ""
+
+    # Open the file and read line by line
+    with open(vuln_file, 'r', encoding='utf-8') as file:
+        for line in file:
+            # Trim whitespace for consistency
+            line = line.strip()
+            if line.startswith("file:"):
+                # This line contains the function name, extract it
+                parts = line.split("-")
+                # Extracting the actual function name
+                curr_fun_name = parts[2].split(":")[1].strip()
+            elif line.startswith("- instruction:"):
+                # This line contains the instruction, extract it
+                current_instruction = line.split(":", 1)[1].strip()
+                # Add the instruction to the current function name in the dictionary
+                if curr_fun_name not in taint_insts:
+                    taint_insts[curr_fun_name] = set()
+                taint_insts[curr_fun_name].add(current_instruction)
+    
+    with open(file_path, 'r', encoding='utf-8') as file:
+        content = file.read()
+    
+    # Pattern to match the instructions block, capturing instructions until an empty line
+    block_pattern = re.compile(r'#####INSTS#####\n(.*?)(?=\n\n|\Z)', re.DOTALL)
+
+    # Specific pattern to match only the desired format of instruction lines
+    combined_pattern = re.compile(
+    r'((\w+\/\w+\.c@(\d+)) \(\s*(.+?)\s*\))|'
+    r'(#####CTX#####\s+(\w+)\s+->\s+(\w+))', re.DOTALL)
+    # Find all blocks of instructions
+    blocks = block_pattern.findall(content)
+
+    instruction_sets = []
+    for block in blocks:
+        matches = combined_pattern.findall(block)
+        block_instructions = []
+        for match in matches:
+            if match[0]:  # This means it matched an instruction line
+                file_path_line = match[1]
+                instruction = match[3]
+                block_instructions.append(f"{file_path_line} ({instruction})")
+            elif match[4]:  # This means it matched a context line
+                ctx_info = match[4]
+                block_instructions.append(ctx_info)
+        instruction_sets.append(block_instructions)
+
+    return instruction_sets
+
 def custom_pprint(obj, color='blue', attrs=['reverse']):
     # Get the current frame and then the outer frame (caller's frame)
     frame = inspect.currentframe()
@@ -157,15 +213,24 @@ dwarf_fun_var_info  = dict()
 bn_fun_var_info     = dict()
 fun_table_offsets   = dict()
 
-def process_file(input_item, analysis_list):
+def process_file(input_item, analysis_list, taint_sets):
     global dwarf_var_count
     dwarf_output: list[FunData] = []
     dwarf_output = dwarf_analysis(input_item)
+    exit()
     for fun in dwarf_output:
         if fun.name in analysis_list:
             dwarf_fun_var_info[fun.name] = fun.var_list.copy()
             dwarf_var_count += fun.var_count
     pprint.pprint(dwarf_fun_var_info)
+    # Print the extracted instructions
+    for idx, instructions in enumerate(taint_sets):
+        print(f"Instruction Set {idx + 1}:")
+        for instruction in instructions:
+            print(instruction)
+        print("-" * 20)
+    # exit()
+    
     
 def main():
     # Get the size of the terminal
@@ -228,6 +293,11 @@ def main():
         result_dir      = Path(args.binary).resolve().parent.parent / "result" / base_name
         print(result_dir)
         # exit()
+        vuln_file   = result_dir / f"{base_name}.vuln"
+        taint_file  = result_dir / f"{base_name}.taint"
+        # Use the function to extract instructions from the file
+        taint_sets = extract_taints_from_file(taint_file, vuln_file)
+
         analysis_file   = result_dir / f"{base_name}.analysis"
         with open(analysis_file) as ff:
             for line in ff:
@@ -236,7 +306,7 @@ def main():
         binary_item     = result_dir / f"{base_name}.out"  # Updated variable name for clarity
         asm_item        = result_dir / f"{base_name}.s"  # Updated variable name for clarity
         log.info("Analyzing %s", binary_item)
-        process_file(binary_item, analysis_list)
+        process_file(binary_item, analysis_list, taint_sets)
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
         fun_table_offsets = generate_table(dwarf_var_count, dwarf_fun_var_info, result_dir)
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
