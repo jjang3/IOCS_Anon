@@ -80,8 +80,33 @@ file_list = list()
 
 patch_count = 0
 
+# Split the instructions list into two lists using "#####CTX#####" as the delimiter
+def split_by_ctx(instructions):
+    # Initialize a list to hold lists of instructions
+    segments = []
+    current_segment = []
+    
+    for instruction in instructions:
+        if instruction.startswith('#####CTX#####'):
+            # When a #####CTX##### marker is found, add the current segment to segments
+            # and start a new segment
+            if current_segment:
+                segments.append(current_segment)
+                current_segment = []
+            # Optionally, add or don't add the CTX line itself, depending on requirements
+            # current_segment.append(instruction)  # Uncomment to include CTX lines
+        else:
+            # Add instruction to the current segment
+            current_segment.append(instruction)
+    
+    # Add the last segment if it's not empty
+    if current_segment:
+        segments.append(current_segment)
+    
+    return segments
 
-def extract_taints_from_file(file_path, vuln_file):
+def extract_taints(file_path, vuln_file):
+    var_name_sets = set()
     
     # Dictionary to store the function names and their instructions
     taint_insts = {}
@@ -107,6 +132,9 @@ def extract_taints_from_file(file_path, vuln_file):
                     taint_insts[curr_fun_name] = set()
                 taint_insts[curr_fun_name].add(current_instruction)
     
+    pprint.pprint(taint_insts)
+    
+    
     with open(file_path, 'r', encoding='utf-8') as file:
         content = file.read()
     
@@ -114,9 +142,11 @@ def extract_taints_from_file(file_path, vuln_file):
     block_pattern = re.compile(r'#####INSTS#####\n(.*?)(?=\n\n|\Z)', re.DOTALL)
 
     # Specific pattern to match only the desired format of instruction lines
+    # ((\w+\/\w+\.c@(\d+)) \(\s*(.+?)\s*\))
     combined_pattern = re.compile(
     r'((\w+\/\w+\.c@(\d+)) \(\s*(.+?)\s*\))|'
     r'(#####CTX#####\s+(\w+)\s+->\s+(\w+))', re.DOTALL)
+    
     # Find all blocks of instructions
     blocks = block_pattern.findall(content)
 
@@ -128,12 +158,43 @@ def extract_taints_from_file(file_path, vuln_file):
             if match[0]:  # This means it matched an instruction line
                 file_path_line = match[1]
                 instruction = match[3]
-                block_instructions.append(f"{file_path_line} ({instruction})")
+                print(instruction)
+                if re.search(r"^(?!.*\balloca\b).+$", instruction):
+                    # block_instructions.append(f"{file_path_line} ({instruction})")
+                    block_instructions.append(f"{instruction}")
+                else:
+                    logger.warning("Ignore alloca")
             elif match[4]:  # This means it matched a context line
                 ctx_info = match[4]
                 block_instructions.append(ctx_info)
-        instruction_sets.append(block_instructions)
+        segments = split_by_ctx(block_instructions)
+        # Print the segments
+        for i, segment in enumerate(segments):
+            print(f"Segment {i + 1}:")
+            for instruction in segment:
+                print(instruction)
+            print("\n---\n")
+            instruction_sets.append(segment)
+    # exit()
+            # instruction_sets.append(block_instructions)
+        
+        # instruction_sets.append(block_instructions)
 
+    pprint.pprint(instruction_sets)
+    
+    for fun in taint_insts:
+        logger.info(fun)
+        for inst in taint_insts[fun]:
+            logger.debug(inst)
+            for segment in instruction_sets:
+                last_element = segment[-1]
+                if inst == last_element:
+                    var_name = re.search(r"%([a-zA-Z_][a-zA-Z0-9_]*)\s*\,", segment[0])
+                    log.critical("Var name: %s", var_name.group(1))
+                    var_name_sets.add(var_name.group(1))
+    pprint.pprint(var_name_sets)
+    exit()
+    return var_name_sets
     return instruction_sets
 
 def custom_pprint(obj, color='blue', attrs=['reverse']):
@@ -217,7 +278,7 @@ def process_file(input_item, analysis_list, taint_sets):
     global dwarf_var_count
     dwarf_output: list[FunData] = []
     dwarf_output = dwarf_analysis(input_item)
-    exit()
+    # exit()
     for fun in dwarf_output:
         if fun.name in analysis_list:
             dwarf_fun_var_info[fun.name] = fun.var_list.copy()
@@ -296,7 +357,7 @@ def main():
         vuln_file   = result_dir / f"{base_name}.vuln"
         taint_file  = result_dir / f"{base_name}.taint"
         # Use the function to extract instructions from the file
-        taint_sets = extract_taints_from_file(taint_file, vuln_file)
+        taint_sets = extract_taints(taint_file, vuln_file)
 
         analysis_file   = result_dir / f"{base_name}.analysis"
         with open(analysis_file) as ff:

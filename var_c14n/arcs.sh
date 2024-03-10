@@ -104,6 +104,11 @@ analyze()
 
     python3 $useful_path/STA/main.py --binary ${arcs_bin_file}
     cat $arcs_config_file
+    if [ ! -f "$arcs_ll_file" ]; then
+        echo "LLVM IR (.ll) file doesn't exist"
+        #$LLVM_BUILD_DIR/bin/clang -emit-llvm -S -g -o ${arcs_ll_file} ${arcs_input_path}/${input}.c
+        ${suture_path}/suture_build/llvm/build/bin/clang -emit-llvm -S -g -c -o ${arcs_ll_file} ${arcs_input_path}/${input}.c
+    fi
     if [ ! -f "$arcs_bc_file" ]; then
         echo "LLVM IR (.bc) file doesn't exist"
         #$LLVM_BUILD_DIR/bin/clang -emit-llvm -c -g -o ${arcs_bc_file} ${arcs_input_path}/${input}.c
