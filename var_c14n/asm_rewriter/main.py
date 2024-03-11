@@ -191,11 +191,11 @@ def extract_taints(file_path, vuln_file):
                 if inst == last_element:
                     var_name = re.search(r"%([a-zA-Z_][a-zA-Z0-9_]*)\s*\,", segment[0])
                     log.critical("Var name: %s", var_name.group(1))
-                    var_name_sets.add(var_name.group(1))
+                    var_name_sets.add((var_name.group(1), fun))
     pprint.pprint(var_name_sets)
-    exit()
+    # exit()
     return var_name_sets
-    return instruction_sets
+    # return instruction_sets
 
 def custom_pprint(obj, color='blue', attrs=['reverse']):
     # Get the current frame and then the outer frame (caller's frame)
@@ -274,6 +274,8 @@ dwarf_fun_var_info  = dict()
 bn_fun_var_info     = dict()
 fun_table_offsets   = dict()
 
+target_fun_var_info = dict()
+
 def process_file(input_item, analysis_list, taint_sets):
     global dwarf_var_count
     dwarf_output: list[FunData] = []
@@ -285,11 +287,20 @@ def process_file(input_item, analysis_list, taint_sets):
             dwarf_var_count += fun.var_count
     pprint.pprint(dwarf_fun_var_info)
     # Print the extracted instructions
-    for idx, instructions in enumerate(taint_sets):
-        print(f"Instruction Set {idx + 1}:")
-        for instruction in instructions:
-            print(instruction)
-        print("-" * 20)
+    for idx, var in enumerate(taint_sets):
+        print(f"Var target: {idx, var[0]} - Fun: {var[1]}")
+        try:
+            # pprint.pprint(dwarf_fun_var_info[var[1]])
+            target_var_list = list()
+            for dwarf_var in dwarf_fun_var_info[var[1]]:
+                print(dwarf_var.name)
+                if dwarf_var.name == var[0]:
+                    log.critical("Found")
+                    target_var_list.append(dwarf_var)
+            target_fun_var_info[var[1]] = target_var_list.copy()
+        except:
+            log.error("Not part of tainted path")
+
     # exit()
     
     
@@ -368,6 +379,8 @@ def main():
         asm_item        = result_dir / f"{base_name}.s"  # Updated variable name for clarity
         log.info("Analyzing %s", binary_item)
         process_file(binary_item, analysis_list, taint_sets)
+        pprint.pprint(target_fun_var_info)
+        exit()
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
         fun_table_offsets = generate_table(dwarf_var_count, dwarf_fun_var_info, result_dir)
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
