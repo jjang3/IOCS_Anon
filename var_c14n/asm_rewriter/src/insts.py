@@ -513,6 +513,7 @@ class IntelInstruction(Enum):
     MONITOR = True
     MONITORX = True
     MOV = True
+    MOVABS = True
     MOVAPD = True
     MOVAPS = True
     MOVBE = True

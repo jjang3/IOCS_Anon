@@ -53,6 +53,7 @@ def parse_assembly_instructions(filename):
 
 def static_verifier(file_path, flag):
     verify_count = 0
+    check = True
     if flag.PRE:
         logger.info("Pre-condition verification")
         # Example usage
@@ -60,7 +61,7 @@ def static_verifier(file_path, flag):
         for instruction in instructions:
             # Regex pattern to match opcodes
             pattern = r"^\s*(\b\w+\b)"
-            # print(instruction)
+            print(instruction)
             opcodes = re.findall(pattern, instruction, re.MULTILINE)
             for opcode in opcodes:
                 # Capitalize the opcode
@@ -73,4 +74,6 @@ def static_verifier(file_path, flag):
                     logger.critical("Checked")
                 else:
                     logger.error("Verify failed %s", opcode)
-                    exit()
+                    check = False
+                    # exit()
+        return check

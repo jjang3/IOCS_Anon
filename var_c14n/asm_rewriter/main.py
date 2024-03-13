@@ -14,8 +14,8 @@ import os
 sys.path.append(os.path.join(os.getcwd(), 'src'))
 # sys.path.append('src')  # Add the src directory to the import path
 
-from dwarf_analysis import *
-# from dwarf_analysis_old import *
+# from dwarf_analysis import *
+from dwarf_analysis_old import *
 from gen_table import *
 from bin_analysis import *
 from rewriter import *
@@ -76,6 +76,7 @@ class FileData:
     asm_path: str = None
     obj_path: str = None
     fun_list: Optional[list] = None
+    intel_path: str = None
 
 # Total number of variables from the DWARF analysis
 dwarf_var_count = 0
@@ -264,6 +265,9 @@ def visit_dir(dir_list):
             elif file_name.endswith(".o"):
                 file_path = os.path.join(root, file_name)
                 temp_file.obj_path = file_path
+            elif file_name.endswith(".intel"):
+                file_path = os.path.join(root, file_name)
+                temp_file.intel_path = file_path
                 
             if temp_file != None and tgt_index == None:
                 file_list.append(temp_file)
@@ -364,9 +368,11 @@ def main():
         # # 2) after generating table, need to perform binary analysis for each files
         for file_item in target_files:
             bn_fun_var_info = process_binary(file_item.obj_path, analysis_list)
+            if not static_verifier(file_item.intel_path, Verify.PRE):
+                exit()
             patch_count += rewriter(analysis_list, target_dir, file_item.asm_path, dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
             gen_obj_file(file_item)
-        log.critical("Patch count %d", patch_count)
+            log.critical("Patch count %d", patch_count)
         
     else:
         # Assuming 'args.binary' is a predefined variable
@@ -404,7 +410,7 @@ def main():
         custom_pprint(bn_fun_var_info)
         custom_pprint(fun_table_offsets)
         if static_verifier(intel_file, Verify.PRE):
-            exit()
+            # exit()
             patch_count = rewriter(analysis_list, result_dir, str(asm_item), dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
         log.critical("Patch count %d", patch_count)
         # There should be a new output file here to be passed into verifier
