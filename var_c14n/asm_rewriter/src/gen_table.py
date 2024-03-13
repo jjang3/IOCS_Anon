@@ -24,16 +24,19 @@ def generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir):
     for fun_idx,fun in enumerate(dwarf_fun_var_info):
         if True: 
         # if fun_idx == 0: # This is used to debug specific function
+        # if fun == "parse_request":
             vars = dwarf_fun_var_info[fun]
             # print(fun)
             for var_idx, var in enumerate(vars):
                 if True:
+                    print(var)
                 # if var_idx == 4: #Not work: 1,4,5
                     #     print(var)
                     #     exit()
                     if var_idx < var_patch: #and var_idx != 5: # and var_idx == 6: # (and var_idx is used to debug)
                         if var.base_type == "DW_TAG_base_type":
                             if var.offset_expr != None:
+                                logger.warning("Added")
                                 offset_expr_to_table.add((var.offset_expr, table_offset))
                                 table_offset += 8
                                 off_var_count += 1
@@ -58,20 +61,31 @@ def generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir):
                                     #     None
                                         if True:
                                             # if mem_idx == 0:
-                                            if (member.base_type != "DW_TAG_structure_type" and 
-                                                member.base_type != "DW_TAG_array_type"): #  and member.base_type != "DW_TAG_pointer_type"
+                                            #  and member.base_type != "DW_TAG_pointer_type" DW_TAG_array_type
+                                            if (member.base_type != "DW_TAG_structure_type"): 
                                                 if member.offset_expr != None:
+                                                    logger.warning("Added")
                                                     offset_expr_to_table.add((member.offset_expr, table_offset))
                                                     table_offset += 8
                                                     off_var_count += 1
                         elif (var.base_type == "DW_TAG_typedef" and
                               var.struct == None):
                             if var.offset_expr != None:
+                                logger.warning("Added")
                                 offset_expr_to_table.add((var.offset_expr, table_offset))
                                 table_offset += 8
                                 off_var_count += 1
                         elif (var.base_type == "DW_TAG_array_type"):
                             if var.offset_expr != None:
+                                logger.warning("Added")
+                                offset_expr_to_table.add((var.offset_expr, table_offset))
+                                table_offset += 8
+                                off_var_count += 1
+                        elif (var.base_type == "DW_TAG_pointer_type"):
+                            if var.offset_expr != None:
+                                # logger.critical(var)
+                                # exit()
+                                logger.warning("Added")
                                 offset_expr_to_table.add((var.offset_expr, table_offset))
                                 table_offset += 8
                                 off_var_count += 1

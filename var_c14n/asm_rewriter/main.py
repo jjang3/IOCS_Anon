@@ -5,20 +5,30 @@ import inspect
 import argparse
 import shutil
 
+from enum import Enum, auto
+
 from pickle import FALSE
 from tkinter import N
 from termcolor import colored
-
-sys.path.append('src')  # Add the src directory to the import path
+import os
+sys.path.append(os.path.join(os.getcwd(), 'src'))
+# sys.path.append('src')  # Add the src directory to the import path
 
 from dwarf_analysis import *
+# from dwarf_analysis_old import *
 from gen_table import *
 from bin_analysis import *
 from rewriter import *
+from verifier import *
 
 from pathlib import Path
 import pprint 
 from dataclasses import dataclass, field
+
+
+class Verify(Enum):
+    PRE = auto()
+    POST = auto()
 
 class CustomFormatter(logging.Formatter):
 
@@ -85,7 +95,6 @@ def split_by_ctx(instructions):
     # Initialize a list to hold lists of instructions
     segments = []
     current_segment = []
-    
     for instruction in instructions:
         if instruction.startswith('#####CTX#####'):
             # When a #####CTX##### marker is found, add the current segment to segments
@@ -347,7 +356,7 @@ def main():
         # 1) generate table based on DWARF information
         for file_item in target_files:
             log.info("Analyzing %s", file_item)
-            process_file(file_item.obj_path, analysis_list)
+            process_file(file_item.obj_path, analysis_list, set())
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
         fun_table_offsets = generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir)
         # print(colored(f"{empty_space}\n"), 'grey', attrs=['underline'])
@@ -364,9 +373,11 @@ def main():
         target_dir      = Path(args.binary).resolve().parent.parent / base_name
         result_dir      = Path(args.binary).resolve().parent.parent / "result" / base_name
         print(result_dir)
+
         # exit()
         vuln_file   = result_dir / f"{base_name}.vuln"
         taint_file  = result_dir / f"{base_name}.taint"
+        intel_file  = result_dir / f"{base_name}.intel"
         # Use the function to extract instructions from the file
         taint_sets = extract_taints(taint_file, vuln_file)
 
@@ -380,16 +391,25 @@ def main():
         log.info("Analyzing %s", binary_item)
         process_file(binary_item, analysis_list, taint_sets)
         pprint.pprint(target_fun_var_info)
-        exit()
+        # exit()
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
-        fun_table_offsets = generate_table(dwarf_var_count, dwarf_fun_var_info, result_dir)
+        # fun_table_offsets = generate_table(dwarf_var_count, dwarf_fun_var_info, result_dir)
+        fun_table_offsets = generate_table(dwarf_var_count, target_fun_var_info, result_dir)
+        pprint.pprint(fun_table_offsets)
+        # exit()
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
         bn_fun_var_info = process_binary(binary_item, analysis_list)
+        # exit()
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
         custom_pprint(bn_fun_var_info)
         custom_pprint(fun_table_offsets)
-        patch_count = rewriter(analysis_list, result_dir, str(asm_item), dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
+        if static_verifier(intel_file, Verify.PRE):
+            exit()
+            patch_count = rewriter(analysis_list, result_dir, str(asm_item), dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
         log.critical("Patch count %d", patch_count)
+        # There should be a new output file here to be passed into verifier
+        # verifier(output_file, Verify.POST)
+        exit()
 
 
 # Call main function
