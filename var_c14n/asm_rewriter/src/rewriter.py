@@ -25,10 +25,10 @@ asm_macros = """# var_c14n macros
 
 .macro lea_store_gs src, offset
 \tleaq  \src, %r11
-\tmovq  (%r11), %r12
+\tmovq  (%r11), %r10
 \trdgsbase %r11
 \tmovq  \offset(%r11), %r11
-\tmovq  %r12, (%r11)
+\tmovq  %r10, (%r11)
 .endm
 
 # Data movement macros
@@ -173,23 +173,23 @@ asm_macros = """# var_c14n macros
 # Arithmetic macros
 # ---- Addition ---- #
 .macro add_store_gs operand, offset, value
-\trdgsbase %r12
-\tmov	\offset(%r12), %r12 
+\trdgsbase %r10
+\tmov	\offset(%r10), %r10 
 \trdgsbase %r11
 \tmov	\offset(%r11), %r11
 \tmov (%r11), %r11
 \t.if \\value == 8
 \tadd \\operand, %r11b  # 8-bit 
-\tmov %r11b, (%r12)
+\tmov %r11b, (%r10)
 \t.elseif \\value == 16
 \tadd \\operand, %r11w  # 16-bit 
-\tmov %r11w, (%r12)
+\tmov %r11w, (%r10)
 \t.elseif \\value == 32
 \tadd \\operand, %r11d  # 32-bit 
-\tmov %r11d, (%r12)
+\tmov %r11d, (%r10)
 \t.elseif \\value == 64
 \tadd \\operand, %r11   # 64-bit 
-\tmov %r11, (%r12)
+\tmov %r11, (%r10)
 \t.endif
 .endm
 
@@ -213,23 +213,23 @@ asm_macros = """# var_c14n macros
 
 # ---- Subtraction ---- #
 .macro sub_store_gs operand, offset, value
-\trdgsbase %r12
-\tmov	\offset(%r12), %r12 
+\trdgsbase %r10
+\tmov	\offset(%r10), %r10 
 \trdgsbase %r11
 \tmov	\offset(%r11), %r11
 \tmov (%r11), %r11
 \t.if \\value == 8
 \tsub \\operand, %r11b  # 8-bit 
-\tmov %r11b, (%r12)
+\tmov %r11b, (%r10)
 \t.elseif \\value == 16
 \tsub \\operand, %r11w  # 16-bit 
-\tmov %r11w, (%r12)
+\tmov %r11w, (%r10)
 \t.elseif \\value == 32
 \tsub \\operand, %r11d  # 32-bit 
-\tmov %r11d, (%r12)
+\tmov %r11d, (%r10)
 \t.elseif \\value == 64
 \tsub \\operand, %r11   # 64-bit 
-\tmov %r11, (%r12)
+\tmov %r11, (%r10)
 \t.endif
 .endm
 
@@ -253,23 +253,23 @@ asm_macros = """# var_c14n macros
 
 # ---- Multiplication ---- #
 .macro imul_store_gs operand, offset, value
-\trdgsbase %r12
-\tmov	\offset(%r12), %r12 
+\trdgsbase %r10
+\tmov	\offset(%r10), %r10 
 \trdgsbase %r11
 \tmov	\offset(%r11), %r11
 \tmov (%r11), %r11
 \t.if \\value == 8
-\timul \\operand, %r13b  # 8-bit 
-\tmov %r13b, (%r12)
+\timul \\operand, %r9b  # 8-bit 
+\tmov %r9b, (%r10)
 \t.elseif \\value == 16
-\timul \\operand, %r13w  # 16-bit 
-\tmov %r13w, (%r12)
+\timul \\operand, %r9w  # 16-bit 
+\tmov %r9w, (%r10)
 \t.elseif \\value == 32
-\timul \\operand, %r13d  # 32-bit 
-\tmov %r13d, (%r12)
+\timul \\operand, %r9d  # 32-bit 
+\tmov %r9d, (%r10)
 \t.elseif \\value == 64
-\timul \\operand, %r13   # 64-bit 
-\tmov %r13, (%r12)
+\timul \\operand, %r9   # 64-bit 
+\tmov %r9, (%r10)
 \t.endif
 .endm
 
@@ -286,29 +286,29 @@ asm_macros = """# var_c14n macros
 \tmov (%r11), %r12d
 \timul %r12d, \dest  # 32-bit 
 \t.elseif \\value == 64
-\tmov (%r11), %r12
-\timul %r12, \dest   # 64-bit 
+\tmov (%r11), %r10
+\timul %r10, \dest   # 64-bit 
 \t.endif
 .endm
 
 .macro shl_store_gs operand, offset, value
-\trdgsbase %r12
-\tmov	\offset(%r12), %r12 
+\trdgsbase %r10
+\tmov	\offset(%r10), %r10 
 \trdgsbase %r11
 \tmov	\offset(%r11), %r11
 \tmov (%r11), %r11
 \t.if \\value == 8
 \tshl \\operand, %r11b  # 8-bit 
-\tmov %r11b, (%r12)
+\tmov %r11b, (%r10)
 \t.elseif \\value == 16
 \tshl \\operand, %r11w  # 16-bit 
-\tmov %r11w, (%r12)
+\tmov %r11w, (%r10)
 \t.elseif \\value == 32
 \tshl \\operand, %r11d  # 32-bit 
-\tmov %r11d, (%r12)
+\tmov %r11d, (%r10)
 \t.elseif \\value == 64
 \tshl \\operand, %r11   # 64-bit 
-\tmov %r11, (%r12)
+\tmov %r11, (%r10)
 \t.endif
 .endm
 """
@@ -552,7 +552,7 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
                 patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
             elif store_or_load == "load":
                 new_inst_type = "cmp_load_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "%s\t#%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
                 patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
         elif bn_var.patch_inst.inst_type == "and":
             logger.info("Patching with and_gs")
@@ -643,6 +643,7 @@ def rewriter(funlist, target_dir, target_file, dwarf_fun_var_info, bn_fun_var_in
                     except Exception as err:
                         logger.error("Skipping", type(err))
                         check = False
+                        
                     if debug:
                         # if currFun != "sort": # Debug
                         #     check = False

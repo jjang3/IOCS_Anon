@@ -398,13 +398,15 @@ def dwarf_analysis(input_binary):
                                 # This will return dereferenced DIE of a pointer type
                                 ptr_type_die = get_dwarf_type(dwarfinfo, type_die.attributes, 
                                                            type_die.cu, type_die.cu.cu_offset)
-                                
+                                # log.error("single ptr_type: %s %s", ptr_type_die.tag, ptr_type_die)
                                 if ptr_type_die != None:
                                     # There are cases where DW_TAG_pointer_type doesn't have type
                                     if 'DW_AT_name' in ptr_type_die.attributes:
                                         # If first deref is success, we can get the type name
                                         type_name = ptr_type_die.attributes['DW_AT_name'].value.decode()
-                                    elif ptr_type_die.tag == "DW_TAG_structure_type":
+                                    
+                                    if ptr_type_die.tag == "DW_TAG_structure_type":
+                                        log.debug("Checking struct")
                                         if 'DW_AT_byte_size' in ptr_type_die.attributes:
                                             byte_size   = ptr_type_die.attributes['DW_AT_byte_size'].value
                                         if 'DW_AT_decl_line' in ptr_type_die.attributes:
@@ -423,6 +425,7 @@ def dwarf_analysis(input_binary):
                                         # If we need to deref again because it is either struct or const
                                         dbl_ptr_type_die = get_dwarf_type(dwarfinfo, ptr_type_die.attributes,
                                                                         ptr_type_die.cu, ptr_type_die.cu.cu_offset)
+                                        log.error("dbl ptr_type: %s", dbl_ptr_type_die.tag)
                                         if 'DW_AT_name' in dbl_ptr_type_die.attributes:
                                             type_name = dbl_ptr_type_die.attributes['DW_AT_name'].value.decode()
                                         elif dbl_ptr_type_die.tag == "DW_TAG_subroutine_type":
@@ -449,13 +452,14 @@ def dwarf_analysis(input_binary):
                                                     type_name = trip_ptr_type_die.attributes['DW_AT_name'].value.decode()
                                 else:
                                     type_name = "null"
-                                log.error("ptr_type: %s", type_name)
+                                log.error("ptr_type: %s %d", type_name, struct_var)
                             
                                 if struct_var == True:
                                     continue
                                 struct_var  = False
                                 base_var    = True
                                 temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
+                                log.debug(temp_var)
                                 last_var.append(temp_var)
                             elif type_die.tag == "DW_TAG_typedef":
                                 typedef_name = type_die.attributes['DW_AT_name'].value.decode()

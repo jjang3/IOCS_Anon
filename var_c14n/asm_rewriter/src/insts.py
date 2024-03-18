@@ -1,6 +1,20 @@
 from enum import Enum
 
+class ReservedRegs(Enum):
+    r9 = True
+    r10 = True
+    r11 = True
+    
+    @classmethod
+    def has_value(cls, name):
+        return name in cls.__members__
+    
 class IntelInstruction(Enum):
+    # These instructions should not exist in PRE
+    RDFSBASE = False
+    RDGSBASE = False
+    
+    # General instructions
     AAA = True
     AAD = True
     AADD = True
@@ -754,8 +768,6 @@ class IntelInstruction(Enum):
     RCR = True
     RCR_R0 = True
     RCR_R4 = True
-    RDFSBASE = True
-    RDGSBASE = True
     RDMSR = True
     RDMSRLIST = True
     RDPID = True

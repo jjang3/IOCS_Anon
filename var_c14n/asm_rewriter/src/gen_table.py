@@ -30,8 +30,8 @@ def generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir):
             for var_idx, var in enumerate(vars):
                 if True:
                     print(var)
-                # if var_idx == 4: #Not work: 1,4,5
-                    #     print(var)
+                # if var_idx == 1: #Not work: 1,4,5
+                #     print(var)
                     #     exit()
                     if var_idx < var_patch: #and var_idx != 5: # and var_idx == 6: # (and var_idx is used to debug)
                         if var.base_type == "DW_TAG_base_type":
@@ -83,14 +83,14 @@ def generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir):
                                 table_offset += 8
                                 off_var_count += 1
                         # Commented for NGINX, not sure where the error is happening
-                        # elif (var.base_type == "DW_TAG_pointer_type"):
-                        #     if var.offset_expr != None:
-                        #         # logger.critical(var)
-                        #         # exit()
-                        #         logger.warning("Added")
-                        #         offset_expr_to_table.add((var.offset_expr, table_offset))
-                        #         table_offset += 8
-                        #         off_var_count += 1
+                        elif (var.base_type == "DW_TAG_pointer_type"):
+                            if var.offset_expr != None:
+                                # logger.critical(var)
+                                # exit()
+                                logger.warning("Added")
+                                offset_expr_to_table.add((var.offset_expr, table_offset))
+                                table_offset += 8
+                                off_var_count += 1
                         else:
                             # Currently skipping arrays and pointers
                             logger.error("Skipping: %s", var)

@@ -84,6 +84,13 @@ class BnFunData:
     end: int = None
     vars: list[BnVarData] = None
 
+# Creating a separate new binary disassembler as the purpose is a bit different (such as we need to analyze all functions)
+def process_new_binary(input_item, analysis_list):
+    with load(input_item.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
+        arch = Architecture['x86_64']
+        bn = BinAnalysis(bv)
+        return bn.analyze_new_binary(analysis_list)
+    
 def process_binary(input_item, analysis_list):
     with load(input_item.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
         arch = Architecture['x86_64']
@@ -127,6 +134,75 @@ class BinAnalysis:
         else:
             print(inst_ssa.__class__.__bases__)
     
+    def analyze_new_binary(self, analysis_list):
+        bn_fun_var_info = dict()
+        columns, rows = shutil.get_terminal_size(fallback=(80, 20))        
+        logger.info("Analyzing new binary")
+        
+        dis_inst_pattern = r"^\s*(\S+)\s+([^,]+)\s*(?:,\s*(.*))?$"
+                
+        # Regex to match the start and relevant registers
+        start_regex = re.compile(r"rdgsbase %r11")
+        register_regex = re.compile(r"%r(11|10|9)")
+
+        # To store the groups of instructions
+        instruction_sets = []
+        current_set = []
+                
+        # Flags
+        in_set = False
+        
+        for func in self.bv.functions:
+            self.fun = func.name
+            llil_fun = func.low_level_il
+            addr_range = func.address_ranges[0]
+            begin   = addr_range.start
+            end     = addr_range.end
+            logger.info(self.fun)
+            for llil_bb in llil_fun:
+                for llil_inst in llil_bb:
+                    dis_inst = self.bv.get_disassembly(llil_inst.address)
+                    # logger.debug(dis_inst)
+                    # print(dis_inst)
+                    match = re.match(dis_inst_pattern, dis_inst)
+                    if match:
+                        opcode = match.group(1)
+                        # logger.debug(opcode)
+                        if opcode == "rdgsbase":
+                            if self.fun not in analysis_list:
+                                logger.error("Wrong patch found")
+                                None
+                            else:
+                                logger.critical("Function successfully checked")
+                                None
+                    if start_regex.search(dis_inst):
+                        # Start of a new set
+                        in_set = True
+                        logger.warning(dis_inst)
+                        current_set.append(dis_inst)
+                    elif in_set and register_regex.search(dis_inst):
+                        # Within a set and line contains one of the registers
+                        logger.debug(dis_inst)
+                        current_set.append(dis_inst)
+                    elif in_set:
+                        # Still within a set but no relevant register in this line
+                        current_set.append(dis_inst)
+                    # If the current set ends with a relevant register, it's considered the last instruction of the set
+                    if in_set and ("%r11" in dis_inst or "%r10" in dis_inst or "%r9" in dis_inst):
+                        instruction_sets.append("\n".join(current_set))
+                        current_set = []
+                        in_set = False
+                        
+                
+            # Ensure any remaining instructions are captured if they end the input
+            if current_set:
+                instruction_sets.append("\n".join(current_set))
+
+            # # Output the instruction sets
+            for i, inst_set in enumerate(instruction_sets, 1):
+                print(f"Instruction Set {i}:\n{inst_set}\n")            
+            
+                    
     # Need debug info to handle static functions
     def analyze_binary(self, analysis_list):
         bn_fun_var_info = dict()

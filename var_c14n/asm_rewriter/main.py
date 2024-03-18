@@ -26,9 +26,6 @@ import pprint
 from dataclasses import dataclass, field
 
 
-class Verify(Enum):
-    PRE = auto()
-    POST = auto()
 
 class CustomFormatter(logging.Formatter):
 
@@ -368,7 +365,7 @@ def main():
         # # 2) after generating table, need to perform binary analysis for each files
         for file_item in target_files:
             bn_fun_var_info = process_binary(file_item.obj_path, analysis_list)
-            if not static_verifier(file_item.intel_path, Verify.PRE):
+            if not static_verifier(file_item.intel_path, "PRE", None):
                 exit()
             patch_count += rewriter(analysis_list, target_dir, file_item.asm_path, dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
             gen_obj_file(file_item)
@@ -379,7 +376,7 @@ def main():
         target_dir      = Path(args.binary).resolve().parent.parent / base_name
         result_dir      = Path(args.binary).resolve().parent.parent / "result" / base_name
         print(result_dir)
-
+        
         # exit()
         vuln_file   = result_dir / f"{base_name}.vuln"
         taint_file  = result_dir / f"{base_name}.taint"
@@ -394,6 +391,11 @@ def main():
                 analysis_list = line.split(',')
         binary_item     = result_dir / f"{base_name}.out"  # Updated variable name for clarity
         asm_item        = result_dir / f"{base_name}.s"  # Updated variable name for clarity
+        obj_item        = result_dir / f"{base_name}.o"  # Updated variable name for clarity
+        temp_file = FileData(base_name)
+        temp_file.asm_path = asm_item
+        temp_file.obj_path = obj_item
+        temp_file.intel_path = intel_file
         log.info("Analyzing %s", binary_item)
         process_file(binary_item, analysis_list, taint_sets)
         pprint.pprint(target_fun_var_info)
@@ -409,12 +411,26 @@ def main():
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
         custom_pprint(bn_fun_var_info)
         custom_pprint(fun_table_offsets)
-        if static_verifier(intel_file, Verify.PRE):
+        failed_insts = list()
+        result, failed_insts = static_verifier(intel_file, "PRE", None)
+        result = True
+        if not result:
+            log.error("Failed check")
+            for inst in failed_insts:
+                log.debug(inst)
             # exit()
+            
+        else:
             patch_count = rewriter(analysis_list, result_dir, str(asm_item), dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
+            log.critical("Patch count %d", patch_count)
+            gen_obj_file(temp_file)
+            # time.sleep(5)
+            static_verifier(temp_file.obj_path, "POST", analysis_list)
+        
+        patch_count = rewriter(analysis_list, result_dir, str(asm_item), dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
         log.critical("Patch count %d", patch_count)
-        # There should be a new output file here to be passed into verifier
-        # verifier(output_file, Verify.POST)
+        #  There should be a new output file here to be passed into verifier
+        #verifier(output_file, Verify.POST)
         exit()
 
 
