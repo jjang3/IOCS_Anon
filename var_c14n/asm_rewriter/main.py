@@ -17,9 +17,11 @@ sys.path.append(os.path.join(os.getcwd(), 'src'))
 # from dwarf_analysis import *
 from dwarf_analysis_old import *
 from gen_table import *
-from bin_analysis import *
-from rewriter import *
+# from bin_analysis import *
+# from rewriter import *
 from verifier import *
+import bin_analysis
+import rewriter
 
 from pathlib import Path
 import pprint 
@@ -303,9 +305,11 @@ def process_file(input_item, analysis_list, taint_sets):
             # pprint.pprint(dwarf_fun_var_info[var[1]])
             target_var_list = list()
             for dwarf_var in dwarf_fun_var_info[var[1]]:
-                print(dwarf_var.name)
+                print(dwarf_var)
+                dwarf_var: VarData
                 if dwarf_var.name == var[0]:
                     log.critical("Found")
+                    dwarf_var.vuln = True
                     target_var_list.append(dwarf_var)
             target_fun_var_info[var[1]] = target_var_list.copy()
         except:
@@ -364,7 +368,7 @@ def main():
         patch_count = 0
         # # 2) after generating table, need to perform binary analysis for each files
         for file_item in target_files:
-            bn_fun_var_info = process_binary(file_item.obj_path, analysis_list)
+            bn_fun_var_info = bin_analysis.process_binary(file_item.obj_path, analysis_list)
             if not static_verifier(file_item.intel_path, "PRE", None):
                 exit()
             patch_count += rewriter(analysis_list, target_dir, file_item.asm_path, dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
@@ -406,7 +410,7 @@ def main():
         pprint.pprint(fun_table_offsets)
         # exit()
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
-        bn_fun_var_info = process_binary(binary_item, analysis_list)
+        bn_fun_var_info = bin_analysis.process_binary(binary_item, analysis_list)
         # exit()
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
         custom_pprint(bn_fun_var_info)
@@ -421,14 +425,15 @@ def main():
             # exit()
             
         else:
-            patch_count = rewriter(analysis_list, result_dir, str(asm_item), dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
+            patch_count = rewriter.rewriter(analysis_list, result_dir, str(asm_item), dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
             log.critical("Patch count %d", patch_count)
+            # exit()
             gen_obj_file(temp_file)
-            # time.sleep(5)
+            # # time.sleep(5)
             static_verifier(temp_file.obj_path, "POST", analysis_list)
         
-        patch_count = rewriter(analysis_list, result_dir, str(asm_item), dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
-        log.critical("Patch count %d", patch_count)
+        # patch_count = rewriter(analysis_list, result_dir, str(asm_item), dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
+        # log.critical("Patch count %d", patch_count)
         #  There should be a new output file here to be passed into verifier
         #verifier(output_file, Verify.POST)
         exit()

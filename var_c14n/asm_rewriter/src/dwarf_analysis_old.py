@@ -117,6 +117,8 @@ class VarData:
     fun_name: str = None
     offset_expr: str = None
     struct: Optional[StructData] = None
+    vuln: bool = False
+    tag: str = None
 
 fun_list = list()
 @dataclass(unsafe_hash=True)
@@ -294,7 +296,7 @@ def dwarf_analysis(input_binary):
                                                 reg_to_use = "rsp"
                                     idx += 1
                 
-                if (DIE.tag == "DW_TAG_variable"):
+                if (DIE.tag == "DW_TAG_variable" or DIE.tag == "DW_TAG_formal_parameter"): # 
                     # This is used for variable that is declared within the function
                     var_name        = None
                     reg_offset      = None
@@ -338,6 +340,7 @@ def dwarf_analysis(input_binary):
                                     working_var.offset_expr = reg_offset
                                     working_var.begin = hex(int(var_offset))
                                     working_var.end = hex(int(var_offset) + int(working_var.size))
+                                    
                                     for i, member in enumerate(working_var.member_list):
                                         if member.offset != None:
                                             if i+1 < len(working_var.member_list):
@@ -360,7 +363,9 @@ def dwarf_analysis(input_binary):
                                                 member.offset_expr = member_var_offset
                                     temp_var = VarData(var_name, var_offset, working_var.name, 
                                                        "DW_TAG_structure_type", fun_name, reg_offset, working_var)
-                                    log.critical("Inserting struct var %s", temp_var.name)
+                                    temp_var.tag = str(DIE.tag)
+                                    log.critical("Inserting struct var %s %s", temp_var.name, DIE.tag)
+                                    # exit()
                                     struct_var = False
                                     base_var = True
                                     var_list.append(temp_var)
@@ -368,11 +373,13 @@ def dwarf_analysis(input_binary):
                                 elif base_var == True and gv_var == True:
                                     if var_name != None:
                                         working_var = last_var.pop()
+                                        working_var.tag = str(DIE.tag)
                                         working_var.offset = var_offset
                                         log.critical("Inserting global var %s", working_var.name)
                                         var_list.append(working_var)
                                 elif base_var == True:
                                     working_var = last_var.pop()
+                                    working_var.tag = str(DIE.tag)
                                     working_var.offset = var_offset #(var_offset)
                                     working_var.offset_expr = reg_offset
                                     log.critical("Inserting base var %s", working_var.name)
@@ -846,6 +853,7 @@ def dwarf_analysis(input_binary):
             fp.write("\tOffset: %s\n" % var.offset)
             fp.write("\tVarType: %s\n" % var.var_type)
             fp.write("\tBaseType: %s\n" % var.base_type)
+            fp.write("\tTag: %s\n" % var.tag)
             if var.base_type == "DW_TAG_structure_type":
                 fp.write("        --------------------------\n\t\tStructName: %s" % var.struct.name)
                 fp.write("                                  \n\t\tStructBegin: %s" % var.struct.begin)

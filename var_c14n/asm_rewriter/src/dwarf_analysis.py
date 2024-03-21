@@ -155,7 +155,8 @@ def parse_dwarf_type(DIE, dwarfinfo: DWARFInfo, var_name, fun_name, type_name, s
             if 'DW_AT_name' in ptr_type_die.attributes:
                 # If first deref is success, we can get the type name
                 type_name = ptr_type_die.attributes['DW_AT_name'].value.decode()
-            elif ptr_type_die.tag == "DW_TAG_structure_type":
+            
+            if ptr_type_die.tag == "DW_TAG_structure_type":
                 if 'DW_AT_byte_size' in ptr_type_die.attributes:
                     byte_size   = ptr_type_die.attributes['DW_AT_byte_size'].value
                 if 'DW_AT_decl_line' in ptr_type_die.attributes:
@@ -212,7 +213,7 @@ def parse_dwarf_type(DIE, dwarfinfo: DWARFInfo, var_name, fun_name, type_name, s
         # last_var.append(temp_var)
         return base_var, struct_var, temp_var
     elif type_die.tag == "DW_TAG_typedef":
-        # logger.info(type_die.attributes)
+        logger.info(type_die.attributes)
         typedef_name = type_die.attributes['DW_AT_name'].value.decode()
         try:
             typedef_name = typedef_name.decode('utf-8')

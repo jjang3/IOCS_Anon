@@ -143,6 +143,7 @@ class BinAnalysis:
                 
         # Regex to match the start and relevant registers
         start_regex = re.compile(r"rdgsbase %r11")
+        end_regex   = re.compile(r"xor\s+%r11,\s*%r11")
         register_regex = re.compile(r"%r(11|10|9)")
 
         # To store the groups of instructions
@@ -159,49 +160,48 @@ class BinAnalysis:
             begin   = addr_range.start
             end     = addr_range.end
             logger.info(self.fun)
-            for llil_bb in llil_fun:
+            for llil_bb in func.low_level_il:
+            # Iterate through instructions
                 for llil_inst in llil_bb:
                     dis_inst = self.bv.get_disassembly(llil_inst.address)
-                    # logger.debug(dis_inst)
                     # print(dis_inst)
-                    match = re.match(dis_inst_pattern, dis_inst)
-                    if match:
-                        opcode = match.group(1)
-                        # logger.debug(opcode)
-                        if opcode == "rdgsbase":
-                            if self.fun not in analysis_list:
-                                logger.error("Wrong patch found")
-                                None
-                            else:
-                                logger.critical("Function successfully checked")
-                                None
+                    # Check if current instruction matches start condition
                     if start_regex.search(dis_inst):
-                        # Start of a new set
+                        # Start of a new instruction set
+                        logger.warning("New instruction set %s", dis_inst)
                         in_set = True
-                        logger.warning(dis_inst)
                         current_set.append(dis_inst)
-                    elif in_set and register_regex.search(dis_inst):
-                        # Within a set and line contains one of the registers
-                        logger.debug(dis_inst)
-                        current_set.append(dis_inst)
+                    # Check if currently collecting instructions
                     elif in_set:
-                        # Still within a set but no relevant register in this line
+                        logger.debug("Inserting %s\n\t\t\t%s", llil_inst, type(llil_inst.ssa_form))
+                        if type(llil_inst.ssa_form) == binaryninja.lowlevelil.LowLevelILStoreSsa:
+                            ssa_reg = self.get_ssa_reg(llil_inst.src.ssa_form)
+                            logger.debug(ssa_reg)
+                        # if (type(ssa_reg) != binaryninja.lowlevelil.LowLevelILLoadSsa):
+                            try:
+                                def_llil_inst = llil_fun.get_ssa_reg_uses(ssa_reg)
+                                if def_llil_inst != None:
+                                    logger.debug(def_llil_inst)
+                            except:
+                                None
                         current_set.append(dis_inst)
-                    # If the current set ends with a relevant register, it's considered the last instruction of the set
-                    if in_set and ("%r11" in dis_inst or "%r10" in dis_inst or "%r9" in dis_inst):
-                        instruction_sets.append("\n".join(current_set))
-                        current_set = []
-                        in_set = False
-                        
-                
-            # Ensure any remaining instructions are captured if they end the input
-            if current_set:
-                instruction_sets.append("\n".join(current_set))
+                        # Check if current instruction matches end condition
+                        if end_regex.search(dis_inst):
+                            # End of the current instruction set
+                            instruction_sets.append("\n".join(current_set))
+                            logger.error(dis_inst)
+                            current_set = []
+                            in_set = False
+                    # Check if line contains one of the relevant registers
+                    # elif register_regex.search(dis_inst):
+                    #     # Add the instruction to the current set if relevant register is found outside the set
+                    #     current_set.append(dis_inst)
 
-            # # Output the instruction sets
-            for i, inst_set in enumerate(instruction_sets, 1):
-                print(f"Instruction Set {i}:\n{inst_set}\n")            
-            
+        # Output the instruction sets
+        for i, inst_set in enumerate(instruction_sets, 1):
+            print(f"Instruction Set {i}:\n{inst_set}\n")
+    
+        
                     
     # Need debug info to handle static functions
     def analyze_binary(self, analysis_list):

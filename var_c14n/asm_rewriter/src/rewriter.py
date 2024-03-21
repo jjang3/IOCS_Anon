@@ -11,7 +11,7 @@ parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
-from main import *
+import main
 
 from asm_analysis import *
 
@@ -21,6 +21,7 @@ asm_macros = """# var_c14n macros
 \trdgsbase %r11
 \tmov   \offset(%r11), %r11
 \tlea   (%r11), \dest
+\txor   %r11, %r11
 .endm
 
 .macro lea_store_gs src, offset
@@ -29,6 +30,8 @@ asm_macros = """# var_c14n macros
 \trdgsbase %r11
 \tmovq  \offset(%r11), %r11
 \tmovq  %r10, (%r11)
+\txor   %r10, %r10
+\txor   %r11, %r11
 .endm
 
 # Data movement macros
@@ -44,6 +47,7 @@ asm_macros = """# var_c14n macros
 \t.elseif \\value == 64
 \t\tmovq \src, (%r11)  # 64-bit
 \t.endif
+\txor   %r11, %r11
 .endm
 
 .macro mov_load_gs dest, offset, value
@@ -58,6 +62,7 @@ asm_macros = """# var_c14n macros
 \t.elseif \\value == 64
 \t\tmovq (%r11), \dest  # 64-bit
 \t.endif
+\txor   %r11, %r11
 .endm
 
 .macro mov_arr_store_gs src, offset, disp, value
@@ -73,6 +78,7 @@ asm_macros = """# var_c14n macros
 \t.elseif \\value == 64
 \t\tmovq \src, (%r11)  # 64-bit 
 \t.endif
+\txor   %r11, %r11
 .endm
 
 .macro mov_arr_load_gs src, offset, disp, value
@@ -88,18 +94,21 @@ asm_macros = """# var_c14n macros
 \t.elseif \\value == 64
 \t\tmovq (%r11), \dest  # 64-bit
 \t.endif
+\txor   %r11, %r11
 .endm
 
 .macro movss_store_gs src, offset, value
 \trdgsbase %r11
 \tmov \offset(%r11), %r11
 \t\tmovss \src, (%r11)  # 64-bit
+\txor   %r11, %r11
 .endm
 
 .macro movss_load_gs dest, offset, value
 \trdgsbase %r11
 \tmov \offset(%r11), %r11
 \tmovss (%r11), \dest  # 64-bit
+\txor   %r11, %r11
 .endm
 
 .macro movzx_load_gs dest, offset, value
@@ -110,6 +119,7 @@ asm_macros = """# var_c14n macros
 \t.elseif \\value == 16
 \t\tmovzx (%r11), \dest  # 16-bit
 \t.endif
+\txor   %r11, %r11
 .endm
 
 # Comparison / Shift macros
@@ -126,6 +136,7 @@ asm_macros = """# var_c14n macros
 \t.elseif \\value == 64
 \t\tcmpq \operand, (%r11)  # 64-bit
 \t.endif
+\txor   %r11, %r11
 .endm
 
 .macro cmp_load_gs operand, offset, value
@@ -140,6 +151,7 @@ asm_macros = """# var_c14n macros
 \t.elseif \\value == 64
 \t\tcmpq (%r11), \operand  # 64-bit
 \t.endif
+\txor   %r11, %r11
 .endm
 
 .macro and_store_gs operand, offset, value
@@ -154,6 +166,7 @@ asm_macros = """# var_c14n macros
 \t.elseif \\value == 64
 \t\tandq \operand, (%r11)  # 64-bit
 \t.endif
+\txor   %r11, %r11
 .endm
 
 .macro and_load_gs operand, offset, value
@@ -168,6 +181,7 @@ asm_macros = """# var_c14n macros
 \t.elseif \\value == 64
 \t\tandq (%r11), \operand  # 64-bit
 \t.endif
+\txor   %r11, %r11
 .endm
 
 # Arithmetic macros
@@ -191,6 +205,8 @@ asm_macros = """# var_c14n macros
 \tadd \\operand, %r11   # 64-bit 
 \tmov %r11, (%r10)
 \t.endif
+\txor   %r10, %r10
+\txor   %r11, %r11
 .endm
 
 .macro add_load_gs dest, offset, value
@@ -209,6 +225,7 @@ asm_macros = """# var_c14n macros
 \tmov (%r11), %r11
 \tadd %r11, \dest   # 64-bit 
 \t.endif
+\txor   %r11, %r11
 .endm
 
 # ---- Subtraction ---- #
@@ -231,6 +248,8 @@ asm_macros = """# var_c14n macros
 \tsub \\operand, %r11   # 64-bit 
 \tmov %r11, (%r10)
 \t.endif
+\txor   %r10, %r10
+\txor   %r11, %r11
 .endm
 
 .macro sub_load_gs dest, offset, value
@@ -249,6 +268,7 @@ asm_macros = """# var_c14n macros
 \tmov (%r11), %r11
 \tsub %r11, \dest   # 64-bit 
 \t.endif
+\txor   %r11, %r11
 .endm
 
 # ---- Multiplication ---- #
@@ -271,24 +291,29 @@ asm_macros = """# var_c14n macros
 \timul \\operand, %r9   # 64-bit 
 \tmov %r9, (%r10)
 \t.endif
+\txor   %r9, %r9
+\txor   %r10, %r10
+\txor   %r11, %r11
 .endm
 
 .macro imul_load_gs dest, offset, value
 \trdgsbase %r11
 \tmov \offset(%r11), %r11
 \t.if \\value == 8
-\tmov (%r11), %r12b
-\timul %r12b, \dest  # 8-bit 
+\tmov (%r11), %r10b
+\timul %r10b, \dest  # 8-bit 
 \t.elseif \\value == 16
-\tmov (%r11), %r12w
-\timul %r12w, \dest  # 16-bit 
+\tmov (%r11), %r10w
+\timul %r10w, \dest  # 16-bit 
 \t.elseif \\value == 32
-\tmov (%r11), %r12d
-\timul %r12d, \dest  # 32-bit 
+\tmov (%r11), %r0d
+\timul %r10d, \dest  # 32-bit 
 \t.elseif \\value == 64
 \tmov (%r11), %r10
 \timul %r10, \dest   # 64-bit 
 \t.endif
+\txor   %r10, %r10
+\txor   %r11, %r11
 .endm
 
 .macro shl_store_gs operand, offset, value
@@ -310,6 +335,8 @@ asm_macros = """# var_c14n macros
 \tshl \\operand, %r11   # 64-bit 
 \tmov %r11, (%r10)
 \t.endif
+\txor   %r10, %r10
+\txor   %r11, %r11
 .endm
 """
 
@@ -336,10 +363,55 @@ def traverse_ast(tgt_ast, bn_var_info, depth):
 # This list will contain lea_store_gs insts that will be used to update the value after reference returns
 lea_list = list()
 patch_inst_list = list()
+arg_reg = list() # This is used as a stack to keep track of what prev instruction register was.
+
+def check_arg_reg(input_reg):
+    # If empty, just return false
+    if len(arg_reg) < 1:
+        return False
+    
+    arg_reg_regex   = r"\b(e(di|si)|r(di|si|dx|cx|8|9))\b"
+    entire_reg = None
+    suffix_reg = None
+
+    matches = re.findall(arg_reg_regex, input_reg)
+    for match in matches:
+        entire_reg = match[0]
+        suffix_reg = match[2]
+        
+    logger.info("Checking arg reg: %s | %s - %s | %s", input_reg, entire_reg, suffix_reg, arg_reg[-1])
+    if suffix_reg == "di":
+        return True
+    elif suffix_reg == "si":
+        if arg_reg[-1] == "%rdi" or arg_reg[-1] == "%edi":
+            return True
+        else:
+            return False
+    elif suffix_reg == "dx":
+        if arg_reg[-1] == "%rsi" or arg_reg[-1] == "%esi":
+            return True
+        else:
+            return False
+    elif suffix_reg == "cx":
+        if arg_reg[-1] == "%rdx" or arg_reg[-1] == "%edx":
+            return True
+        else:
+            return False
+    elif entire_reg == "r8":
+        if arg_reg[-1] == "%rcx" or arg_reg[-1] == "%ecx":
+            return True
+        else:
+            return False
+    elif entire_reg == "r9":
+        if arg_reg[-1] == "%r8":
+            return True
+        else:
+            return False
 
 def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt_offset, dwarf_var_info, offset_targets: set):
     logger.critical("Patch the instruction %s | Offset: %d", dis_inst, tgt_offset)
     # parse_ast(bn_var.asm_syntax_tree)
+        
     off_regex       = r"(-|\$|)(-?[0-9].*\(%r..*\))"
     array_regex = r"(-\d+)\((%\w+)(?:\+(%\w+))?\)"
     #offset_expr_regex = r'(\-[0-9].*)\((.*)\)'
@@ -404,6 +476,8 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
             # line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d" % 
             #             (dis_inst, new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
     # logger.debug(bn_var)
+    vuln = False
+    param = False
     if bn_var.arg == True and bn_var.patch_inst.inst_type != "lea":
         return dis_inst
     elif bn_var.arg == True and bn_var.patch_inst.inst_type == "lea":
@@ -437,6 +511,24 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
         logger.debug(bn_var)
         logger.debug(lea_list)
         return dis_inst
+    elif bn_var.arg == False:
+        for var in dwarf_var_info:
+            if var.offset_expr == bn_var.offset_expr:
+                logger.warning("Found the variable in DWARF table")
+                if var.vuln == True:
+                    logger.warning("Found vulnerable variable")
+                    vuln = True
+            if var.tag == "DW_TAG_formal_parameter":
+                logger.warning("Parameter found")
+                if check_arg_reg(temp_inst.src):
+                    logger.error("Parameter setup")
+                    param = True
+                else:
+                    logger.error("False")
+                
+                # logger.debug(arg_reg.pop())
+                
+    
 
     if line == None:
         # If line is None by now, it means patching without any context register
@@ -466,9 +558,19 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
                     patch_inst_line = "\t%s\t%s, %d, %s, %d" % (new_inst_type, temp_inst.dest, tgt_offset, arr_regex.group(3), value)
             else:
                 if store_or_load == "store":
-                    new_inst_type = "mov_store_gs"
-                    line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
-                    patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
+                        new_inst_type = "mov_store_gs" # Need to think about how to make this work for NGINX
+                        if vuln == True:
+                            if param == True:
+                                # This needs to be "#" with the register to prevent exploit 
+                                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, 
+                                                                                     temp_inst.src, tgt_offset, value), dis_inst)
+                            else:
+                                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, 
+                                                                                        temp_inst.src, tgt_offset, value), dis_inst)
+                        else:
+                            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, 
+                                                                                     temp_inst.src, tgt_offset, value), dis_inst)
+                        patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
                 elif store_or_load == "load":
                     new_inst_type = "mov_load_gs"
                     logger.debug(bn_var)
@@ -650,9 +752,9 @@ def rewriter(funlist, target_dir, target_file, dwarf_fun_var_info, bn_fun_var_in
                         # else:
                         #     check = True
                         None
-                        custom_pprint(dwarf_var_info)
-                        custom_pprint(bninja_info)
-                        custom_pprint(offset_targets)
+                        main.custom_pprint(dwarf_var_info)
+                        main.custom_pprint(bninja_info)
+                        main.custom_pprint(offset_targets)
                     else:
                         if offset_targets != None:
                             for tgt in offset_targets:
@@ -726,6 +828,7 @@ def rewriter(funlist, target_dir, target_file, dwarf_fun_var_info, bn_fun_var_in
                                     # logger.warning(temp_inst.inst_print())
                                     logger.warning("Debug found")
                     new_inst = None
+                    
                     for idx, bn_var in enumerate(bninja_info):
                         # logger.warning(bn_var.patch_inst.inst_print())
                         if debug:
@@ -765,6 +868,8 @@ def rewriter(funlist, target_dir, target_file, dwarf_fun_var_info, bn_fun_var_in
                         # print("Here")
                             # if offset_expr in 
                             # parse_ast(bn_var.asm_syntax_tree)
+                    logger.info("Inserting %s", temp_inst.src)
+                    arg_reg.append(temp_inst.src)
                     if new_inst != None:
                         patch_count += 1
                         logger.debug("\n%s",new_inst)
