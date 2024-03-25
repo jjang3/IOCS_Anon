@@ -52,7 +52,7 @@ def parse_assembly_instructions(filename):
     return instructions
 
 
-def static_verifier(file_path, flag, analysis_list):
+def static_verifier(file_path, flag, analysis_list, target_fun_var_info):
     verify_count = 0
     check = True
     failed_insts = list()
@@ -80,14 +80,18 @@ def static_verifier(file_path, flag, analysis_list):
                     logger.critical("Checked")
                     None
                 else:
+                    # This is critical so we exit, since it means there is an unfamilliar opcode detected
                     logger.error("Verify failed %s", opcode)
+                    exit()
                     check = False
                 
                 operand1 = inst_regex.group(2)  # Always present for this pattern
                 print(operand1)
                 reg_check = insts.ReservedRegs.has_value(operand1)
                 if reg_check == True:
-                    logger.error("Verify failed %s", opcode)
+                    # Register r9,r10,r11 is used, but it's not critical, we just take note of it
+                    logger.warning("Verify failed %s", instruction)
+                    # exit()
                     check = False
                     failed_insts.append(instruction)
                 else:
@@ -98,7 +102,9 @@ def static_verifier(file_path, flag, analysis_list):
                 if operand2 is not None:
                     reg_check = insts.ReservedRegs.has_value(operand1)
                     if reg_check is True:
-                        logger.error("Verify failed %s", opcode)
+                        # Register r9,r10,r11 is used, but it's not critical, we just take note of it
+                        logger.warning("Verify failed %s", instruction)
+                        # exit()
                         failed_insts.append(instruction)
                         check = False
                     else:
@@ -117,14 +123,14 @@ def static_verifier(file_path, flag, analysis_list):
     
     elif flag == "POST":
         logger.info("Verify compiled binary %s", file_path)
-        # new_bn_fun_var_info = bin_analysis.process_new_binary(file_path, analysis_list)
-        bin_analysis.process_new_binary(file_path, analysis_list)
+        new_bn_fun_var_info = bin_analysis.process_new_binary(file_path, analysis_list, target_fun_var_info)
+        # bin_analysis.process_new_binary(file_path, analysis_list)
         # main.custom_pprint(new_bn_fun_var_info)
         # for fun in new_bn_fun_var_info:
         #     for var in new_bn_fun_var_info[fun]:
         #         var: bin_analysis.BnVarData
         #         # logger.debug(var.patch_inst.inst_print())
-        #         logger.debug(var.patch_inst.inst_type )
-                # if var.patch_inst.inst_type == "rdgsbase":
-                #     logger.error("Found")
+        #         logger.debug(var.patch_inst.inst_type)
+        #         if var.patch_inst.inst_type == "rdgsbase":
+        #             logger.error("Found")
             # logger.debug(bn_var.patch_inst)

@@ -4,6 +4,7 @@ import shutil
 import sys
 import os
 import logging
+import pprint
 
 # Get the same logger instance. Use __name__ to get a logger with a hierarchical name or a specific string to get the exact same logger.
 logger = logging.getLogger('main')
@@ -85,11 +86,11 @@ class BnFunData:
     vars: list[BnVarData] = None
 
 # Creating a separate new binary disassembler as the purpose is a bit different (such as we need to analyze all functions)
-def process_new_binary(input_item, analysis_list):
+def process_new_binary(input_item, analysis_list, target_fun_var_info):
     with load(input_item.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
         arch = Architecture['x86_64']
         bn = BinAnalysis(bv)
-        return bn.analyze_new_binary(analysis_list)
+        return bn.analyze_new_binary(analysis_list, target_fun_var_info)
     
 def process_binary(input_item, analysis_list):
     with load(input_item.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
@@ -134,17 +135,19 @@ class BinAnalysis:
         else:
             print(inst_ssa.__class__.__bases__)
     
-    def analyze_new_binary(self, analysis_list):
-        bn_fun_var_info = dict()
+    def analyze_new_binary(self, analysis_list, target_fun_var_info):
+        
         columns, rows = shutil.get_terminal_size(fallback=(80, 20))        
         logger.info("Analyzing new binary")
         
         dis_inst_pattern = r"^\s*(\S+)\s+([^,]+)\s*(?:,\s*(.*))?$"
                 
         # Regex to match the start and relevant registers
-        start_regex = re.compile(r"rdgsbase %r11")
+        rdgs_regex = re.compile(r"rdgsbase %r11")
+        start_regex = re.compile(r'test\s+%r11,\s*%r11')
         end_regex   = re.compile(r"xor\s+%r11,\s*%r11")
         register_regex = re.compile(r"%r(11|10|9)")
+
 
         # To store the groups of instructions
         instruction_sets = []
@@ -160,46 +163,91 @@ class BinAnalysis:
             begin   = addr_range.start
             end     = addr_range.end
             logger.info(self.fun)
-            for llil_bb in func.low_level_il:
-            # Iterate through instructions
-                for llil_inst in llil_bb:
-                    dis_inst = self.bv.get_disassembly(llil_inst.address)
-                    # print(dis_inst)
-                    # Check if current instruction matches start condition
+            sorted_fun_addr = list()
+            
+            if self.fun in analysis_list:
+            # if self.fun == "url_decode":
+                try:
+                    pprint.pprint(target_fun_var_info[self.fun])
+                except:
+                    None
+                # exit()
+                for block in func:
+                    for inst in block.get_disassembly_text():
+                        # print(dis_inst, hex(instruction.address))
+                        sorted_fun_addr.append(inst.address)
+                sorted_fun_addr.sort()
+                in_set = False
+                mid_set = False
+                current_set = []
+                instruction_sets = {}
+                key_instruction = None
+
+                for i, addr in enumerate(sorted_fun_addr):
+                    # Need to sort first due to unordered basic block addresses
+                    dis_inst = self.bv.get_disassembly(addr)
                     if start_regex.search(dis_inst):
-                        # Start of a new instruction set
-                        logger.warning("New instruction set %s", dis_inst)
+                        # print(dis_inst)
+                        # Mark the start of a new instruction set and prepare to capture the key instruction on the next line
                         in_set = True
-                        current_set.append(dis_inst)
-                    # Check if currently collecting instructions
+                        if i + 2 < len(sorted_fun_addr):
+                            key_instruction = self.bv.get_disassembly(sorted_fun_addr[i + 2])
+                            # print(key_instruction, in_set)
+                        continue  # Skip adding the jz instruction itself to the sequence
                     elif in_set:
-                        logger.debug("Inserting %s\n\t\t\t%s", llil_inst, type(llil_inst.ssa_form))
-                        if type(llil_inst.ssa_form) == binaryninja.lowlevelil.LowLevelILStoreSsa:
-                            ssa_reg = self.get_ssa_reg(llil_inst.src.ssa_form)
-                            logger.debug(ssa_reg)
-                        # if (type(ssa_reg) != binaryninja.lowlevelil.LowLevelILLoadSsa):
-                            try:
-                                def_llil_inst = llil_fun.get_ssa_reg_uses(ssa_reg)
-                                if def_llil_inst != None:
-                                    logger.debug(def_llil_inst)
-                            except:
-                                None
-                        current_set.append(dis_inst)
-                        # Check if current instruction matches end condition
+                        # print(dis_inst)
+                        # Once the key_instruction is set, start adding instructions to the current set
+                        if mid_set:
+                            current_set.append(dis_inst)
+                        if rdgs_regex.search(dis_inst):
+                            mid_set = True
                         if end_regex.search(dis_inst):
                             # End of the current instruction set
-                            instruction_sets.append("\n".join(current_set))
-                            logger.error(dis_inst)
-                            current_set = []
-                            in_set = False
-                    # Check if line contains one of the relevant registers
-                    # elif register_regex.search(dis_inst):
-                    #     # Add the instruction to the current set if relevant register is found outside the set
-                    #     current_set.append(dis_inst)
-
-        # Output the instruction sets
-        for i, inst_set in enumerate(instruction_sets, 1):
-            print(f"Instruction Set {i}:\n{inst_set}\n")
+                            # Map the collected instructions to the dynamically identified key_instruction
+                            if key_instruction:
+                                instruction_sets[key_instruction] = "\n".join(current_set)
+                            in_set = False  # Reset for the next sequence
+                            mid_set = False
+                            current_set = []  # Clear the current set for the next sequence
+                            key_instruction = None  # Reset key_instruction for the next sequence
+                        
+                for key_instruction, instruction_set in instruction_sets.items():
+                    src_register = None
+                    offset_decimal = None
+                    offset_regex = r"mov\s+(\%\w+),\s+qword\s+ptr\s+\[%rbp-0x([a-fA-F0-9]+)\]"
+                    patch_regex = r"mov\s+(\%\w+),\s+qword ptr \[\%r11\]"
+                    offset_match = re.search(offset_regex, key_instruction)
+                    if offset_match:
+                        logger.info(f"Key Instruction: {key_instruction}")
+                        src_register = offset_match.group(1)
+                        offset_hex = offset_match.group(2)
+                        offset_decimal = -int(offset_hex, 16)  # Convert hex to decimal and negate it to match the example
+                    else:
+                        logger.error("No match found")
+                    
+                    
+                    instruction_list = instruction_set.split('\n')
+                    for inst in instruction_list:
+                        inst_match = re.search(patch_regex, inst)
+                        if inst_match:
+                            logger.debug(inst)
+                            if inst_match.group(1) == src_register:
+                                logger.debug("POST check the offset: %d", offset_decimal)
+                                for var in target_fun_var_info[self.fun]:
+                                    if var.offset == offset_decimal:
+                                        logger.critical("Offset checked")
+                                    
+                    # # print("Value (Instruction Set):")
+                    # print(instruction_set, type(instruction_set))
+                    print("-------------------------------------")
+            else:
+                for block in func:
+                    for inst in block.get_disassembly_text():
+                        dis_inst = self.bv.get_disassembly(inst.address)
+                        if rdgs_regex.search(dis_inst):
+                            log.error("Wrong patch found")
+        # for i, inst_set in enumerate(instruction_sets, 1):
+        #     print(f"Instruction Set {i}:\n{inst_set}\n")
     
         
                     
@@ -208,7 +256,7 @@ class BinAnalysis:
         bn_fun_var_info = dict()
         columns, rows = shutil.get_terminal_size(fallback=(80, 20))        
         logger.info("Analyzing binary")
-        debug_fun = "sort"
+        debug_fun = "parse_request"
         gen_regs = {"%rax", "%rbx", "%rcx", "%rdx", "%rdi", "%rsi",
             "%eax", "%ebx", "%ecx", "%edx", "%edi", "%esi",
             "%ax",  "%bx",  "%cx",  "%dx",

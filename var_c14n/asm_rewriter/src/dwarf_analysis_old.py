@@ -254,6 +254,7 @@ def dwarf_analysis(input_binary):
                 cu_ver = CU['version']
                 if (DIE.tag == "DW_TAG_subprogram"):
                     if temp_fun != None:
+                        log.warning("Inserting %s", temp_fun.name)
                         fun_list.append(temp_fun)
 
                     for attr in DIE.attributes.values():
@@ -772,9 +773,10 @@ def dwarf_analysis(input_binary):
                 
                 if (DIE.tag == None):
                     # This is used for single function application (disable it for larger app)
-                    # if temp_fun != None:
-                    #     if temp_fun not in fun_list:
-                    #         fun_list.append(temp_fun)
+                    if temp_fun != None:
+                        # if temp_fun not in fun_list:
+                        log.warning("Inserting %s", temp_fun.name)
+                        fun_list.append(temp_fun)
                     last_tag = last_die_tag.pop()
                     if (last_tag == "DW_TAG_member"):
                         if temp_struct != None and temp_struct.name != None:
@@ -814,7 +816,7 @@ def dwarf_analysis(input_binary):
     temp_var_list = list()
     temp_count = 0
     for fun in fun_list:
-        # print(fun.name)
+        
         temp_struct_list = list()
         # for idx, struct in enumerate(struct_list):
         #     if struct.fun_name == fun.name:
@@ -838,13 +840,19 @@ def dwarf_analysis(input_binary):
         fun.var_count = temp_count
         temp_var_list.clear()
         temp_count = 0
-
+    # exit()
     # pprint.pprint(fun_list, width=1)
+    unique_list = []
 
+    for item in fun_list:
+        
+        if item not in unique_list:
+
+            unique_list.append(item)
     # pprint.pprint(fun_list, width=1)
     # In second iteration, we will write it to the file pointer
-    fp.write("FunCount: %s" % len(fun_list))
-    for fun in fun_list:
+    fp.write("FunCount: %s" % len(unique_list))
+    for fun in unique_list:
         # print(fun)
         fp.write("\n-------------FunBegin-----------------\nfun_name: %s\nFunBegin: %s\nFunEnd: %s\nVarCount: %s\n" % (fun.name, fun.begin, fun.end, fun.var_count))
         
@@ -890,7 +898,9 @@ def dwarf_analysis(input_binary):
     fp.write("\n")
     # exit()
     fp.close()
-    return fun_list
+    for item in unique_list:
+        log.debug(item.name)
+    return unique_list
 
 def process_argument(argv):
     inputfile = ''

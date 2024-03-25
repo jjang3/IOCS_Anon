@@ -441,7 +441,7 @@ def asm_lex_analysis(self, var_name, llil_fun, llil_inst, dis_inst = None, fun =
         # print(bn_var)
         # print(bn_var.patch_inst.inst_print())
         return bn_var
-    # If ASM is directly provided
+    # If ASM is directly provided for cmp or such
     else:
         asm_syntax_tree = gen_ast(None, None, patch_inst)
         offset_expr = None

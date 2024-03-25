@@ -141,7 +141,7 @@ analyze()
         rm "$arcs_vuln_file"
     fi
     grep -oP "([^ ]+) says: ([^@]+)@([0-9]+) \(([^:]+) :(.+)" "$arcs_taint_file" |
-    awk -F' : ' '{
+    awk -F' : ' '{ 
         # Use regex matching to extract vuln_type, file, line_num, fun_name, and the instruction
         match($0, /([^ ]+) says: ([^@]+)@([0-9]+) \(([^:]+) :(.+)/, matches);
         vuln_type = matches[1];
@@ -162,7 +162,7 @@ rewrite()
 {
     echo "Assembly rewriting the application" 
     # cd ${arcs_input_path} && make ${input}.out
-    # echo ${current_path}
+    # echo ${current_path} 
     # cd ${rewrite_path} && python3 binary_patch.py --binary ${input}.out 
     cd ${rewrite_path} && python3 main.py --binary ${input}.out 
     #--fun fun.list

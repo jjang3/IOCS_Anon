@@ -408,10 +408,12 @@ def check_arg_reg(input_reg):
         else:
             return False
 
+metadata_number = 0
+
 def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt_offset, dwarf_var_info, offset_targets: set):
     logger.critical("Patch the instruction %s | Offset: %d", dis_inst, tgt_offset)
     # parse_ast(bn_var.asm_syntax_tree)
-        
+    global metadata_number
     off_regex       = r"(-|\$|)(-?[0-9].*\(%r..*\))"
     array_regex = r"(-\d+)\((%\w+)(?:\+(%\w+))?\)"
     #offset_expr_regex = r'(\-[0-9].*)\((.*)\)'
@@ -528,7 +530,12 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
                 
                 # logger.debug(arg_reg.pop())
                 
-    
+    metadata_template = """movq\t$0, %r11\n\ttest\t%r11, %r11
+    jz verifier_metadata_{0}
+    # The replaced instruction (for metadata purposes only)
+{1}verifier_metadata_{0}:
+"""
+    verifier_metadata = metadata_template.format(metadata_number, dis_inst)
 
     if line == None:
         # If line is None by now, it means patching without any context register
@@ -557,18 +564,19 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
                     line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %s, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, arr_regex.group(3), value), dis_inst)
                     patch_inst_line = "\t%s\t%s, %d, %s, %d" % (new_inst_type, temp_inst.dest, tgt_offset, arr_regex.group(3), value)
             else:
+                # We only need to check store instructions as that is the one deals with register offset at the beginning
                 if store_or_load == "store":
                         new_inst_type = "mov_store_gs" # Need to think about how to make this work for NGINX
                         if vuln == True:
                             if param == True:
                                 # This needs to be "#" with the register to prevent exploit 
-                                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, 
+                                line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (verifier_metadata, new_inst_type, 
                                                                                      temp_inst.src, tgt_offset, value), dis_inst)
                             else:
-                                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, 
+                                line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (verifier_metadata, new_inst_type, 
                                                                                         temp_inst.src, tgt_offset, value), dis_inst)
                         else:
-                            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, 
+                            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (verifier_metadata, new_inst_type, 
                                                                                      temp_inst.src, tgt_offset, value), dis_inst)
                         patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
                 elif store_or_load == "load":
@@ -668,6 +676,7 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
                 patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
             
     if line != None:
+        metadata_number += 1
         patch_inst_list.append(patch_inst_line)
         return line
     

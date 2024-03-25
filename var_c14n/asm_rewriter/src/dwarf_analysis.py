@@ -1039,7 +1039,7 @@ def dwarf_analysis(input_binary):
     fp.write("\n")
     # exit()
     fp.close()
-    return fun_list
+    return unique_list
 
 def process_argument(argv):
     inputfile = ''

@@ -4,6 +4,7 @@ import fileinput
 import inspect
 import argparse
 import shutil
+import subprocess
 
 from enum import Enum, auto
 
@@ -122,7 +123,7 @@ def extract_taints(file_path, vuln_file):
 
     # Temporary variable to store current function name
     curr_fun_name = ""
-
+    print(vuln_file)
     # Open the file and read line by line
     with open(vuln_file, 'r', encoding='utf-8') as file:
         for line in file:
@@ -294,18 +295,23 @@ def process_file(input_item, analysis_list, taint_sets):
     dwarf_output = dwarf_analysis(input_item)
     # exit()
     for fun in dwarf_output:
+        log.debug(fun.name)
         if fun.name in analysis_list:
+            
             dwarf_fun_var_info[fun.name] = fun.var_list.copy()
             dwarf_var_count += fun.var_count
+    # exit()
     pprint.pprint(dwarf_fun_var_info)
+    
+        
     # Print the extracted instructions
     for idx, var in enumerate(taint_sets):
         print(f"Var target: {idx, var[0]} - Fun: {var[1]}")
         try:
-            # pprint.pprint(dwarf_fun_var_info[var[1]])
+            pprint.pprint(dwarf_fun_var_info[var[1]])
             target_var_list = list()
             for dwarf_var in dwarf_fun_var_info[var[1]]:
-                print(dwarf_var)
+                # print(dwarf_var)
                 dwarf_var: VarData
                 if dwarf_var.name == var[0]:
                     log.critical("Found")
@@ -313,8 +319,9 @@ def process_file(input_item, analysis_list, taint_sets):
                     target_var_list.append(dwarf_var)
             target_fun_var_info[var[1]] = target_var_list.copy()
         except:
+            # pprint.pprint(dwarf_fun_var_info[var[1]])
             log.error("Not part of tainted path")
-
+    # exit()
     # exit()
     
     
@@ -387,7 +394,7 @@ def main():
         intel_file  = result_dir / f"{base_name}.intel"
         # Use the function to extract instructions from the file
         taint_sets = extract_taints(taint_file, vuln_file)
-
+        # exit()
         analysis_file   = result_dir / f"{base_name}.analysis"
         with open(analysis_file) as ff:
             for line in ff:
@@ -415,8 +422,9 @@ def main():
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
         custom_pprint(bn_fun_var_info)
         custom_pprint(fun_table_offsets)
+        # exit()
         failed_insts = list()
-        result, failed_insts = static_verifier(intel_file, "PRE", None)
+        result, failed_insts = static_verifier(intel_file, "PRE", None, None)
         result = True
         if not result:
             log.error("Failed check")
@@ -430,7 +438,7 @@ def main():
             # exit()
             gen_obj_file(temp_file)
             # # time.sleep(5)
-            static_verifier(temp_file.obj_path, "POST", analysis_list)
+            static_verifier(temp_file.obj_path, "POST", analysis_list, target_fun_var_info)
         
         # patch_count = rewriter(analysis_list, result_dir, str(asm_item), dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
         # log.critical("Patch count %d", patch_count)
