@@ -221,7 +221,7 @@ void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 		if(!(strstr(routineName.c_str(),pltName.c_str()))) {
 			cerr << hex << ins_addr << " [*] " << RTN_Name(callRtn) << endl <<endl;
 			
-			fprintf(trace, "%s,", RTN_Name(callRtn).c_str());
+			// fprintf(trace, "%s,", RTN_Name(callRtn).c_str());
 		}
 		#endif
 		RTN_Close(callRtn);
@@ -688,7 +688,7 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 		#if DBG_FLAG
 		if (result.found == true)
 		{
-			fprintf(trace, "T_SRC 0x%lx: %s\n", (uintptr_t)(addr), result.fun_name.c_str());
+			// fprintf(trace, "T_SRC 0x%lx: %s\n", (uintptr_t)(addr), result.fun_name.c_str());
 		}
 		
 		#endif
@@ -742,7 +742,7 @@ post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
 		if (it != fdset.end()) {
 			/* set the tag markings */
 			#if DBG_FLAG
-			fprintf(trace, "Taint source readv(2): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
+			// fprintf(trace, "Taint source readv(2): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
 			#endif
 			//cerr << "\t► readv(2) taint set | " << unwindStack.top() << endl;
 			tagmap_setn((size_t)iov->iov_base, iov_tot, TAG);
@@ -819,7 +819,7 @@ static void post_recvfrom_hook(THREADID tid, syscall_ctx_t *ctx)
 		/* set the tag markings */
         printf("Taint set recvfrom\n");
 		#if DBG_FLAG
-		fprintf(trace, "Taint source recvfrom(2): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
+		// fprintf(trace, "Taint source recvfrom(2): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
 		#endif
 		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
 		printf("tag the buffer\n");
@@ -887,7 +887,7 @@ static void post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 		if (it != fdset.end()){
 			/* set the tag markings */
 			#if DBG_FLAG
-			fprintf(trace, "Taint source recvmsg(2): 0x%lx\n", addressStack.top());
+			// fprintf(trace, "Taint source recvmsg(2): 0x%lx\n", addressStack.top());
 			#endif
 			//cerr << "\t► recvmsg(2) taint set | " << unwindStack.top() << endl;
 			tagmap_setn((size_t)msg->msg_control,
@@ -1002,7 +1002,7 @@ post_close_hook(THREADID tid, syscall_ctx_t *ctx)
  * libraries
  */
 
-#if 0 // Temporarily disabled as this is causing segmentation fault in MIR machine
+#if 1 // Temporarily disabled as this is causing segmentation fault in MIR machine
 static void
 post_open_hook(THREADID tid, syscall_ctx_t *ctx)
 {
@@ -1049,10 +1049,10 @@ dta_tainted_mem_write(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg, ADDRI
 			result = findVar(var_offset);
 			if (result.found == true) {
 				printf("Tagged Mem Write (TMW) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
-				if (result.mem_name == "")
-					fprintf(trace, "\tW 0x%lx: %s\n", (uintptr_t)(var_offset), result.var_name.c_str());
-				else
-					fprintf(trace, "\tW 0x%lx: %s.%s\n", (uintptr_t)(var_offset), result.var_name.c_str(), result.mem_name.c_str());
+				// if (result.mem_name == "")
+				// 	fprintf(trace, "\tW 0x%lx: %s\n", (uintptr_t)(var_offset), result.var_name.c_str());
+				// else
+				// 	fprintf(trace, "\tW 0x%lx: %s.%s\n", (uintptr_t)(var_offset), result.var_name.c_str(), result.mem_name.c_str());
 			}
 			// }
 			
@@ -1096,10 +1096,10 @@ dta_tainted_mem_read(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg)
 			result = findVar(var_offset);
 			if (result.found == true) {
 				printf("Tagged Mem Read (TMR) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
-				if (result.mem_name == "")
-					fprintf(trace, "\tR 0x%lx: %s\n", (uintptr_t)(var_offset), result.var_name.c_str());
-				else
-					fprintf(trace, "\tR 0x%lx: %s.%s\n", (uintptr_t)(var_offset), result.var_name.c_str(), result.mem_name.c_str());
+				// if (result.mem_name == "")
+				// 	fprintf(trace, "\tR 0x%lx: %s\n", (uintptr_t)(var_offset), result.var_name.c_str());
+				// else
+				// 	fprintf(trace, "\tR 0x%lx: %s.%s\n", (uintptr_t)(var_offset), result.var_name.c_str(), result.mem_name.c_str());
 			}
 		}
 		#endif
@@ -1504,7 +1504,7 @@ main(int argc, char **argv)
 		/* failed */
 		goto err;
 	
-	trace = fopen("dft.out", "w");
+	// trace = fopen("dft.out", "w");
 	if (trace != NULL)
 	{
 		//printf("Success\n");
@@ -1568,7 +1568,7 @@ main(int argc, char **argv)
 	/* close(2) */
 	(void)syscall_set_post(&syscall_desc[__NR_close], post_close_hook);
 	
-	#if 0
+	#if 1
 	/* open(2), creat(2) */
 	if (fs.Value() != 0) {
 		(void)syscall_set_post(&syscall_desc[__NR_open],

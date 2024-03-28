@@ -13,8 +13,9 @@
             "console": "integratedTerminal",
             "cwd": "${fileDirname}",
             "justMyCode": true,
-            "args": ["--binary", "/home/jaewon/ARCS_Final/var_c14n/result/scanf/scanf.out"]
-            // "args": ["--binary", "/home/jaewon/PIDC14N/result/tiny/tiny.out"]
+            "args": ["--binary", "/home/jaewon/ARCS_Final/var_c14n/tiny/tiny.out"]
+            // "args": ["--binary", "/home/jaewon/ARCS_Final/var_c14n/result/scanf/scanf.out"]
+            
             
             // "args": ["--binary", "/home/jaewon/Downloads/nginx-1.3.9/objs/src/os/unix/ngx_process.default"]
             // "args": ["--binary", "test.out"]

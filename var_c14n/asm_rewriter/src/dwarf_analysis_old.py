@@ -87,6 +87,7 @@ class StructData:
     begin: Optional[str] = None
     end: Optional[str] = None
     offset_expr: str = None
+    ptr: bool = False
 
 @dataclass(unsafe_hash = True)
 class StructMember:
@@ -119,6 +120,7 @@ class VarData:
     struct: Optional[StructData] = None
     vuln: bool = False
     tag: str = None
+    ptr: bool = False
 
 fun_list = list()
 @dataclass(unsafe_hash=True)
@@ -426,6 +428,9 @@ def dwarf_analysis(input_binary):
                                                 type_name = struct_item.name
                                                 type_name = struct_item.name
                                                 temp_var = copy.deepcopy(struct_item)
+                                                # print(type(temp_var))
+                                                temp_var.ptr = True
+                                                # exit()
                                                 struct_var  = True
                                                 base_var    = False
                                                 last_var.append(temp_var)
@@ -467,6 +472,7 @@ def dwarf_analysis(input_binary):
                                 struct_var  = False
                                 base_var    = True
                                 temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
+                                temp_var.ptr = True
                                 log.debug(temp_var)
                                 last_var.append(temp_var)
                             elif type_die.tag == "DW_TAG_typedef":
@@ -863,6 +869,7 @@ def dwarf_analysis(input_binary):
             fp.write("\tBaseType: %s\n" % var.base_type)
             fp.write("\tTag: %s\n" % var.tag)
             if var.base_type == "DW_TAG_structure_type":
+                fp.write("\tPointer: %s\n" % var.struct.ptr)    
                 fp.write("        --------------------------\n\t\tStructName: %s" % var.struct.name)
                 fp.write("                                  \n\t\tStructBegin: %s" % var.struct.begin)
                 fp.write("                                  \n\t\tStructEnd: %s" % var.struct.end)
@@ -874,6 +881,8 @@ def dwarf_analysis(input_binary):
                     fp.write("\t\t\tMemBegin: %s\n" % member.begin)
                     fp.write("\t\t\tMemEnd: %s\n" % member.end)
                     fp.write("            -------MemberEnd-------\n")
+            else:
+                fp.write("\tPointer: %s\n" % var.ptr)    
             
             fp.write("    -------------VarEnd------------\n")
         # for idx, struct in enumerate(struct_list):

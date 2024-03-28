@@ -7,6 +7,7 @@ import inspect
 import os
 import webbrowser
 import time
+import traceback
 
 from binaryninja import *
 from binaryninja.mediumlevelil import MediumLevelILInstruction 
@@ -20,6 +21,49 @@ from binaryninja.plugin import PluginCommand
 from termcolor import colored
 
 import export_cg
+
+class PtrOffsetTreeNode:
+    def __init__(self, fun_name, params, reg_offset, index=0):
+        self.fun_name = fun_name            # The current node (caller function)
+        self.params = params                # Parameter variables of the current function
+        self.reg_offset = reg_offset        # Register offset of the variable that will be tracked from the caller
+        self.child = None                   # The next node (callee function)
+        self.index = index                  # The index of where the reg_offset will be passed to callee
+
+    def add_child(self, child_node):
+        self.child = child_node
+
+class PtrOffsetTree:
+    def __init__(self, root=None):
+        self.root = root
+
+    def add_node(self, new_node):
+        if not self.root:
+            self.root = new_node
+        else:
+            # Find the last node and add the new node as a child
+            current_node = self.root
+            while current_node.child is not None:
+                current_node = current_node.child
+            current_node.add_child(new_node)
+
+    def print_tree(self):
+        node = self.root
+        while node is not None:
+            print(f"Index: {node.index}, Function: {node.fun_name}, Parameters: {node.params}, Register Offset: {node.reg_offset}")
+            node = node.child
+
+@dataclass(unsafe_hash=True)
+class OperandData:
+    callee_fun_name:   str = None
+    oper_idx:   int = None
+    taint_inst: binaryninja.lowlevelil.LowLevelILSetRegSsa = None
+    offset:     int = None
+
+@dataclass(unsafe_hash=True)
+class CalleeFunData:
+    callee_fun_name:    str = None
+    oper_list:          list[OperandData] = None
 
 class CustomFormatter(logging.Formatter):
 
@@ -91,16 +135,22 @@ def process_binary(input_item):
         # List of taint source funs and index of taint source
         taint_src_funs = {('__isoc99_sscanf', 0), ('__isoc99_scanf', 1), ('__isoc99_fscanf', 0), 
                           ('fgets', 0), ('gets', 0), ('read', 1), ('recv', 1), ('recvfrom', 1)}
-        bn = BinTaintAnalysis(bv, taint_src_funs)
+        bn = BinTaintAnalysis(bv, taint_src_funs, None)
         return bn.analyze_binary()
         
+def process_offset(input_item, dwarf_info):
+    with load(input_item.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
+        arch = Architecture['x86_64']
+        bn = BinTaintAnalysis(bv, None, dwarf_info)
+        return bn.analyze_offset()
 
 class BinTaintAnalysis:
     
+    callee_funs_op_info = dict()
     fun_to_check = set()
     fun_param_info = set(())
     
-    def __init__(self, bv, taint_src_funs):
+    def __init__(self, bv, taint_src_funs, dwarf_info):
         self.bv = bv
         self.fun = None
         self.rootFun = None
@@ -109,8 +159,99 @@ class BinTaintAnalysis:
         self.taint_funs = taint_src_funs
         self.taint_var = None
         self.taint_inst = None
+        self.dwarf_info = dwarf_info
         self.fun_set = set()
         self.fun_graph = list()
+        
+    def calc_ssa_off_expr(self, inst_ssa):
+        # This is for binary ninja diassembly
+        arrow = 'U+21B3'
+        log.info("Calculating the offset of %s %s", inst_ssa, type(inst_ssa)) 
+        offset_expr_regex = r'(\-[0-9].*)\((.*)\)'
+        if type(inst_ssa) == binaryninja.lowlevelil.LowLevelILLoadSsa:
+            log.debug("%s LoadReg", chr(int(arrow[2:], 16)))
+            mapped_MLLIL = inst_ssa.mapped_medium_level_il # This is done to get the var (or find if not)
+            if mapped_MLLIL != None:
+                result = self.calc_ssa_off_expr(inst_ssa.src)
+                if result != None:
+                    return result
+            else:
+                log.error("No variable assigned, skip")
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILStoreSsa:
+            log.debug("%s StoreSSA",  chr(int(arrow[2:], 16)))
+            result = self.calc_ssa_off_expr(inst_ssa.dest)
+            if result != None:
+                return result
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILSetRegSsa:
+            log.debug("%s SetRegSSA",  chr(int(arrow[2:], 16)))
+            result = self.calc_ssa_off_expr(inst_ssa.src)
+            if result != None:
+                return result
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILSetRegSsaPartial:
+            log.debug("%s SetRegSSAPartial",  chr(int(arrow[2:], 16)))
+            # reg_def = llil_fun.get_ssa_reg_definition(llil_inst.full_reg)
+            result = self.calc_ssa_off_expr(inst_ssa.src)
+            if result != None:
+                return result
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILZx:
+            log.debug("%s ZeroExtendSSA",  chr(int(arrow[2:], 16)))
+            result = self.calc_ssa_off_expr(inst_ssa.src)
+            if result != None:
+                return result
+        elif binaryninja.commonil.Arithmetic in inst_ssa.__class__.__bases__:
+            log.debug("%s Arithmetic",  chr(int(arrow[2:], 16)))
+            try:
+                # Expression
+                reg = inst_ssa.left.src
+            except:
+                # Single register
+                reg = inst_ssa.left
+            if (binaryninja.commonil.Arithmetic in inst_ssa.left.__class__.__bases__ and 
+                  type(inst_ssa.right) == binaryninja.lowlevelil.LowLevelILConst):
+                print("Array access found")
+                base_reg    = inst_ssa.left.left.src.reg.__str__()
+                array_reg   = inst_ssa.left.right.src.reg.__str__()
+                offset      = inst_ssa.right.constant
+                expr = str(offset) + "(" + base_reg + "," + array_reg + ")"
+            else:
+                # print(inst_ssa.right, type(inst_ssa.right))
+                offset = str(int(inst_ssa.right.__str__(), base=16))
+                expr = offset + "(" + reg.reg.__str__() + ")"
+            
+            log.debug(expr)
+            return expr
+    
+    def get_ssa_reg(self, inst_ssa):
+        arrow = 'U+21B3'
+        log.info("Getting the SSA register of %s %s", inst_ssa, type(inst_ssa)) 
+        if type(inst_ssa) == binaryninja.lowlevelil.SSARegister:
+            return inst_ssa
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILSetRegSsa:
+            return self.get_ssa_reg(inst_ssa.src)
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILRegSsa:
+            return self.get_ssa_reg(inst_ssa.src)
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILRegSsaPartial:
+            return self.get_ssa_reg(inst_ssa.full_reg)
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILLoadSsa:
+            log.debug("%s LoadReg", chr(int(arrow[2:], 16)))
+            # return inst_ssa
+            return self.get_ssa_reg(inst_ssa.src)
+        elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILZx:
+            # print(type(inst_ssa.src))
+            try:
+                return self.get_ssa_reg(inst_ssa.src.full_reg)
+            except:
+                # If type is LoadSSA
+                return self.get_ssa_reg(inst_ssa.src)
+        elif binaryninja.commonil.Arithmetic in inst_ssa.__class__.__bases__:
+            # this is where we should handle %rax#3 + 4 orcase;
+            if inst_ssa.left.src.reg == "%rbp":
+                return None
+            else:
+                return self.get_ssa_reg(inst_ssa.left.src)
+            # return inst_ssa
+        else:
+            print(inst_ssa.__class__.__bases__)
 
     # Function to search for a given string and return the string along with its associated numerical value if found
     def search_fun_indx(self, search_str):
@@ -318,6 +459,45 @@ class BinTaintAnalysis:
                                 # log.critical(inst)
                                 self.taint_list.append(inst)
                 
+    def taint_prop_bw(self):
+        arrow = 'U+21B3'
+        log.info("Taint propagation backward")
+        # for caller_fun in self.callee_funs_op_info:
+        #     log.info("Caller: %s", caller_fun)
+        # for op in self.callee_funs_op_info[self.currFun.name]:
+        #     ssa_reg = self.get_ssa_reg(op.taint_inst)
+        #     log.warning("%s %s", op.taint_inst, ssa_reg)
+        #     if ssa_reg == None:
+        #         # this means we don't need to find the definition
+        #         op.offset = self.calc_ssa_off_expr(op.taint_inst)
+        #     else:
+        #         taint_defs = self.currFun.llil.ssa_form.get_ssa_reg_definition(ssa_reg)  
+        #         op.offset = self.calc_ssa_off_expr(taint_defs)
+        #     print(op)
+        caller_fun = self.currFun.name
+        for callee_fun in self.callee_funs_op_info[caller_fun]:
+            for op in callee_fun.oper_list:
+                ssa_reg = self.get_ssa_reg(op.taint_inst)
+                log.warning("%s %s", op.taint_inst, ssa_reg)
+                if ssa_reg == None:
+                    # this means we don't need to find the definition
+                    op.offset = self.calc_ssa_off_expr(op.taint_inst)
+                else:
+                    taint_defs = self.currFun.llil.ssa_form.get_ssa_reg_definition(ssa_reg)  
+                    op.offset = self.calc_ssa_off_expr(taint_defs)
+                print(op)
+        
+    
+    def dwarf_fun_analysis(self, fun_name):
+        for fun in self.dwarf_info:
+            print(fun, fun_name)
+            if fun == fun_name:
+                log.critical("Found")
+                temp_list = list()
+                temp_list = self.dwarf_info[fun].copy()
+                return temp_list
+                # temp_list = self.dwarf_info[fun].var_list.copy()
+                # return temp_list
     
     def fun_taint_analysis(self, fun, oper_idx):
         # First need to convert arg# to ssa variable
@@ -341,6 +521,136 @@ class BinTaintAnalysis:
             # print(self.taint_var)
             self.taint_list.append(self.taint_var)
         self.taint_prop_fw()
+    
+    def analyze_callee(self):
+        log.info("Analyzing callee for %s", self.currFun.name)
+        # print(self.currFun.callee_addresses)
+        # for addr in self.currFun.callee_addresses:
+        #     callee_fun = self.bv.get_function_at(addr)
+        #     print(callee_fun.name)
+        param_set = list()
+        callee_fun_list = list()
+        visited = list()
+        for callee_addr in self.currFun.callee_addresses:
+            # print(hex(callee_addr))
+            callee_fun = self.bv.get_function_at(callee_addr)
+            symbol = self.bv.symbols[callee_fun.name]
+            # log.warning(callee_fun.name)
+            if len(symbol) > 0:
+                # for sym_type in symbol:
+                if symbol[0].type != SymbolType.ImportedFunctionSymbol:
+                    log.debug("Adding: %s", callee_fun.name)
+                    self.fun_to_check.add(callee_fun)
+                    for ref in self.bv.get_code_refs(callee_addr):
+                        if ref not in visited:
+                            visited.append(ref)
+                            call_il = self.currFun.get_low_level_il_at(ref.address)
+                            if call_il != None:
+                                if call_il.mlil.ssa_form.operation == MediumLevelILOperation.MLIL_CALL_SSA:
+                                    # print(call_il.mlil)
+                                    callee_fun_data = CalleeFunData(callee_fun.name, list())
+                                    for oper_idx, param in enumerate(call_il.mlil.params):
+                                        if (type(param.ssa_form) == binaryninja.mediumlevelil.MediumLevelILVarSsa):
+                                            var_def = self.currFun.mlil.ssa_form.get_ssa_var_definition(param.ssa_form.src)
+                                            # log.debug(param)
+                                            if var_def != None:
+                                            # try:
+                                                self.taint_var = var_def.low_level_il.ssa_form
+                                            # except:
+                                            #     print(var_def)
+                                                callee_fun_data.oper_list.append(OperandData(callee_fun, oper_idx, self.taint_var, None))
+                                                # param_set.append(OperandData(callee_fun.name, oper_idx, self.taint_var, None))
+                                    callee_fun_list.append(callee_fun_data)
+        self.callee_funs_op_info[self.currFun.name] = callee_fun_list
+    
+    def analyze_offset(self):
+        log.info("Analyze offset")
+        self.bv: BinaryView
+        arrow = 'U+21B3'
+        #  dict containing callee -> set(callers)    
+        # Extract the first element of each tuple to create a set of function names
+        calls = {}
+        for fun in self.bv.functions:
+            symbol = self.bv.symbols[fun.name]
+            if len(symbol) > 0:
+                for sym_type in symbol:
+                    if sym_type.type != SymbolType.ImportedFunctionSymbol:
+                        for ref in self.bv.get_code_refs(fun.start):
+                            caller = ref.function
+                            calls[fun] = calls.get(fun, set())
+                            call_il = caller.get_low_level_il_at(ref.address)
+                            if isinstance(call_il, Call) and isinstance(call_il.dest, Constant):
+                                calls[fun].add(caller)
+        
+        for fun in calls:
+            if False:
+                if len(calls[fun]) > 0:
+                    log.info("Callee: %s", fun.name)
+                    for caller in calls[fun]:
+                        log.debug("Caller %s", caller)
+        
+        # Get the entry point function
+        start_fun = self.bv.get_function_at(self.bv.entry_point)
+        start_fun: Function
+        
+        self.rootFun: Function
+        self.rootFun = self.find_root_fun(start_fun)
+        self.currFun = self.rootFun
+        
+        var_list = self.dwarf_fun_analysis(self.currFun.name)
+        # pprint.pprint(var_list)
+        # for var in var_list:
+        #     if var.tag == "DW_TAG_variable":
+        #         log.debug("Local variable %s", var)
+        callee_fun_list = list()
+        visited = list()
+        for callee_addr in self.rootFun.callee_addresses:
+            fun = self.bv.get_function_at(callee_addr)
+            callee_fun = self.bv.get_function_at(callee_addr).name
+
+            symbol = self.bv.symbols[callee_fun]
+            if len(symbol) > 0:
+                # for sym_type in symbol:
+                if symbol[0].type != SymbolType.ImportedFunctionSymbol:
+                    self.fun_to_check.add(fun)
+                    for ref in self.bv.get_code_refs(callee_addr):
+                        if ref not in visited:
+                            visited.append(ref)
+                            call_il = self.rootFun.get_low_level_il_at(ref.address)
+                            if call_il != None:
+                                print("Here")
+                                if call_il.mlil.ssa_form.operation == MediumLevelILOperation.MLIL_CALL_SSA:
+                                    callee_fun_data = CalleeFunData(callee_fun, list())
+                                    for oper_idx, param in enumerate(call_il.mlil.params):
+                                        if (type(param.ssa_form) == binaryninja.mediumlevelil.MediumLevelILVarSsa):
+                                            var_def = self.rootFun.mlil.ssa_form.get_ssa_var_definition(param.ssa_form.src)
+                                            # log.debug(var_def)
+                                            self.taint_var = var_def.low_level_il.ssa_form
+                                            callee_fun_data.oper_list.append(OperandData(callee_fun, oper_idx, self.taint_var, None))
+                                    callee_fun_list.append(callee_fun_data)
+                                # self.callee_funs_op_info[self.rootFun.name] = callee_fun_list
+                                    # callee_fun_list.clear()
+        self.callee_funs_op_info[self.rootFun.name] = callee_fun_list
+        
+        self.taint_prop_bw()
+        pprint.pprint(self.callee_funs_op_info[self.rootFun.name])
+        # exit()
+        while len(self.fun_to_check) > 0:
+            # self.taint_prop_bw()
+            # print(self.fun_to_check)
+            self.currFun = self.fun_to_check.pop()
+            try:
+                self.analyze_callee()
+                self.taint_prop_bw()
+            except Exception as e:
+                print(f"An unexpected error occurred: {e}")
+                traceback.print_exc()
+            # except :
+            #     log.error("%s doesn't have any callees", self.currFun.name)
+            
+            # print(self.currFun)
+        pprint.pprint(self.callee_funs_op_info)
+        
     
     def analyze_binary(self):
         self.bv: BinaryView
@@ -368,8 +678,6 @@ class BinTaintAnalysis:
             else:
                 log.error("Not in %s", callee.name)
         
-        
-                
         # Get the entry point function
         start_fun = self.bv.get_function_at(self.bv.entry_point)
         start_fun: Function

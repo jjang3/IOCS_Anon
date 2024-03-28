@@ -85,6 +85,12 @@ class BnFunData:
     end: int = None
     vars: list[BnVarData] = None
 
+def offset_analysis(input_item):
+    with load(input_item.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
+        arch = Architecture['x86_64']
+        bn = BinAnalysis(bv)
+        return bn.gen_offset_rel()
+
 # Creating a separate new binary disassembler as the purpose is a bit different (such as we need to analyze all functions)
 def process_new_binary(input_item, analysis_list, target_fun_var_info):
     with load(input_item.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
@@ -135,8 +141,37 @@ class BinAnalysis:
         else:
             print(inst_ssa.__class__.__bases__)
     
+    # def check_import_fun(self, func_name):
+    #     symbol = self.bv.symbols[func_name]
+    #     # print(symbol)
+    #     if len(symbol) > 0:
+    #         for sym_type in symbol:
+    #             if sym_type.type == SymbolType.ImportedFunctionSymbol:
+    #                 return True
+    #             else:
+    #                 return False
+    
+    # # This is used to generate offset 
+    # def gen_offset_rel(self):
+    #     logger.info("Generate offset relationship")
+    #     calls = {}
+    #     for fun in self.bv.functions:
+    #         # We want to ignore import fun
+    #         if self.check_import_fun(fun.name) == False:
+    #             for ref in self.bv.get_code_refs(fun.start):
+    #                 caller = ref.function
+    #                 calls[fun] = calls.get(fun, set())
+    #                 call_il = caller.get_low_level_il_at(ref.address)
+    #                 if isinstance(call_il, Call) and isinstance(call_il.dest, Constant):
+    #                     calls[fun].add(caller)
+                    
+    #     for fun in calls:
+    #         logger.info("Callee: %s", fun.name)
+    #         if len(calls[fun]) > 0:
+    #             for caller in calls[fun]:
+    #                 logger.debug("Caller %s", caller)
+    
     def analyze_new_binary(self, analysis_list, target_fun_var_info):
-        
         columns, rows = shutil.get_terminal_size(fallback=(80, 20))        
         logger.info("Analyzing new binary")
         
@@ -248,8 +283,6 @@ class BinAnalysis:
                             log.error("Wrong patch found")
         # for i, inst_set in enumerate(instruction_sets, 1):
         #     print(f"Instruction Set {i}:\n{inst_set}\n")
-    
-        
                     
     # Need debug info to handle static functions
     def analyze_binary(self, analysis_list):
@@ -453,6 +486,7 @@ class BinAnalysis:
             bn_fun_var_info[self.fun] = self.bn_var_list.copy()
             self.bn_var_list.clear()
         return bn_fun_var_info
+                        
                         
     def __init__(self, bv):
         self.bv = bv

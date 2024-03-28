@@ -24,6 +24,12 @@ from verifier import *
 import bin_analysis
 import rewriter
 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+target_dir = os.path.join(current_dir, '..', '..', 'useful_scripts', 'STA')
+normalized_path = os.path.normpath(target_dir)
+sys.path.append(normalized_path)
+import taint_analysis
+
 from pathlib import Path
 import pprint 
 from dataclasses import dataclass, field
@@ -283,6 +289,7 @@ def gen_obj_file(filename):
     except FileNotFoundError:
         print("GNU assembler (as) not found. Please ensure it is installed and in your PATH.")
 
+all_dwarf_info      = dict()
 dwarf_fun_var_info  = dict()
 bn_fun_var_info     = dict()
 fun_table_offsets   = dict()
@@ -297,9 +304,11 @@ def process_file(input_item, analysis_list, taint_sets):
     for fun in dwarf_output:
         log.debug(fun.name)
         if fun.name in analysis_list:
-            
+            all_dwarf_info[fun.name] = fun.var_list.copy()
             dwarf_fun_var_info[fun.name] = fun.var_list.copy()
             dwarf_var_count += fun.var_count
+        else:
+            all_dwarf_info[fun.name] = fun.var_list.copy()
     # exit()
     pprint.pprint(dwarf_fun_var_info)
     
@@ -415,7 +424,9 @@ def main():
         # fun_table_offsets = generate_table(dwarf_var_count, dwarf_fun_var_info, result_dir)
         fun_table_offsets = generate_table(dwarf_var_count, target_fun_var_info, result_dir)
         pprint.pprint(fun_table_offsets)
-        # exit()
+        # offset_rel = bin_analysis.offset_analysis(binary_item)
+        output          = taint_analysis.process_offset(binary_item, all_dwarf_info)
+        exit()
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
         bn_fun_var_info = bin_analysis.process_binary(binary_item, analysis_list)
         # exit()

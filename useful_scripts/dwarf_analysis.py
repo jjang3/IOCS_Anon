@@ -294,6 +294,17 @@ def dwarf_analysis(input_binary):
                                                 reg_to_use = "rsp"
                                     idx += 1
                 
+                if (DIE.tag == "DW_TAG_formal_parameter"):
+                    var_name        = None
+                    reg_offset      = None
+                    type_name       = None
+                    for var_attr in DIE.attributes.values():
+                        # offset = None
+                        if (var_attr.name == "DW_AT_name"):
+                            var_name = DIE.attributes["DW_AT_name"].value.decode()
+                            log.debug("\tParam name: %s", var_name)
+                    exit()
+                            
                 if (DIE.tag == "DW_TAG_variable"):
                     # This is used for variable that is declared within the function
                     var_name        = None
