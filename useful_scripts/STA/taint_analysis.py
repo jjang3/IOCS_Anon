@@ -53,17 +53,80 @@ class PtrOffsetTree:
             print(f"Index: {node.index}, Function: {node.fun_name}, Parameters: {node.params}, Register Offset: {node.reg_offset}")
             node = node.child
 
-@dataclass(unsafe_hash=True)
-class OperandData:
-    callee_fun_name:   str = None
-    oper_idx:   int = None
-    taint_inst: binaryninja.lowlevelil.LowLevelILSetRegSsa = None
-    offset:     int = None
+# @dataclass(unsafe_hash=True)
+# class OperandData:
+#     callee_fun_name:   str = None
+#     oper_idx:   int = None
+#     taint_inst: binaryninja.lowlevelil.LowLevelILSetRegSsa = None
+#     offset:     int = None
 
-@dataclass(unsafe_hash=True)
-class CalleeFunData:
-    callee_fun_name:    str = None
-    oper_list:          list[OperandData] = None
+# @dataclass(unsafe_hash=True)
+# class CalleeFunData:
+#     callee_fun_name:    str = None                  # Callee fun name
+#     oper_list:          list[OperandData] = None    # Operand data of arguments being sent to callee fun
+    
+#     def add_operand(self, operand: OperandData):
+#         self.oper_list.append(operand)
+    
+# @dataclass
+# class FunctionNode:
+#     function_name:      str
+#     param_list: List[OperandData] = field(default_factory=list)  # Default value provided
+#     callee_funs: List[CalleeFunData] = field(default_factory=list)  # Default value provided
+#     # param_list:         list[OperandData] = None
+    
+#     # callee_funs:        List[CalleeFunData] = field(default_factory=list)  # List of callee functions
+   
+#     def add_callee_function(self, callee_function: CalleeFunData):
+#         self.callee_funs.append(callee_function)
+    
+#     def add_param(self, param: OperandData):
+#         self.param_list.append(param)
+        
+#     def print_structure(self, indent=""):
+#         # Print the current function's name
+#         print(f"{indent}Function: {self.function_name}")
+#         # Print parameters for the current function
+#         # for param in self.param_list:
+#         #     print(f"{indent}  Param: {param.callee_fun_name}, Offset: {param.offset}")
+#         # Recursively print callee functions and their parameters
+#         for callee in self.callee_funs:
+#             print(f"{indent}  Calls: {callee.callee_fun_name}")
+#             for op in callee.oper_list:
+#                 print(f"{indent}    Operand: {op.callee_fun_name}, OperIdx: {op.oper_idx}, Offset: {op.offset}")
+#             # Assuming CalleeFunData could potentially have its own callee functions for a deeper hierarchy
+#             # This part is hypothetical unless CalleeFunData is adapted to include callee functions itself
+#             # for nested_callee in callee.callee_funs:
+#             #     nested_callee.print_structure(indent + "    ")  # This would require CalleeFunData to be similar to FunctionNode
+@dataclass
+class OperandData:
+    callee_fun_name: Optional[str] = None
+    oper_idx: Optional[int] = None
+    taint_inst: Optional[binaryninja.lowlevelil.LowLevelILSetRegSsa] = None
+    offset: Optional[int] = None
+
+@dataclass
+class FunctionNode:
+    fun: Function
+    function_name: str
+    operands: List[OperandData] = field(default_factory=list)  # Direct operands of the function
+    callee_funs: List['FunctionNode'] = field(default_factory=list)  # Nested callee functions
+    checked: bool = False
+
+    def add_operand(self, operand: OperandData):
+        self.operands.append(operand)
+
+    def add_callee_function(self, callee_function: 'FunctionNode'):
+        self.callee_funs.append(callee_function)
+
+    def print_structure(self, indent=""):
+        print(f"{indent}Function: {self.function_name}")
+        for operand in self.operands:
+            print(f"{indent}  Operand: {operand.callee_fun_name}, OperIdx: {operand.oper_idx}, Offset: {operand.offset}")
+        for callee in self.callee_funs:
+            print(f"{indent}  Calls: {callee.function_name}")
+            callee.print_structure(indent + "    ")
+
 
 class CustomFormatter(logging.Formatter):
 
@@ -147,12 +210,13 @@ def process_offset(input_item, dwarf_info):
 class BinTaintAnalysis:
     
     callee_funs_op_info = dict()
-    fun_to_check = set()
+    fun_to_check = list()
     fun_param_info = set(())
     
     def __init__(self, bv, taint_src_funs, dwarf_info):
         self.bv = bv
         self.fun = None
+        self.currFunNode = FunctionNode(None, None)
         self.rootFun = None
         self.currFun = None
         self.taint_list = list()
@@ -474,18 +538,20 @@ class BinTaintAnalysis:
         #         taint_defs = self.currFun.llil.ssa_form.get_ssa_reg_definition(ssa_reg)  
         #         op.offset = self.calc_ssa_off_expr(taint_defs)
         #     print(op)
-        caller_fun = self.currFun.name
-        for callee_fun in self.callee_funs_op_info[caller_fun]:
-            for op in callee_fun.oper_list:
-                ssa_reg = self.get_ssa_reg(op.taint_inst)
-                log.warning("%s %s", op.taint_inst, ssa_reg)
-                if ssa_reg == None:
-                    # this means we don't need to find the definition
-                    op.offset = self.calc_ssa_off_expr(op.taint_inst)
-                else:
-                    taint_defs = self.currFun.llil.ssa_form.get_ssa_reg_definition(ssa_reg)  
-                    op.offset = self.calc_ssa_off_expr(taint_defs)
-                print(op)
+        # caller_fun = self.currFun.name
+        # for callee_fun in self.currFunNode.callee_funs:
+            
+        # for callee_fun in self.callee_funs_op_info[caller_fun]:
+        for op in self.currFunNode.operands:
+            ssa_reg = self.get_ssa_reg(op.taint_inst)
+            log.warning("%s %s", op.taint_inst, ssa_reg)
+            if ssa_reg == None:
+                # this means we don't need to find the definition
+                op.offset = self.calc_ssa_off_expr(op.taint_inst)
+            else:
+                taint_defs = self.currFun.llil.ssa_form.get_ssa_reg_definition(ssa_reg)  
+                op.offset = self.calc_ssa_off_expr(taint_defs)
+            print(op)
         
     
     def dwarf_fun_analysis(self, fun_name):
@@ -523,7 +589,7 @@ class BinTaintAnalysis:
         self.taint_prop_fw()
     
     def analyze_callee(self):
-        log.info("Analyzing callee for %s", self.currFun.name)
+        
         # print(self.currFun.callee_addresses)
         # for addr in self.currFun.callee_addresses:
         #     callee_fun = self.bv.get_function_at(addr)
@@ -531,37 +597,59 @@ class BinTaintAnalysis:
         param_set = list()
         callee_fun_list = list()
         visited = list()
-        for callee_addr in self.currFun.callee_addresses:
-            # print(hex(callee_addr))
-            callee_fun = self.bv.get_function_at(callee_addr)
-            symbol = self.bv.symbols[callee_fun.name]
-            # log.warning(callee_fun.name)
-            if len(symbol) > 0:
-                # for sym_type in symbol:
-                if symbol[0].type != SymbolType.ImportedFunctionSymbol:
-                    log.debug("Adding: %s", callee_fun.name)
-                    self.fun_to_check.add(callee_fun)
-                    for ref in self.bv.get_code_refs(callee_addr):
-                        if ref not in visited:
-                            visited.append(ref)
-                            call_il = self.currFun.get_low_level_il_at(ref.address)
-                            if call_il != None:
-                                if call_il.mlil.ssa_form.operation == MediumLevelILOperation.MLIL_CALL_SSA:
-                                    # print(call_il.mlil)
-                                    callee_fun_data = CalleeFunData(callee_fun.name, list())
-                                    for oper_idx, param in enumerate(call_il.mlil.params):
-                                        if (type(param.ssa_form) == binaryninja.mediumlevelil.MediumLevelILVarSsa):
-                                            var_def = self.currFun.mlil.ssa_form.get_ssa_var_definition(param.ssa_form.src)
-                                            # log.debug(param)
-                                            if var_def != None:
-                                            # try:
-                                                self.taint_var = var_def.low_level_il.ssa_form
-                                            # except:
-                                            #     print(var_def)
-                                                callee_fun_data.oper_list.append(OperandData(callee_fun, oper_idx, self.taint_var, None))
-                                                # param_set.append(OperandData(callee_fun.name, oper_idx, self.taint_var, None))
-                                    callee_fun_list.append(callee_fun_data)
-        self.callee_funs_op_info[self.currFun.name] = callee_fun_list
+        
+        # redprint(temp_fun)
+        temp_fun = self.currFunNode
+        log.info("Analyzing callee for %s | %d", temp_fun.function_name, temp_fun.checked)
+        
+        # for idx, fun in enumerate(temp_fun.callee_funs):
+            
+        #     if fun.checked == False:
+        # log.debug("Function check: %s - Index: %d", fun.function_name, idx)
+        if temp_fun.checked == False:
+            for callee_addr in self.currFun.callee_addresses:
+                # print(hex(callee_addr))
+                callee_fun = self.bv.get_function_at(callee_addr)
+                symbol = self.bv.symbols[callee_fun.name]                
+                if len(symbol) > 0:
+                    # for sym_type in symbol:
+                    if symbol[0].type != SymbolType.ImportedFunctionSymbol:
+                        log.debug("Adding: %s", callee_fun.name)
+                        # self.fun_to_check.add(callee_fun)
+                        for ref in self.bv.get_code_refs(callee_addr):
+                            if ref not in visited:
+                                visited.append(ref)
+                                call_il = self.currFun.get_low_level_il_at(ref.address)
+                                if call_il != None:
+                                    if call_il.mlil.ssa_form.operation == MediumLevelILOperation.MLIL_CALL_SSA:
+                                        # print(call_il.mlil)
+                        #                 # callee_fun_data = CalleeFunData(callee_fun.name, list())
+                                        callee_fun_data = FunctionNode(fun=callee_fun, function_name=callee_fun.name)
+                                        for oper_idx, param in enumerate(call_il.mlil.params):
+                                            if (type(param.ssa_form) == binaryninja.mediumlevelil.MediumLevelILVarSsa):
+                                                var_def = self.currFun.mlil.ssa_form.get_ssa_var_definition(param.ssa_form.src)
+                        #                         # log.debug(param)
+                                                if var_def != None:
+                                                # try:
+                                                    self.taint_var = var_def.low_level_il.ssa_form
+                                                # except:
+                                                #     print(var_def)
+                        #                             # callee_fun_data.oper_list.append(OperandData(callee_fun, oper_idx, self.taint_var, None))
+                                                    callee_fun_data.add_operand(OperandData(callee_fun, oper_idx, self.taint_var, None))
+                        #                             # param_set.append(OperandData(callee_fun.name, oper_idx, self.taint_var, None))
+                        #                 # callee_fun_list.append(callee_fun_data)
+                        #                 # temp_fun.add_callee_function(callee_fun_data)
+                                        self.currFunNode = callee_fun_data
+                                        self.taint_prop_bw()
+                                        self.fun_to_check.append(callee_fun_data)
+                                        temp_fun.add_callee_function(callee_fun_data)
+                    temp_fun.checked = True
+                
+        # self.callee_funs_op_info[self.currFun.name] = callee_fun_list
+        # self.currFunNode = temp_fun
+        # self.taint_prop_bw()
+        # temp_fun.print_structure()
+        # exit()
     
     def analyze_offset(self):
         log.info("Analyze offset")
@@ -602,17 +690,17 @@ class BinTaintAnalysis:
         # for var in var_list:
         #     if var.tag == "DW_TAG_variable":
         #         log.debug("Local variable %s", var)
+        root_fun = FunctionNode(fun=self.currFun,function_name=self.currFun.name)
+        root_fun.checked = True
         callee_fun_list = list()
         visited = list()
         for callee_addr in self.rootFun.callee_addresses:
             fun = self.bv.get_function_at(callee_addr)
-            callee_fun = self.bv.get_function_at(callee_addr).name
-
-            symbol = self.bv.symbols[callee_fun]
+            callee_fun = self.bv.get_function_at(callee_addr)
+            symbol = self.bv.symbols[callee_fun.name]
             if len(symbol) > 0:
                 # for sym_type in symbol:
                 if symbol[0].type != SymbolType.ImportedFunctionSymbol:
-                    self.fun_to_check.add(fun)
                     for ref in self.bv.get_code_refs(callee_addr):
                         if ref not in visited:
                             visited.append(ref)
@@ -620,28 +708,45 @@ class BinTaintAnalysis:
                             if call_il != None:
                                 print("Here")
                                 if call_il.mlil.ssa_form.operation == MediumLevelILOperation.MLIL_CALL_SSA:
-                                    callee_fun_data = CalleeFunData(callee_fun, list())
+                                    callee_fun_data = FunctionNode(fun=callee_fun, function_name=callee_fun.name)
                                     for oper_idx, param in enumerate(call_il.mlil.params):
                                         if (type(param.ssa_form) == binaryninja.mediumlevelil.MediumLevelILVarSsa):
                                             var_def = self.rootFun.mlil.ssa_form.get_ssa_var_definition(param.ssa_form.src)
                                             # log.debug(var_def)
                                             self.taint_var = var_def.low_level_il.ssa_form
-                                            callee_fun_data.oper_list.append(OperandData(callee_fun, oper_idx, self.taint_var, None))
-                                    callee_fun_list.append(callee_fun_data)
+                                            # callee_fun_data.oper_list.append(OperandData(callee_fun, oper_idx, self.taint_var, None))
+                                            callee_fun_data.add_operand(OperandData(callee_fun.name, oper_idx, self.taint_var, None))
+                                    # callee_fun_list.append(callee_fun_data)
+                                    # self.currFun = self.rootFun
+                                    self.currFunNode = callee_fun_data
+                                    self.taint_prop_bw()
+                                    self.fun_to_check.append(self.currFunNode)
+                                    root_fun.add_callee_function(callee_fun_data)
                                 # self.callee_funs_op_info[self.rootFun.name] = callee_fun_list
                                     # callee_fun_list.clear()
-        self.callee_funs_op_info[self.rootFun.name] = callee_fun_list
         
-        self.taint_prop_bw()
-        pprint.pprint(self.callee_funs_op_info[self.rootFun.name])
+        root_fun.print_structure()
+        # self.currFunNode = root_fun
+        # exit()
+        # self.callee_funs_op_info[self.rootFun.name] = callee_fun_list
+        # exit()
+        # self.taint_prop_bw()
+        # exit()
+        # pprint.pprint(self.callee_funs_op_info[self.rootFun.name])
         # exit()
         while len(self.fun_to_check) > 0:
             # self.taint_prop_bw()
             # print(self.fun_to_check)
-            self.currFun = self.fun_to_check.pop()
+            
+            # self.currFunNode = FunctionNode(function_name=self.currFun.name)
             try:
+                self.currFunNode = self.fun_to_check.pop()
+                self.currFun = self.currFunNode.fun
+                log.debug("Checking %s", self.currFunNode.function_name)
                 self.analyze_callee()
-                self.taint_prop_bw()
+                
+                # self.taint_prop_bw()
+                # exit()
             except Exception as e:
                 print(f"An unexpected error occurred: {e}")
                 traceback.print_exc()
@@ -649,7 +754,9 @@ class BinTaintAnalysis:
             #     log.error("%s doesn't have any callees", self.currFun.name)
             
             # print(self.currFun)
-        pprint.pprint(self.callee_funs_op_info)
+        # pprint.pprint(self.callee_funs_op_info)
+        root_fun.print_structure()
+        exit()
         
     
     def analyze_binary(self):
