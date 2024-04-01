@@ -274,10 +274,6 @@ void parse_request(int fd, http_request *req){
     req->offset = 0;
     req->end = 0;              /* default */
 
-    char* filename = uri;
-    url_decode(filename, req->filename, MAXLINE);
-}
-
     rio_readinitb(&rio, fd);
     rio_readlineb(&rio, buf, MAXLINE);
     sscanf(buf, "%s %s", method, uri); /* version is not cared */
