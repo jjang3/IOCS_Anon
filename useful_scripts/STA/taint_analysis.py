@@ -354,22 +354,22 @@ def gen_ptr_offset_tree(node: FunctionNode, indent=""):
                     log.debug("%s Var: %s, Offset: %s", indent, var.var_name, var.offset)
                     log.debug("%s Callee Fun: %s | OperIdx: %s, Offset: %s, Pointer: %s", 
                         indent, callee_fun.function_name, operand.oper_idx, operand.offset, operand.pointer)
-                    # if not root_tree:
-                    #     root_node = PtrOffsetTreeNode(fun_name=node.function_name, reg_offset=operand.offset, index=operand.oper_idx)
-                    #     root_tree = PtrOffsetTree(root=root_node)
-                    #     # Directly iterate over callee_funs instead of using traverse_callees
-                    #     stop = pop_ptr_offset_tree(callee_fun, root_tree, indent + "    ")
-                    #     if stop:
-                    #         log.warning("Stopping early due to a condition met in pop_ptr_offset_tree")
-                    #         continue
-                    # is_unique = True
-                    # for existing_tree in ptr_offset_trees:
-                    #     if compare_trees(existing_tree, root_tree):
-                    #         is_unique = False
-                    #         break
-                    # if is_unique:
-                    #     ptr_offset_trees.add(root_tree)
-                    #     log.info("Adding unique tree")
+                    if not root_tree:
+                        root_node = PtrOffsetTreeNode(fun_name=node.function_name, reg_offset=operand.offset, index=operand.oper_idx)
+                        root_tree = PtrOffsetTree(root=root_node)
+                        # Directly iterate over callee_funs instead of using traverse_callees
+                        stop = pop_ptr_offset_tree(callee_fun, root_tree, indent + "    ")
+                        if stop:
+                            log.warning("Stopping early due to a condition met in pop_ptr_offset_tree")
+                            continue
+                    is_unique = True
+                    for existing_tree in ptr_offset_trees:
+                        if compare_trees(existing_tree, root_tree):
+                            is_unique = False
+                            break
+                    if is_unique:
+                        ptr_offset_trees.add(root_tree)
+                        log.info("Adding unique tree")
 
 class BinTaintAnalysis:
     
@@ -931,7 +931,7 @@ class BinTaintAnalysis:
                                     root_fun.add_callee_function(callee_fun_data)
                                 
         root_fun.print_structure()
-    
+        # exit()
         while len(self.fun_to_check) > 0:
             try:
                 self.currFunNode = self.fun_to_check.pop()
@@ -943,9 +943,11 @@ class BinTaintAnalysis:
                 traceback.print_exc()
         # Finished creating full tree of caller-callee
         root_fun.print_structure()
+        # exit()
         ptr_offset_trees = self.gen_ptr_offset_tree(root_fun)
-        # for tree in ptr_offset_trees:
-        #     tree.print_tree()
+        for tree in ptr_offset_trees:
+            tree.print_tree()
+        # exit()
         return ptr_offset_trees
     
     def analyze_binary(self):
