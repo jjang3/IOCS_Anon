@@ -129,6 +129,7 @@ def main():
         # Assuming 'args.binary' is a predefined variable
         target_dir      = Path(args.binary).resolve().parent.parent / base_name
         binary_item     = target_dir / f"{base_name}.out"  # Updated variable name for clarity
+        print(binary_item)
         output          = taint_analysis.process_binary(binary_item)
         
         config_file = target_dir.joinpath("%s.config" % base_name)

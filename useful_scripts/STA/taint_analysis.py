@@ -77,21 +77,6 @@ class FunctionNode:
             for operand in callee.operands:
                 print(f"{indent}  OperIdx: {operand.oper_idx}, Offset: {operand.offset}, Pointer: {operand.pointer}")
             
-            
-    # def traverse_callees(self, action: Optional[Callable[['FunctionNode'], None]] = None):
-    #     """
-    #     Recursively traverse all callee functions from this function node.
-    #     Optionally, an action can be performed on each visited FunctionNode.
-
-    #     Args:
-    #     - action: A callable that takes a FunctionNode as its only argument.
-    #               This is performed on every node visited during the traversal.
-    #     """
-    #     if action:
-    #         action(self)
-
-    #     for callee in self.callee_funs:
-    #         callee.traverse_callees(action)
     def traverse_callees(self, action: Optional[Callable[['FunctionNode', Any], None]] = None, *args, **kwargs):
         """
         Recursively traverse all callee functions from this function node.
@@ -117,7 +102,7 @@ class CustomFormatter(logging.Formatter):
     purp = "\x1b[38;5;13m"
     reset = "\x1b[0m"
     # format = "%(funcName)5s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
-    format = "[Line:%(lineno)4s -%(funcName)18s()] %(levelname)7s    %(message)s "
+    format = "[%(filename)s: Line:%(lineno)4s - %(funcName)20s()] %(levelname)7s    %(message)s "
 
     FORMATS = {
         logging.DEBUG: yellow + format + reset,
@@ -235,8 +220,23 @@ class PtrOffsetTree:
             # Increase the indentation for the child node recursively
             self.print_tree(node.child, prefix + "   ")
             
-    def find_parent(self, child_node):
-        """Returns the parent node of the given child node if it exists, otherwise None."""
+    def find_parent(self, child_node, find_root=False):
+        """
+        Returns the parent node of the given child node if it exists, otherwise None.
+        If find_root is True, returns the root node of the tree instead.
+        
+        Args:
+        - child_node: The child node whose parent or root is to be found.
+        - find_root: A boolean flag that determines whether to return the immediate parent (False) 
+                     or the root of the tree (True).
+
+        Returns:
+        - The immediate parent node or the root node, depending on find_root. None if not found.
+        """
+        # If find_root is True, simply return the root, as it's the topmost parent of any node.
+        if find_root:
+            return self.root
+
         # The root node does not have a parent
         if self.root == child_node or self.root is None:
             return None
@@ -259,6 +259,38 @@ class PtrOffsetTree:
         while current_node.child is not None:
             current_node = current_node.child
         return current_node
+
+    def find_node_by_fun_name_and_offset(self, fun_name, local_offset, node=None):
+        """
+        Recursively searches for a node with the given function name and local offset.
+
+        Args:
+        - fun_name: The function name to search for.
+        - local_offset: The local offset to search for.
+        - node: The current node being inspected (used for recursive calls).
+
+        Returns:
+        - The PtrOffsetTreeNode if found, or None if no such node exists in the tree.
+        """
+        if node is None:
+            node = self.root
+        
+        # Proper base case: stop if the current node is None.
+        if node is None:
+            return None
+        
+        # Check if the current node matches the criteria.
+        if node.fun_name == fun_name and node.local_offset == local_offset:
+            return node
+        
+        # Recursively proceed to the child node if it exists.
+        if node.child is not None:
+            return self.find_node_by_fun_name_and_offset(fun_name, local_offset, node.child)
+        else:
+            # Explicitly handle reaching the end of the chain.
+            return None
+
+
 
 def compare_trees(tree1: PtrOffsetTree, tree2: PtrOffsetTree) -> bool:
     def compare_nodes(node1, node2):
@@ -284,7 +316,11 @@ def pop_ptr_offset_tree(node: FunctionNode, input_tree: PtrOffsetTree, indent=""
     recent_node = input_tree.get_outermost_node()
     recent_node.print_node()
     print("\n")
-    offset = node.params[recent_node.callee_arg_idx].offset
+    node.print_fun_structure()
+    try:
+        offset = node.params[recent_node.callee_arg_idx].offset
+    except:
+        offset = None
     # First creat a node because this will always be true. Index will be None at first because it will be determined if we need to 
     # further explored
     new_node = PtrOffsetTreeNode(fun_name=node.function_name, reg_offset=offset, index=None)
@@ -318,22 +354,22 @@ def gen_ptr_offset_tree(node: FunctionNode, indent=""):
                     log.debug("%s Var: %s, Offset: %s", indent, var.var_name, var.offset)
                     log.debug("%s Callee Fun: %s | OperIdx: %s, Offset: %s, Pointer: %s", 
                         indent, callee_fun.function_name, operand.oper_idx, operand.offset, operand.pointer)
-                    if not root_tree:
-                        root_node = PtrOffsetTreeNode(fun_name=node.function_name, reg_offset=operand.offset, index=operand.oper_idx)
-                        root_tree = PtrOffsetTree(root=root_node)
-                        # Directly iterate over callee_funs instead of using traverse_callees
-                        stop = pop_ptr_offset_tree(callee_fun, root_tree, indent + "    ")
-                        if stop:
-                            log.warning("Stopping early due to a condition met in pop_ptr_offset_tree")
-                            continue
-                    is_unique = True
-                    for existing_tree in ptr_offset_trees:
-                        if compare_trees(existing_tree, root_tree):
-                            is_unique = False
-                            break
-                    if is_unique:
-                        ptr_offset_trees.add(root_tree)
-                        log.info("Adding unique tree")
+                    # if not root_tree:
+                    #     root_node = PtrOffsetTreeNode(fun_name=node.function_name, reg_offset=operand.offset, index=operand.oper_idx)
+                    #     root_tree = PtrOffsetTree(root=root_node)
+                    #     # Directly iterate over callee_funs instead of using traverse_callees
+                    #     stop = pop_ptr_offset_tree(callee_fun, root_tree, indent + "    ")
+                    #     if stop:
+                    #         log.warning("Stopping early due to a condition met in pop_ptr_offset_tree")
+                    #         continue
+                    # is_unique = True
+                    # for existing_tree in ptr_offset_trees:
+                    #     if compare_trees(existing_tree, root_tree):
+                    #         is_unique = False
+                    #         break
+                    # if is_unique:
+                    #     ptr_offset_trees.add(root_tree)
+                    #     log.info("Adding unique tree")
 
 class BinTaintAnalysis:
     
@@ -359,10 +395,9 @@ class BinTaintAnalysis:
         root_fun.print_structure()
         root_fun.traverse_callees(gen_ptr_offset_tree)
 
-        for tree in ptr_offset_trees:
-            tree.print_tree()    
-        
-        exit()
+        # for tree in ptr_offset_trees:
+        #     tree.print_tree()    
+        return ptr_offset_trees
         
             
     def extract_offset(self, operand: str) -> int:
@@ -375,11 +410,14 @@ class BinTaintAnalysis:
         Returns:
         - The offset as an integer, or None if the pattern does not match.
         """
-        match = re.search(r'([+-]?\d+)\(%rbp\)', operand)
-        if match:
-            return int(match.group(1))  # Convert the matched offset to an integer
-        else:
-            return None  # or raise an exception, depending on how you want to handle unmatched cases
+        try:
+            match = re.search(r'([+-]?\d+)\(%rbp\)', operand)
+            if match:
+                return int(match.group(1))  # Convert the matched offset to an integer
+            else:
+                return None  # or raise an exception, depending on how you want to handle unmatched cases
+        except:
+            return None
 
         
     def calc_ssa_off_expr(self, inst_ssa):
@@ -433,9 +471,12 @@ class BinTaintAnalysis:
                 offset      = inst_ssa.right.constant
                 expr = str(offset) + "(" + base_reg + "," + array_reg + ")"
             else:
+                try:
                 # print(inst_ssa.right, type(inst_ssa.right))
-                offset = str(int(inst_ssa.right.__str__(), base=16))
-                expr = offset + "(" + reg.reg.__str__() + ")"
+                    offset = str(int(inst_ssa.right.__str__(), base=16))
+                    expr = offset + "(" + reg.reg.__str__() + ")"
+                except:
+                    return None
             
             log.debug(expr)
             return expr
@@ -594,6 +635,7 @@ class BinTaintAnalysis:
         # print(taint_uses, self.taint_list)
         visited = list()
         log.info("Taint propagation forward")
+        # exit()
         while len(self.taint_list) > 0:
             self.taint_inst = self.taint_list.pop()
             if self.taint_inst in visited:
@@ -677,6 +719,25 @@ class BinTaintAnalysis:
                             if self.taint_inst.src == inst.vars_address_taken[0]:
                                 # log.critical(inst)
                                 self.taint_list.append(inst)
+            elif self.taint_inst.operation == MediumLevelILOperation.MLIL_IF:
+                # May need to revamp this part.
+                # print()
+                visited.append(self.taint_inst)
+            elif self.taint_inst.operation == MediumLevelILOperation.MLIL_RET:
+                visited.append(self.taint_inst)
+            elif self.taint_inst.operation == MediumLevelILOperation.MLIL_STORE_SSA:
+                visited.append(self.taint_inst)
+            elif self.taint_inst.operation == MediumLevelILOperation.MLIL_SET_VAR_SSA_FIELD:
+                visited.append(self.taint_inst)
+            elif self.taint_inst.operation == MediumLevelILOperation.MLIL_JUMP_TO:
+                visited.append(self.taint_inst)
+            else:
+                log.error("Not taken consideration")
+                log.debug("%s %s", self.taint_inst.operation, self.taint_inst)
+                exit()
+                
+                # self.taint_list.append(inst)
+                # exit()
                 
     def taint_prop_bw(self):
         arrow = 'U+21B3'
@@ -697,7 +758,7 @@ class BinTaintAnalysis:
     
     def dwarf_fun_analysis(self, fun_name):
         for fun in self.dwarf_info:
-            print(fun, fun_name)
+            # print(fun, fun_name)
             if fun == fun_name:
                 log.critical("Found")
                 temp_list = list()
@@ -725,8 +786,9 @@ class BinTaintAnalysis:
                     pass
         # If taint variable is established by then, insert it into taint list
         if self.taint_var != None:
-            # print(self.taint_var)
+            print(self.taint_var)
             self.taint_list.append(self.taint_var)
+        # exit()
         self.taint_prop_fw()
     
     def analyze_callee(self):
@@ -826,11 +888,11 @@ class BinTaintAnalysis:
         param_idx = 0
         for var in var_list:
             if var.tag == "DW_TAG_variable":
-                log.debug("Local variable %s", var)
+                # log.debug("Local variable %s", var)
                 temp_data = LocalData(var.name, None, var.offset)
                 local_list.append(temp_data)
             if var.tag == "DW_TAG_formal_parameter":
-                log.debug("Formal paramter %s", var)
+                # log.debug("Formal paramter %s", var)
                 temp_data = LocalData(var.name, param_idx, var.offset)
                 param_list.append(temp_data)
                 param_idx += 1
@@ -881,10 +943,10 @@ class BinTaintAnalysis:
                 traceback.print_exc()
         # Finished creating full tree of caller-callee
         root_fun.print_structure()
-        ptr_offset_trees = []
         ptr_offset_trees = self.gen_ptr_offset_tree(root_fun)
-        exit()
-        
+        # for tree in ptr_offset_trees:
+        #     tree.print_tree()
+        return ptr_offset_trees
     
     def analyze_binary(self):
         self.bv: BinaryView
@@ -908,7 +970,7 @@ class BinTaintAnalysis:
                 log.warning(callee.name)    
                 for fun in calls[callee]:
                     log.debug(fun.name)
-                    self.fun_to_check.add(fun.name)
+                    self.fun_to_check.append(fun.name)
             else:
                 log.error("Not in %s", callee.name)
         
@@ -976,15 +1038,23 @@ class BinTaintAnalysis:
         # custom_pprint(self.mlillest)
         
         print(self.taint_var)
+        # exit()
         self.taint_prop_fw()
-        while len(self.fun_set) > 0:
+        # exit()
+        index = 0
+        while len(self.fun_set) > 0 or index < 1:
+            index += 1
             target_fun = self.fun_set.pop()
+            print(target_fun[0].name)
+            
             # Temporary "graph" set:
             self.fun_graph.append(target_fun)
-
             print(target_fun[0], "idx: ", target_fun[1])
+            # exit()
             self.fun_taint_analysis(target_fun[0], target_fun[1])
+            
             
         for fun in self.fun_graph:
             log.critical("%s: Operand Index: %d", fun[0].name, fun[1])
+            
         return self.fun_graph
