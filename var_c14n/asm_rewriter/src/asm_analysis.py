@@ -282,7 +282,7 @@ def calc_ssa_off_expr(self, inst_ssa):
                 ast = bn_var.asm_syntax_tree
                 # print(ast, bn_var.patch_inst.inst_print())
                 if ast != None:
-                    # If AST is none, his means that SSA register is not yet available
+                    # If AST is none, this means that SSA register is not yet available
                     if repr(ast.left) == 'RegNode':
                         # If this is just a register node (e.g., rcx#3)
                         if reg == ast.left.value:

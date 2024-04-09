@@ -437,14 +437,24 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
     patch_inst_line = None
     # print(bn_var.patch_inst.inst_print())
     
+                
+    metadata_template = """movq\t$0, %r11\n\ttest\t%r11, %r11
+    jz verifier_metadata_{0}
+    # The replaced instruction (for metadata purposes only)
+{1}verifier_metadata_{0}:
+"""
+    verifier_metadata = metadata_template.format(metadata_number, dis_inst)
+
     ssa_var = traverse_ast(tgt_ast, bn_var_info, 0)
     if ssa_var != None:
         # Found SSA register    
         if ssa_var.patch_inst.inst_type == "lea":
             new_inst_type = "lea_gs"
             logger.info("Patching with lea_gs w/ base obj")
-            line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d" % 
-                        (dis_inst, new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
+            # line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d" % 
+            #             (dis_inst, new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
+            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d" % 
+                        (verifier_metadata, new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
             patch_inst_line = "\t%s\t%s, %d" % (new_inst_type, temp_inst.dest, tgt_offset)
             # logger.debug(temp_inst.inst_print())
             # logger.debug(bn_var)
@@ -466,77 +476,17 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
                             logger.critical("Array found")
                         if offset_num == base_offset:
                             # If stack offset is set before, then it is safe to use the new macro
-                            line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d" % 
+                            line = re.sub(r"(\b[a-z]+\b).*", "# %s\t%s\t%s, %d" % 
                             (dis_inst, new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
                             patch_inst_line = "\t%s\t%s, %d" % (new_inst_type, temp_inst.dest, tgt_offset)
                 else:
                     # Else, we need to use the original stack offset.
-                    line = re.sub(r"(\b[a-z]+\b).*", "%s\t#%s\t%s, %d" % 
-                            (dis_inst, new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
+                    # line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d" % 
+                    #         (dis_inst, new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
+                    line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d" % 
+                            (verifier_metadata, new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
                     patch_inst_line = "\t%s\t%s, %d" % (new_inst_type, temp_inst.dest, tgt_offset)
                     
-            # line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d" % 
-            #             (dis_inst, new_inst_type, temp_inst.dest, tgt_offset), dis_inst)
-    # logger.debug(bn_var)
-    vuln = False
-    param = False
-    if bn_var.arg == True and bn_var.patch_inst.inst_type != "lea":
-        return dis_inst
-    elif bn_var.arg == True and bn_var.patch_inst.inst_type == "lea":
-        logger.debug("Here")
-        new_inst_type = "lea_store_gs" 
-        line = ""
-        for var in dwarf_var_info:
-            if var.offset_expr == bn_var.offset_expr:
-                # Found that base struct object is being passed as an argument, need to lea_store_gs all the members as well
-                logger.error("Found struct object")
-                if var.struct != None:
-                    for member in var.struct.member_list:
-                        # logger.debug(offset_targets)
-                        offset_value = 0
-                        for offset in offset_targets:
-                            if offset[0] == member.offset_expr:
-                                offset_value = offset[1]
-                        if offset_value != None and member.offset_expr != None:
-                            line = "\t%s\t%s, %d\n" % (new_inst_type, member.offset_expr, offset_value)
-                            patch_inst_line = "\t%s\t%s, %d" % (new_inst_type, member.offset_expr, offset_value)
-                        
-                        if line != "" and line not in lea_list:
-                            lea_list.append(line)
-                            patch_inst_list.append(patch_inst_line)
-        if line == "" and bn_var.offset_expr != None:
-            line = "\t%s\t%s, %d\n" % (new_inst_type, bn_var.offset_expr, tgt_offset)
-            patch_inst_line = "\t%s\t%s, %d" % (new_inst_type, bn_var.offset_expr, tgt_offset)
-            if line != "" and line not in lea_list:
-                lea_list.append(line)
-                patch_inst_list.append(patch_inst_line)
-        logger.debug(bn_var)
-        logger.debug(lea_list)
-        return dis_inst
-    elif bn_var.arg == False:
-        for var in dwarf_var_info:
-            if var.offset_expr == bn_var.offset_expr:
-                logger.warning("Found the variable in DWARF table")
-                if var.vuln == True:
-                    logger.warning("Found vulnerable variable")
-                    vuln = True
-            if var.tag == "DW_TAG_formal_parameter":
-                logger.warning("Parameter found")
-                if check_arg_reg(temp_inst.src):
-                    logger.error("Parameter setup")
-                    param = True
-                else:
-                    logger.error("False")
-                
-                # logger.debug(arg_reg.pop())
-                
-    metadata_template = """movq\t$0, %r11\n\ttest\t%r11, %r11
-    jz verifier_metadata_{0}
-    # The replaced instruction (for metadata purposes only)
-{1}verifier_metadata_{0}:
-"""
-    verifier_metadata = metadata_template.format(metadata_number, dis_inst)
-
     if line == None:
         # If line is None by now, it means patching without any context register
         value = 0
@@ -567,24 +517,12 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
                 # We only need to check store instructions as that is the one deals with register offset at the beginning
                 if store_or_load == "store":
                         new_inst_type = "mov_store_gs" # Need to think about how to make this work for NGINX
-                        if vuln == True:
-                            if param == True:
-                                # This needs to be "#" with the register to prevent exploit 
-                                # line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (verifier_metadata, new_inst_type, 
-                                #                                                      temp_inst.src, tgt_offset, value), dis_inst)
-                                line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s\t%s, %d, %d" % 
-                                              (dis_inst, verifier_metadata, new_inst_type, 
-                                               temp_inst.src, tgt_offset, value), dis_inst)
-                            else:
-                                # line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % (verifier_metadata, new_inst_type, 
-                                #                                                         temp_inst.src, tgt_offset, value), dis_inst)
-                                line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s\t%s, %d, %d" % 
-                                              (dis_inst, verifier_metadata, new_inst_type, 
-                                               temp_inst.src, tgt_offset, value), dis_inst)
-                        else:
-                            line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t#%s\t%s, %d, %d" % 
-                                          (dis_inst, verifier_metadata, new_inst_type, 
-                                           temp_inst.src, tgt_offset, value), dis_inst)
+                        # line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t#%s\t%s, %d, %d" % 
+                        #                 (dis_inst, verifier_metadata, new_inst_type, 
+                        #                 temp_inst.src, tgt_offset, value), dis_inst)
+                        line = re.sub(r"(\b[a-z]+\b).*", "%s\t%s\t%s, %d, %d" % 
+                                        (verifier_metadata, new_inst_type, 
+                                        temp_inst.src, tgt_offset, value), dis_inst)
                         patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
                 elif store_or_load == "load":
                     new_inst_type = "mov_load_gs"
@@ -594,13 +532,13 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
                             # Found that base struct object is being copied into a value, then, just load stack offset
                             if var.struct != None:
                                 logger.error("Found struct object")
-                                line = re.sub(r"(\b[a-z]+\b).*", "%s\t#%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
                                 patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
                             else:
-                                line = re.sub(r"(\b[a-z]+\b).*", "%s\t#%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
                                 patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
                     if line == None:
-                        line = re.sub(r"(\b[a-z]+\b).*", "%s\t#%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
+                        line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.dest, tgt_offset, value), dis_inst)
                         patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.dest, tgt_offset, value)
         elif bn_var.patch_inst.inst_type == "movss":
             if store_or_load == "store":

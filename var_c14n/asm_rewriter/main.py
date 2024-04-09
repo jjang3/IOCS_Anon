@@ -15,7 +15,7 @@ import os
 sys.path.append(os.path.join(os.getcwd(), 'src'))
 # sys.path.append('src')  # Add the src directory to the import path
 
-# from dwarf_analysis import *
+#from dwarf_analysis import *
 from dwarf_analysis_old import *
 from gen_table import *
 # from bin_analysis import *
@@ -47,7 +47,7 @@ class CustomFormatter(logging.Formatter):
     purp = "\x1b[38;5;13m"
     reset = "\x1b[0m"
     # format = "%(funcName)5s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
-    format = "[Line:%(lineno)4s -%(funcName)18s()] %(levelname)7s    %(message)s "
+    format = "[%(filename)s: Line:%(lineno)4s - %(funcName)20s()] %(levelname)7s    %(message)s "
 
     FORMATS = {
         logging.DEBUG: yellow + format + reset,
@@ -131,84 +131,90 @@ def extract_taints(file_path, vuln_file):
     curr_fun_name = ""
     print(vuln_file)
     # Open the file and read line by line
-    with open(vuln_file, 'r', encoding='utf-8') as file:
-        for line in file:
-            # Trim whitespace for consistency
-            line = line.strip()
-            if line.startswith("file:"):
-                # This line contains the function name, extract it
-                parts = line.split("-")
-                # Extracting the actual function name
-                curr_fun_name = parts[2].split(":")[1].strip()
-            elif line.startswith("- instruction:"):
-                # This line contains the instruction, extract it
-                current_instruction = line.split(":", 1)[1].strip()
-                # Add the instruction to the current function name in the dictionary
-                if curr_fun_name not in taint_insts:
-                    taint_insts[curr_fun_name] = set()
-                taint_insts[curr_fun_name].add(current_instruction)
-    
+    try:
+        with open(vuln_file, 'r', encoding='utf-8') as file:
+            for line in file:
+                # Trim whitespace for consistency
+                line = line.strip()
+                if line.startswith("file:"):
+                    # This line contains the function name, extract it
+                    parts = line.split("-")
+                    # Extracting the actual function name
+                    curr_fun_name = parts[2].split(":")[1].strip()
+                elif line.startswith("- instruction:"):
+                    # This line contains the instruction, extract it
+                    current_instruction = line.split(":", 1)[1].strip()
+                    # Add the instruction to the current function name in the dictionary
+                    if curr_fun_name not in taint_insts:
+                        taint_insts[curr_fun_name] = set()
+                    taint_insts[curr_fun_name].add(current_instruction)
+    except:
+        log.error("Vuln file not provided")
+
     pprint.pprint(taint_insts)
     
-    
-    with open(file_path, 'r', encoding='utf-8') as file:
-        content = file.read()
-    
-    # Pattern to match the instructions block, capturing instructions until an empty line
-    block_pattern = re.compile(r'#####INSTS#####\n(.*?)(?=\n\n|\Z)', re.DOTALL)
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            content = file.read()
+        # Pattern to match the instructions block, capturing instructions until an empty line
+        block_pattern = re.compile(r'#####INSTS#####\n(.*?)(?=\n\n|\Z)', re.DOTALL)
 
-    # Specific pattern to match only the desired format of instruction lines
-    # ((\w+\/\w+\.c@(\d+)) \(\s*(.+?)\s*\))
-    combined_pattern = re.compile(
-    r'((\w+\/\w+\.c@(\d+)) \(\s*(.+?)\s*\))|'
-    r'(#####CTX#####\s+(\w+)\s+->\s+(\w+))', re.DOTALL)
-    
-    # Find all blocks of instructions
-    blocks = block_pattern.findall(content)
-
-    instruction_sets = []
-    for block in blocks:
-        matches = combined_pattern.findall(block)
-        block_instructions = []
-        for match in matches:
-            if match[0]:  # This means it matched an instruction line
-                file_path_line = match[1]
-                instruction = match[3]
-                print(instruction)
-                if re.search(r"^(?!.*\balloca\b).+$", instruction):
-                    # block_instructions.append(f"{file_path_line} ({instruction})")
-                    block_instructions.append(f"{instruction}")
-                else:
-                    logger.warning("Ignore alloca")
-            elif match[4]:  # This means it matched a context line
-                ctx_info = match[4]
-                block_instructions.append(ctx_info)
-        segments = split_by_ctx(block_instructions)
-        # Print the segments
-        for i, segment in enumerate(segments):
-            print(f"Segment {i + 1}:")
-            for instruction in segment:
-                print(instruction)
-            print("\n---\n")
-            instruction_sets.append(segment)
-    # exit()
-            # instruction_sets.append(block_instructions)
+        # Specific pattern to match only the desired format of instruction lines
+        # ((\w+\/\w+\.c@(\d+)) \(\s*(.+?)\s*\))
+        combined_pattern = re.compile(
+        r'((\w+\/\w+\.c@(\d+)) \(\s*(.+?)\s*\))|'
+        r'(#####CTX#####\s+(\w+)\s+->\s+(\w+))', re.DOTALL)
         
-        # instruction_sets.append(block_instructions)
+        # Find all blocks of instructions
+        blocks = block_pattern.findall(content)
 
-    pprint.pprint(instruction_sets)
+        instruction_sets = []
+        for block in blocks:
+            matches = combined_pattern.findall(block)
+            block_instructions = []
+            for match in matches:
+                if match[0]:  # This means it matched an instruction line
+                    file_path_line = match[1]
+                    instruction = match[3]
+                    print(instruction)
+                    if re.search(r"^(?!.*\balloca\b).+$", instruction):
+                        # block_instructions.append(f"{file_path_line} ({instruction})")
+                        block_instructions.append(f"{instruction}")
+                    else:
+                        logger.warning("Ignore alloca")
+                elif match[4]:  # This means it matched a context line
+                    ctx_info = match[4]
+                    block_instructions.append(ctx_info)
+            segments = split_by_ctx(block_instructions)
+            # Print the segments
+            for i, segment in enumerate(segments):
+                print(f"Segment {i + 1}:")
+                for instruction in segment:
+                    print(instruction)
+                print("\n---\n")
+                instruction_sets.append(segment)
+        # exit()
+                # instruction_sets.append(block_instructions)
+            
+            # instruction_sets.append(block_instructions)
+
+        pprint.pprint(instruction_sets)
+        
+        for fun in taint_insts:
+            logger.info(fun)
+            for inst in taint_insts[fun]:
+                logger.debug(inst)
+                for segment in instruction_sets:
+                    last_element = segment[-1]
+                    if inst == last_element:
+                        var_name = re.search(r"%([a-zA-Z_][a-zA-Z0-9_]*)\s*\,", segment[0])
+                        log.critical("Var name: %s", var_name.group(1))
+                        var_name_sets.add((var_name.group(1), fun))
+        pprint.pprint(var_name_sets)
+    except:
+        log.error("No file exists")
     
-    for fun in taint_insts:
-        logger.info(fun)
-        for inst in taint_insts[fun]:
-            logger.debug(inst)
-            for segment in instruction_sets:
-                last_element = segment[-1]
-                if inst == last_element:
-                    var_name = re.search(r"%([a-zA-Z_][a-zA-Z0-9_]*)\s*\,", segment[0])
-                    log.critical("Var name: %s", var_name.group(1))
-                    var_name_sets.add((var_name.group(1), fun))
-    pprint.pprint(var_name_sets)
+    
     # exit()
     return var_name_sets
     # return instruction_sets
@@ -301,6 +307,7 @@ def process_file(input_item, analysis_list, taint_sets):
     dwarf_output: list[FunData] = []
     dwarf_output = dwarf_analysis(input_item)
     # exit()
+    # exit()
     for fun in dwarf_output:
         log.debug(fun.name)
         if fun.name in analysis_list:
@@ -314,6 +321,7 @@ def process_file(input_item, analysis_list, taint_sets):
     
         
     # Print the extracted instructions
+    # if taint_sets != None:
     for idx, var in enumerate(taint_sets):
         print(f"Var target: {idx, var[0]} - Fun: {var[1]}")
         try:
@@ -330,9 +338,50 @@ def process_file(input_item, analysis_list, taint_sets):
         except:
             # pprint.pprint(dwarf_fun_var_info[var[1]])
             log.error("Not part of tainted path")
+    # else:
+    #     target_fun_var_info = all_dwarf_info
     # exit()
     # exit()
     
+def remove_target_var_info(cand, target_fun_var_info):
+    """Remove variable information based on candidate node details."""
+    for fun, vars in target_fun_var_info.items():
+        target_fun_var_info[fun] = [
+            var for var in vars if not (cand.local_offset == var.offset and cand.fun_name == var.fun_name)
+        ]
+
+def add_to_target_fun_var_info(cand, all_dwarf_info, target_fun_var_info):
+    """Add variable information based on candidate node details."""
+    for var in all_dwarf_info.get(cand.fun_name, []):
+        if var.offset == cand.local_offset:
+            if cand.fun_name not in target_fun_var_info:
+                target_fun_var_info[cand.fun_name] = []
+            if var not in target_fun_var_info[cand.fun_name]:
+                target_fun_var_info[cand.fun_name].append(var)
+
+def process_candidates(ptr_offset_trees, target_fun_var_info, all_dwarf_info):
+    new_node_candidates, remove_node_candidates = [], []
+    
+    for fun, vars in target_fun_var_info.items():
+        for var in vars:
+            for tree in ptr_offset_trees:
+                target_node = tree.find_node_by_fun_name_and_offset(var.fun_name, var.offset)
+                if target_node:
+                    parent_node = tree.find_parent(target_node, find_root=True)
+                    if any(search_var.offset == parent_node.local_offset for search_var in dwarf_fun_var_info[parent_node.fun_name]):
+                        new_node_candidates.append(parent_node)
+                        remove_node_candidates.append(target_node)
+                        break
+
+    # Process removals
+    for cand in remove_node_candidates:
+        remove_target_var_info(cand, target_fun_var_info)
+
+    # Process additions
+    for cand in new_node_candidates:
+        add_to_target_fun_var_info(cand, all_dwarf_info, target_fun_var_info)
+    
+
     
 def main():
     # Get the size of the terminal
@@ -393,9 +442,17 @@ def main():
         
     else:
         # Assuming 'args.binary' is a predefined variable
+        # Assuming args.binary and base_name are defined
         target_dir      = Path(args.binary).resolve().parent.parent / base_name
         result_dir      = Path(args.binary).resolve().parent.parent / "result" / base_name
-        print(result_dir)
+                
+        # Convert the result_dir to a string and check for redundant 'result/result'
+        result_dir_str = str(result_dir)
+        if "result/result" in result_dir_str:
+            # Replace the first occurrence of 'result/result' with 'result' to remove redundancy
+            corrected_path = result_dir_str.replace("result/result", "result", 1)
+            # Convert back to Path object
+            result_dir = Path(corrected_path)
         
         # exit()
         vuln_file   = result_dir / f"{base_name}.vuln"
@@ -418,15 +475,37 @@ def main():
         temp_file.intel_path = intel_file
         log.info("Analyzing %s", binary_item)
         process_file(binary_item, analysis_list, taint_sets)
-        pprint.pprint(target_fun_var_info)
+
+        ptr_offset_trees          = taint_analysis.process_offset(binary_item, all_dwarf_info)
+        pprint.pprint(ptr_offset_trees)
+        for tree in ptr_offset_trees:
+            tree.print_tree()
+        # pprint.pprint(all_dwarf_info)
+        log.warning("Before") 
+        # pprint.pprint(target_fun_var_info)
+        for fun in target_fun_var_info:
+            for var in target_fun_var_info[fun]:
+                if var != None:
+                    log.debug("Fun: %s | Offset: %d", var.fun_name, var.offset)
+        process_candidates(ptr_offset_trees, target_fun_var_info, all_dwarf_info)
+        log.warning("After")
+
+        # pprint.pprint(target_fun_var_info)   
+        
+        for fun in target_fun_var_info:
+            for var in target_fun_var_info[fun]:
+                if var != None:
+                    log.debug("Fun: %s | Offset: %d", var.fun_name, var.offset) 
+        exit()
         # exit()
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
         # fun_table_offsets = generate_table(dwarf_var_count, dwarf_fun_var_info, result_dir)
         fun_table_offsets = generate_table(dwarf_var_count, target_fun_var_info, result_dir)
+        # question here: do I need to just worry about specific offset or all members as well?
         pprint.pprint(fun_table_offsets)
-        # offset_rel = bin_analysis.offset_analysis(binary_item)
-        output          = taint_analysis.process_offset(binary_item, all_dwarf_info)
-        exit()
+        
+        
+        # exit()
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
         bn_fun_var_info = bin_analysis.process_binary(binary_item, analysis_list)
         # exit()
@@ -446,7 +525,7 @@ def main():
         else:
             patch_count = rewriter.rewriter(analysis_list, result_dir, str(asm_item), dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
             log.critical("Patch count %d", patch_count)
-            # exit()
+            exit()
             gen_obj_file(temp_file)
             # # time.sleep(5)
             static_verifier(temp_file.obj_path, "POST", analysis_list, target_fun_var_info)

@@ -305,8 +305,13 @@ def dwarf_analysis(input_binary):
                     reg_offset      = None
                     type_name       = None
                     typedef_tag     = None
-                    for var_attr in DIE.attributes.values():
+                    print(DIE.attributes)
+                    # exit()
+                    for var_attr in DIE.attributes.values():                        
                         # offset = None
+                        if (var_attr.name == "DW_AT_abstract_origin"):
+                            break
+                        
                         if (var_attr.name == "DW_AT_name"):
                             var_name = DIE.attributes["DW_AT_name"].value.decode()
                             log.debug("\tVar name: %s", var_name)
@@ -395,10 +400,53 @@ def dwarf_analysis(input_binary):
                         if (var_attr.name == "DW_AT_type"):
                             refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
                             type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
-                            # print(type_die.tag)
+                            print(type_die.tag)
                             if type_die.tag == "DW_TAG_base_type":
                                 type_name = type_die.attributes['DW_AT_name'].value.decode()
                                 log.error("base_type: %s ",type_name)
+                                struct_var  = False
+                                base_var    = True
+                                temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
+                                last_var.append(temp_var)
+                            elif (type_die.tag == "DW_TAG_enumeration_type" or type_die.tag == "DW_TAG_volatile_type"):
+                                enum_type_die = get_dwarf_type(dwarfinfo, type_die.attributes, 
+                                                            type_die.cu, type_die.cu.cu_offset)
+                                log.debug(enum_type_die)
+                                if enum_type_die.tag == "DW_TAG_base_type":
+                                    if 'DW_AT_name' in enum_type_die.attributes:
+                                        type_name = enum_type_die.attributes['DW_AT_name'].value.decode()
+                                elif enum_type_die.tag == "DW_TAG_structure_type":
+                                    if 'DW_AT_name' in enum_type_die.attributes:
+                                        type_name = enum_type_die.attributes['DW_AT_name'].value.decode()
+                                elif enum_type_die.tag == "DW_TAG_array_type":
+                                    nested_tag = None
+                                    nested_die = None
+                                    arr_type_die = get_dwarf_type(dwarfinfo, enum_type_die.attributes,
+                                                                    enum_type_die.cu, enum_type_die.cu.cu_offset)
+                                    nested_tag = arr_type_die.tag
+                                    nested_die = arr_type_die
+                                    if arr_type_die.tag == "DW_TAG_base_type":
+                                        type_name = arr_type_die.attributes['DW_AT_name'].value.decode()
+                                    elif 'DW_AT_type' in arr_type_die.attributes:
+                                        # If we need to deref again because it is either struct or const
+                                        dbl_enum_type_die = get_dwarf_type(dwarfinfo, arr_type_die.attributes,
+                                                                        arr_type_die.cu, arr_type_die.cu.cu_offset)
+                                        nested_tag = dbl_enum_type_die.tag
+                                        nested_die = dbl_enum_type_die
+                                        if 'DW_AT_name' in dbl_enum_type_die.attributes:
+                                            type_name = dbl_enum_type_die.attributes['DW_AT_name'].value.decode()
+                                        else:
+                                            trip_const_type_die = get_dwarf_type(dwarfinfo, dbl_enum_type_die.attributes, dbl_enum_type_die.cu, dbl_const_type_die.cu.cu_offset)
+                                            nested_tag = trip_const_type_die.tag
+                                            nested_die = trip_const_type_die
+                                            if 'DW_AT_name' in trip_const_type_die.attributes:
+                                                type_name = trip_const_type_die.attributes['DW_AT_name'].value.decode()
+                                            else:
+                                                quad_const_type_die = get_dwarf_type(dwarfinfo, trip_const_type_die.attributes, trip_const_type_die.cu, trip_const_type_die.cu.cu_offset)
+                                                nested_tag = quad_const_type_die.tag
+                                                nested_die = quad_const_type_die
+                                                if 'DW_AT_name' in quad_const_type_die.attributes:
+                                                    type_name = quad_const_type_die.attributes['DW_AT_name'].value.decode()
                                 struct_var  = False
                                 base_var    = True
                                 temp_var = VarData(var_name, None, type_name, type_die.tag, fun_name)
@@ -408,6 +456,7 @@ def dwarf_analysis(input_binary):
                                 # This will return dereferenced DIE of a pointer type
                                 ptr_type_die = get_dwarf_type(dwarfinfo, type_die.attributes, 
                                                            type_die.cu, type_die.cu.cu_offset)
+                                log.error("ptr or array_type: %s ",type_name)
                                 # log.error("single ptr_type: %s %s", ptr_type_die.tag, ptr_type_die)
                                 if ptr_type_die != None:
                                     # There are cases where DW_TAG_pointer_type doesn't have type
@@ -476,6 +525,7 @@ def dwarf_analysis(input_binary):
                                 log.debug(temp_var)
                                 last_var.append(temp_var)
                             elif type_die.tag == "DW_TAG_typedef":
+                                log.error("typedef: %s ",type_name)
                                 typedef_name = type_die.attributes['DW_AT_name'].value.decode()
                                 try:
                                     typedef_name = typedef_name.decode('utf-8')
@@ -536,6 +586,7 @@ def dwarf_analysis(input_binary):
                                 #     exit()
                                 log.error("typedef_type: %s", type_name)
                             elif type_die.tag == "DW_TAG_const_type":
+                                log.error("const_type: %s ",type_name)
                                 const_type_die = get_dwarf_type(dwarfinfo, type_die.attributes, 
                                                            type_die.cu, type_die.cu.cu_offset)
                                 if const_type_die.tag == "DW_TAG_base_type":
@@ -600,6 +651,7 @@ def dwarf_analysis(input_binary):
                                 #     print(type_die.tag, type_name, const_type_die.tag)
                                 #     exit()
                             elif type_die.tag == "DW_TAG_structure_type":
+                                log.error("struct_type: %s ",type_name)
                                 struct_var  = True
                                 base_var    = False
                                 # print(type_die)
@@ -615,7 +667,7 @@ def dwarf_analysis(input_binary):
                                         temp_var = copy.deepcopy(struct_item)
                                         last_var.append(temp_var)
                        
-                    # log.warning("DW_TAG_Variable finished\n\t%s", temp_var)
+                    log.warning("DW_TAG_Variable finished\n\t%s", temp_var)
                     print()
                             
                 if (DIE.tag == "DW_TAG_union_type"):
