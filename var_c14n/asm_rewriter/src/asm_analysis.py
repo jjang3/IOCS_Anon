@@ -434,6 +434,7 @@ def asm_lex_analysis(self, var_name, llil_fun, llil_inst, dis_inst = None, fun =
         # src_offset_expr [0] | dest_offset_expr [1]
         bn_var = BnVarData(var_name, dis_inst, patch_inst, 
                         offset_expr, asm_syntax_tree, llil_inst, False)
+        # bn_var.patch_inst.inst_print()
         if bn_var.patch_inst.inst_type == "movss":
             bn_var.patch_inst.suffix = ""
         # custom_pprint(bn_var)

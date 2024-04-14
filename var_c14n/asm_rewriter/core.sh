@@ -10,8 +10,10 @@ options=("Migrate" "Analyze" "Patch" "Compile")
 suture_path=/home/jaewon/Downloads/suture
 
 # This is coreutils path
-coreutils_build_path="/home/jaewon/coreutils/new_build"
-coreutils_src_path="/home/jaewon/coreutils/new_build/src"
+# coreutils_build_path="/home/jaewon/coreutils/new_build"
+# coreutils_src_path="/home/jaewon/coreutils/new_build/src"
+coreutils_build_path="/home/jaewon/coreutils/"
+coreutils_src_path="/home/jaewon/coreutils/src"
 coreutils_config_file=${coreutils_src_path}/${input}.config
 coreutils_bc_path="/home/jaewon/coreutils/src"
 

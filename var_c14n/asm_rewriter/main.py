@@ -459,7 +459,8 @@ def main():
         taint_file  = result_dir / f"{base_name}.taint"
         intel_file  = result_dir / f"{base_name}.intel"
         # Use the function to extract instructions from the file
-        taint_sets = extract_taints(taint_file, vuln_file)
+        if vuln_file != None:
+            taint_sets = extract_taints(taint_file, vuln_file)
         # exit()
         analysis_file   = result_dir / f"{base_name}.analysis"
         with open(analysis_file) as ff:
@@ -474,12 +475,16 @@ def main():
         temp_file.obj_path = obj_item
         temp_file.intel_path = intel_file
         log.info("Analyzing %s", binary_item)
+        # exit()
         process_file(binary_item, analysis_list, taint_sets)
 
         ptr_offset_trees          = taint_analysis.process_offset(binary_item, all_dwarf_info)
-        pprint.pprint(ptr_offset_trees)
-        for tree in ptr_offset_trees:
-            tree.print_tree()
+        # pprint.pprint(ptr_offset_trees)
+        # exit()
+        # print(len(ptr_offset_trees))
+        if len(ptr_offset_trees) != 0 and ptr_offset_trees.pop() != None:
+            for tree in ptr_offset_trees:
+                tree.print_tree()
         # pprint.pprint(all_dwarf_info)
         log.warning("Before") 
         # pprint.pprint(target_fun_var_info)
@@ -496,7 +501,7 @@ def main():
             for var in target_fun_var_info[fun]:
                 if var != None:
                     log.debug("Fun: %s | Offset: %d", var.fun_name, var.offset) 
-        exit()
+        # exit()
         # exit()
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
         # fun_table_offsets = generate_table(dwarf_var_count, dwarf_fun_var_info, result_dir)

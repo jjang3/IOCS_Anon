@@ -356,18 +356,18 @@ def dwarf_analysis(input_binary):
                                                 begin   = hex(int(var_offset) + int(member.offset))
                                                 end     = hex(int(var_offset) + int(working_var.member_list[i+1].offset))
                                                 # member_var_offset = str(int(begin, base=16)) + "(%rbp)" 
-                                                member_var_offset = str(int(begin, base=16)) + "(%" + reg_to_use + ")" 
-                                                member.begin    = begin
-                                                member.end      = end
+                                                member_var_offset = str(int(member.offset)) + "(%" + reg_to_use + ")" 
+                                                # member.begin    = begin
+                                                # member.end      = end
                                                 member.offset_expr = member_var_offset
                                                 # pprint.pprint(var_list, width=1)
                                             else:
                                                 begin   = hex(int(var_offset) + int(member.offset))
                                                 end     = hex(int(var_offset) + int(working_var.size))
                                                 # member_var_offset = str(int(begin, base=16)) + "(%rbp)" 
-                                                member_var_offset = str(int(begin, base=16)) + "(%" + reg_to_use + ")" 
-                                                member.begin    = begin
-                                                member.end      = end
+                                                member_var_offset = str(int(member.offset)) + "(%" + reg_to_use + ")" 
+                                                # member.begin    = begin
+                                                # member.end      = end
                                                 member.offset_expr = member_var_offset
                                     temp_var = VarData(var_name, var_offset, working_var.name, 
                                                        "DW_TAG_structure_type", fun_name, reg_offset, working_var)
@@ -724,8 +724,10 @@ def dwarf_analysis(input_binary):
                                 if isinstance(loc, LocationExpr):
                                     offset = re.search(off_regex, 
                                                        describe_DWARF_expr(loc.loc_expr, dwarfinfo.structs, CU.cu_offset))
-                                    temp_member.offset = offset.group(1)
-                                    # log.debug(offset.group(1))
+                                    # temp_member.offset = str(int(offset.group(1)))
+                                    temp_member.offset = str(int(offset.group(1)) - int(byte_size))
+                                    log.debug(offset.group(1))
+                                    # exit()
                         if (mem_attr.name == "DW_AT_type"):
                             refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
                             type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
