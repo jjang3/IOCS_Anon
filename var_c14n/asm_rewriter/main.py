@@ -341,7 +341,6 @@ def process_file(input_item, analysis_list, taint_sets):
     # else:
     #     target_fun_var_info = all_dwarf_info
     # exit()
-    # exit()
     
 def remove_target_var_info(cand, target_fun_var_info):
     """Remove variable information based on candidate node details."""
@@ -460,13 +459,18 @@ def main():
         intel_file  = result_dir / f"{base_name}.intel"
         # Use the function to extract instructions from the file
         if vuln_file != None:
-            taint_sets = extract_taints(taint_file, vuln_file)
+            taint_insts_set = extract_taints(taint_file, vuln_file)
         # exit()
         analysis_file   = result_dir / f"{base_name}.analysis"
         with open(analysis_file) as ff:
             for line in ff:
                 # print(line)
                 analysis_list = line.split(',')
+        pprint.pprint(type(analysis_list))
+        seen = set()
+        analysis_list = [x for x in analysis_list if not (x in seen or seen.add(x))]
+        # print(analysis_list)
+        # exit()
         binary_item     = result_dir / f"{base_name}.out"  # Updated variable name for clarity
         asm_item        = result_dir / f"{base_name}.s"  # Updated variable name for clarity
         obj_item        = result_dir / f"{base_name}.o"  # Updated variable name for clarity
@@ -476,9 +480,9 @@ def main():
         temp_file.intel_path = intel_file
         log.info("Analyzing %s", binary_item)
         # exit()
-        process_file(binary_item, analysis_list, taint_sets)
+        process_file(binary_item, analysis_list, taint_insts_set)
 
-        ptr_offset_trees          = taint_analysis.process_offset(binary_item, all_dwarf_info)
+        ptr_offset_trees          = taint_analysis.process_offset(binary_item, all_dwarf_info, analysis_list)
         # pprint.pprint(ptr_offset_trees)
         # exit()
         # print(len(ptr_offset_trees))
