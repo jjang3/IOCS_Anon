@@ -89,15 +89,19 @@ class FunctionNode:
                             root_node = PtrOffsetTreeNode(fun_name=self.function_name, reg_offset=operand.offset, index=operand.oper_idx)
                             root_tree = PtrOffsetTree(root=root_node)
                             stop = pop_ptr_offset_tree(callee_fun, root_tree, indent + "    ")
-                            print(stop)
+                            # print(stop)
                             root_tree.print_tree()
-                            if stop:
-                                log.warning("Stopping early due to a condition met in pop_ptr_offset_tree")
-                                root_tree.print_tree()
-                                if root_tree:
-                                    trees.append(root_tree)
-                                root_tree = None  # Reset the root tree to allow for a new tree creation
+                            if root_tree:
+                                trees.append(root_tree)
+                                root_tree = None
                                 continue
+                            # if stop:
+                            #     log.warning("Stopping early due to a condition met in pop_ptr_offset_tree")
+                            #     root_tree.print_tree()
+                            #     if root_tree:
+                            #         trees.append(root_tree)
+                            #     root_tree = None  # Reset the root tree to allow for a new tree creation
+                            #     continue
         return trees
 
     def generate_ptr_offset_trees(self, ptr_offset_trees=None, indent=""):
@@ -391,22 +395,37 @@ def pop_ptr_offset_tree(node: FunctionNode, input_tree: PtrOffsetTree, indent=""
     recent_node.add_child(new_node)
     child = False # if this flag is True, then child exists, if it remains false, then this is the end.
     # recent_node.print_fun_structure()
+    # for callee_fun in node.callee_funs:
+    #     # log.debug(callee_fun)
+    #     for operand in callee_fun.operands:
+    #         log.debug("%d %d", new_node.local_offset, operand.offset)
+    #         if new_node.local_offset == operand.offset:
+    #             child = True
+    #             log.critical("Found")
+    #             log.debug("%s Callee Fun: %s | OperIdx: %s, Offset: %s, Pointer: %s", 
+    #                     indent, callee_fun.function_name, operand.oper_idx, operand.offset, operand.pointer)
+    #             new_node.callee_arg_idx = operand.oper_idx
+    #             callee_fun.traverse_callees(pop_ptr_offset_tree, input_tree, indent + "    ")
+    # if child == False:
+    #     log.warning("Finished creating a tree")
+    #     return True  # Indicates to stop and start a new tree
+    # print("Returning false")
+    # return False  # Indicates that traversal can continue
     for callee_fun in node.callee_funs:
-        # log.debug(callee_fun)
         for operand in callee_fun.operands:
-            log.debug("%d %d", new_node.local_offset, operand.offset)
             if new_node.local_offset == operand.offset:
                 child = True
-                log.critical("Found")
-                log.debug("%s Callee Fun: %s | OperIdx: %s, Offset: %s, Pointer: %s", 
-                        indent, callee_fun.function_name, operand.oper_idx, operand.offset, operand.pointer)
+                log.critical("Found continuation for tree")
                 new_node.callee_arg_idx = operand.oper_idx
-                callee_fun.traverse_callees(pop_ptr_offset_tree, input_tree, indent + "    ")
-    if child == False:
+                stop = callee_fun.traverse_callees(pop_ptr_offset_tree, input_tree, indent + "    ")
+                if stop:  # If true, a complete path was found; no need to continue in this loop
+                    return True
+
+    if not child:
         log.warning("Finished creating a tree")
-        return True  # Indicates to stop and start a new tree
-    print("Returning false")
-    return False  # Indicates that traversal can continue
+        return True
+
+    return False
 
 def gen_ptr_offset_tree(node: FunctionNode, indent=""):
     trees = []
