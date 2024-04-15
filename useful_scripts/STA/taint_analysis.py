@@ -96,7 +96,7 @@ class FunctionNode:
                                 root_tree = None
                                 continue
                             # if stop:
-                            #     log.warning("Stopping early due to a condition met in pop_ptr_offset_tree")
+                            #     logger.warning("Stopping early due to a condition met in pop_ptr_offset_tree")
                             #     root_tree.print_tree()
                             #     if root_tree:
                             #         trees.append(root_tree)
@@ -134,44 +134,47 @@ class FunctionNode:
         for callee in self.callee_funs:
             callee.traverse_callees(action, *args, **kwargs)
 
-class CustomFormatter(logging.Formatter):
-    # FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s | %(levelname)s"
-    # logging.basicConfig(level=os.environ.get("LOGLEVEL", "DEBUG"), format=FORMAT)
-    blue = "\x1b[33;34m"
-    yellow = "\x1b[33;20m"
-    red = "\x1b[31;20m"
-    bold_green = "\x1b[42;1m"
-    purp = "\x1b[38;5;13m"
-    reset = "\x1b[0m"
-    # format = "%(funcName)5s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
-    format = "[%(filename)s: Line:%(lineno)4s - %(funcName)20s()] %(levelname)7s    %(message)s "
+# class CustomFormatter(logging.Formatter):
+#     # FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s | %(levelname)s"
+#     # logging.basicConfig(level=os.environ.get("LOGLEVEL", "DEBUG"), format=FORMAT)
+#     blue = "\x1b[33;34m"
+#     yellow = "\x1b[33;20m"
+#     red = "\x1b[31;20m"
+#     bold_green = "\x1b[42;1m"
+#     purp = "\x1b[38;5;13m"
+#     reset = "\x1b[0m"
+#     # format = "%(funcName)5s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
+#     format = "[%(filename)s: Line:%(lineno)4s - %(funcName)20s()] %(levelname)7s    %(message)s "
 
-    FORMATS = {
-        logging.DEBUG: yellow + format + reset,
-        logging.INFO: blue + format + reset,
-        logging.WARNING: purp + format + reset,
-        logging.ERROR: red + format + reset,
-        logging.CRITICAL: bold_green + format + reset
-    }
+#     FORMATS = {
+#         logging.DEBUG: yellow + format + reset,
+#         logging.INFO: blue + format + reset,
+#         logging.WARNING: purp + format + reset,
+#         logging.ERROR: red + format + reset,
+#         logging.CRITICAL: bold_green + format + reset
+#     }
 
-    def format(self, record):
-        log_fmt = self.FORMATS.get(record.levelno)
-        formatter = logging.Formatter(log_fmt)
-        return formatter.format(record)
+#     def format(self, record):
+#         log_fmt = self.FORMATS.get(record.levelno)
+#         formatter = logging.Formatter(log_fmt)
+#         return formatter.format(record)
     
-# Debug options here
-debug_level = logging.DEBUG
-ch = logging.StreamHandler()
-ch.setLevel(debug_level) 
-ch.setFormatter(CustomFormatter())
+# # Debug options here
+# debug_level = logging.DEBUG
+# ch = logging.StreamHandler()
+# ch.setLevel(debug_level) 
+# ch.setFormatter(CustomFormatter())
 
-log = logging.getLogger(__name__)
-log.setLevel(debug_level)
+# log = logging.getLogger(__name__)
+# logger.setLevel(debug_level)
 
-# create console handler with a higher log level
-log_disable = False
-log.addHandler(ch)
-log.disabled = log_disable
+# # create console handler with a higher log level
+# log_disable = False
+# logger.addHandler(ch)
+# logger.disabled = log_disable
+
+# Get the same logger instance. Use __name__ to get a logger with a hierarchical name or a specific string to get the exact same logger.
+logger = logging.getLogger('main')
 
 def custom_pprint(obj, color='blue', attrs=['reverse']):
     # Get the current frame and then the outer frame (caller's frame)
@@ -208,7 +211,7 @@ def process_binary(input_item):
         
 def process_offset(input_item, dwarf_info, analysis_list):
     with load(input_item.__str__(), options={"arch.x86.disassembly.syntax": "AT&T"}) as bv:
-        log.info(input_item.__str__())
+        logger.info(input_item.__str__())
         # exit()
         arch = Architecture['x86_64']
         bn = BinTaintAnalysis(bv, None, dwarf_info, analysis_list)
@@ -375,7 +378,7 @@ def add_tree_if_unique(tree_list, new_tree):
 ptr_offset_trees = list()
 
 def pop_ptr_offset_tree(node: FunctionNode, input_tree: PtrOffsetTree, indent=""):    
-    log.info("%s", node.function_name)
+    logger.info("%s", node.function_name)
     recent_node: PtrOffsetTreeNode
     recent_node = input_tree.get_outermost_node()
     recent_node.print_node()
@@ -387,7 +390,7 @@ def pop_ptr_offset_tree(node: FunctionNode, input_tree: PtrOffsetTree, indent=""
     except:
         offset = None
         return False
-    # log.debug(offset)
+    # logger.debug(offset)
     # exit()
     # First creat a node because this will always be true. Index will be None at first because it will be determined if we need to 
     # further explored
@@ -396,18 +399,18 @@ def pop_ptr_offset_tree(node: FunctionNode, input_tree: PtrOffsetTree, indent=""
     child = False # if this flag is True, then child exists, if it remains false, then this is the end.
     # recent_node.print_fun_structure()
     # for callee_fun in node.callee_funs:
-    #     # log.debug(callee_fun)
+    #     # logger.debug(callee_fun)
     #     for operand in callee_fun.operands:
-    #         log.debug("%d %d", new_node.local_offset, operand.offset)
+    #         logger.debug("%d %d", new_node.local_offset, operand.offset)
     #         if new_node.local_offset == operand.offset:
     #             child = True
-    #             log.critical("Found")
-    #             log.debug("%s Callee Fun: %s | OperIdx: %s, Offset: %s, Pointer: %s", 
+    #             logger.critical("Found")
+    #             logger.debug("%s Callee Fun: %s | OperIdx: %s, Offset: %s, Pointer: %s", 
     #                     indent, callee_fun.function_name, operand.oper_idx, operand.offset, operand.pointer)
     #             new_node.callee_arg_idx = operand.oper_idx
     #             callee_fun.traverse_callees(pop_ptr_offset_tree, input_tree, indent + "    ")
     # if child == False:
-    #     log.warning("Finished creating a tree")
+    #     logger.warning("Finished creating a tree")
     #     return True  # Indicates to stop and start a new tree
     # print("Returning false")
     # return False  # Indicates that traversal can continue
@@ -415,14 +418,14 @@ def pop_ptr_offset_tree(node: FunctionNode, input_tree: PtrOffsetTree, indent=""
         for operand in callee_fun.operands:
             if new_node.local_offset == operand.offset:
                 child = True
-                log.critical("Found continuation for tree")
+                logger.critical("Found continuation for tree")
                 new_node.callee_arg_idx = operand.oper_idx
                 stop = callee_fun.traverse_callees(pop_ptr_offset_tree, input_tree, indent + "    ")
                 if stop:  # If true, a complete path was found; no need to continue in this loop
                     return True
 
     if not child:
-        log.warning("Finished creating a tree")
+        logger.warning("Finished creating a tree")
         return True
 
     return False
@@ -432,17 +435,17 @@ def gen_ptr_offset_tree(node: FunctionNode, indent=""):
     global ptr_offset_trees
     root_tree = None    
     is_unique = None
-    # log.info("Analyzing: %s", node.function_name)
+    # logger.info("Analyzing: %s", node.function_name)
     for var in node.local_vars:
-        # log.debug(var)
+        # logger.debug(var)
         for callee_fun in node.callee_funs:
-            # log.warning("Callee fun: %s", callee_fun.function_name)
+            # logger.warning("Callee fun: %s", callee_fun.function_name)
             for operand in callee_fun.operands:
                 # print(var.offset, operand.offset, operand.pointer)
                 if var.offset == operand.offset and operand.pointer == True:
-                    log.critical("Found")
-                    log.debug("%s Var: %s, Offset: %s", indent, var.var_name, var.offset)
-                    log.debug("%s Callee Fun: %s | OperIdx: %s, Offset: %s, Pointer: %s", 
+                    logger.critical("Found")
+                    logger.debug("%s Var: %s, Offset: %s", indent, var.var_name, var.offset)
+                    logger.debug("%s Callee Fun: %s | OperIdx: %s, Offset: %s, Pointer: %s", 
                         indent, callee_fun.function_name, operand.oper_idx, operand.offset, operand.pointer)
                     if not root_tree:
                         root_node = PtrOffsetTreeNode(fun_name=node.function_name, reg_offset=operand.offset, index=operand.oper_idx)
@@ -450,7 +453,7 @@ def gen_ptr_offset_tree(node: FunctionNode, indent=""):
                         # Directly iterate over callee_funs instead of using traverse_callees
                         stop = pop_ptr_offset_tree(callee_fun, root_tree, indent + "    ")
                         if stop:
-                            log.warning("Stopping early due to a condition met in pop_ptr_offset_tree")
+                            logger.warning("Stopping early due to a condition met in pop_ptr_offset_tree")
                             if root_tree:
                                 trees.append(root_tree)
                                 # ptr_offset_trees.append(root_tree)  # Assuming this is needed globally
@@ -469,7 +472,7 @@ def gen_ptr_offset_tree(node: FunctionNode, indent=""):
                     #         is_unique = False
                     #         break
                     # if is_unique:
-                    #     log.info("Adding unique tree")
+                    #     logger.info("Adding unique tree")
                     #     ptr_offset_trees.add(root_tree)
     # if root_tree == None:
     #     return None
@@ -489,7 +492,7 @@ def gen_ptr_offset_tree(node: FunctionNode, indent=""):
     #                     is_unique = False
     #                     break
     #     elif is_unique:
-    #         log.info("Adding unique tree")
+    #         logger.info("Adding unique tree")
     #         ptr_offset_trees.add(root_tree)
 
 class BinTaintAnalysis:
@@ -523,7 +526,7 @@ class BinTaintAnalysis:
         param_idx = 0
         for var in var_list:
             if var.tag == "DW_TAG_variable":
-                log.debug("Local variable %s", var)
+                logger.debug("Local variable %s", var)
                 if var.base_type == "DW_TAG_structure_type":
                     # Still need to add actual variable because of the case where struct object is passed
                     temp_data = LocalData(var.name, None, int(var.offset))
@@ -536,7 +539,7 @@ class BinTaintAnalysis:
                     temp_data = LocalData(var.name, None, var.offset)
                     local_list.append(temp_data)
             if var.tag == "DW_TAG_formal_parameter":
-                # log.debug("Formal paramter %s", var)
+                # logger.debug("Formal paramter %s", var)
                 temp_data = LocalData(var.name, param_idx, var.offset)
                 param_list.append(temp_data)
                 param_idx += 1
@@ -577,13 +580,13 @@ class BinTaintAnalysis:
             try:
                 self.currFunNode = self.fun_to_check.pop()
                 self.currFun = self.currFunNode.fun
-                log.debug("Checking %s", self.currFunNode.function_name)
+                logger.debug("Checking %s", self.currFunNode.function_name)
                 self.analyze_callee()
             except Exception as e:
                 print(f"An unexpected error occurred: {e}")
                 traceback.print_exc()
         # Finished creating full tree of caller-callee
-        log.debug("Printing structure: %s", root_fun.function_name)
+        logger.debug("Printing structure: %s", root_fun.function_name)
         root_fun.print_structure()
         # exit()
         return root_fun
@@ -622,68 +625,68 @@ class BinTaintAnalysis:
     def calc_ssa_off_expr(self, inst_ssa):
         # This is for binary ninja diassembly
         arrow = 'U+21B3'
-        log.info("Calculating the offset of %s %s", inst_ssa, type(inst_ssa)) 
+        logger.info("Calculating the offset of %s %s", inst_ssa, type(inst_ssa)) 
         offset_expr_regex = r'(\-[0-9].*)\((.*)\)'
         if type(inst_ssa) == binaryninja.lowlevelil.LowLevelILLoadSsa:
-            log.debug("%s LoadReg", chr(int(arrow[2:], 16)))
+            logger.debug("%s LoadReg", chr(int(arrow[2:], 16)))
             mapped_MLLIL = inst_ssa.mapped_medium_level_il # This is done to get the var (or find if not)
             if mapped_MLLIL != None:
                 result = self.calc_ssa_off_expr(inst_ssa.src)
                 if result != None:
                     return result
             else:
-                log.error("No variable assigned, skip")
+                logger.error("No variable assigned, skip")
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILStoreSsa:
-            log.debug("%s StoreSSA",  chr(int(arrow[2:], 16)))
+            logger.debug("%s StoreSSA",  chr(int(arrow[2:], 16)))
             result = self.calc_ssa_off_expr(inst_ssa.dest)
             if result != None:
                 return result
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILSetRegSsa:
-            log.debug("%s SetRegSSA",  chr(int(arrow[2:], 16)))
+            logger.debug("%s SetRegSSA",  chr(int(arrow[2:], 16)))
             result = self.calc_ssa_off_expr(inst_ssa.src)
             if result != None:
                 return result
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILSetRegSsaPartial:
-            log.debug("%s SetRegSSAPartial",  chr(int(arrow[2:], 16)))
+            logger.debug("%s SetRegSSAPartial",  chr(int(arrow[2:], 16)))
             # reg_def = llil_fun.get_ssa_reg_definition(llil_inst.full_reg)
             result = self.calc_ssa_off_expr(inst_ssa.src)
             if result != None:
                 return result
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILZx:
-            log.debug("%s ZeroExtendSSA",  chr(int(arrow[2:], 16)))
+            logger.debug("%s ZeroExtendSSA",  chr(int(arrow[2:], 16)))
             result = self.calc_ssa_off_expr(inst_ssa.src)
             if result != None:
                 return result
         elif binaryninja.commonil.Arithmetic in inst_ssa.__class__.__bases__:
-            log.debug("%s Arithmetic",  chr(int(arrow[2:], 16)))
+            logger.debug("%s Arithmetic",  chr(int(arrow[2:], 16)))
             try:
                 # Expression
-                log.debug("Expression")
+                logger.debug("Expression")
                 reg: SSARegister
                 reg = inst_ssa.left.src
                 if (binaryninja.commonil.Arithmetic in inst_ssa.left.__class__.__bases__ and 
                   type(inst_ssa.right) == binaryninja.lowlevelil.LowLevelILConst):
-                    log.debug("Array access found")
+                    logger.debug("Array access found")
                     base_reg    = inst_ssa.left.left.src.reg.__str__()
                     array_reg   = inst_ssa.left.right.src.reg.__str__()
                     offset      = inst_ssa.right.constant
                     expr = str(offset) + "(" + base_reg + "," + array_reg + ")"
                 else:
-                    log.debug("Not array access %s", reg.reg.name)
+                    logger.debug("Not array access %s", reg.reg.name)
                     if reg.reg.name != "%rbp":
                         try:
                             reg_defs = self.currFun.llil.ssa_form.get_ssa_reg_definition(reg)
-                            log.warning("Struct access %s", reg_defs)
+                            logger.warning("Struct access %s", reg_defs)
                             base_offset = self.calc_ssa_off_expr(reg_defs)
                             base_offset = self.extract_offset(base_offset)
-                            log.debug("Base offset: %d", base_offset)
+                            logger.debug("Base offset: %d", base_offset)
                             new_offset = base_offset + int(inst_ssa.right.constant)
                             expr = str(new_offset) + "(" + "%rbp" + ")" 
                             # exit() 
                         except:
-                            log.error("Can't find the definition")
+                            logger.error("Can't find the definition")
                     else:
-                        # log.debug("Return offset")
+                        # logger.debug("Return offset")
                         offset = str(int(inst_ssa.right.__str__(), base=16))
                         expr = offset + "(" + reg.reg.__str__() + ")"
                 # reg = inst_ssa.left.src
@@ -705,12 +708,12 @@ class BinTaintAnalysis:
             #     except:
             #         return None
             
-            log.debug(expr)
+            logger.debug(expr)
             return expr
     
     def get_ssa_reg(self, inst_ssa):
         arrow = 'U+21B3'
-        log.info("Getting the SSA register of %s %s", inst_ssa, type(inst_ssa)) 
+        logger.info("Getting the SSA register of %s %s", inst_ssa, type(inst_ssa)) 
         if type(inst_ssa) == binaryninja.lowlevelil.SSARegister:
             return inst_ssa
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILSetRegSsa:
@@ -720,7 +723,7 @@ class BinTaintAnalysis:
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILRegSsaPartial:
             return self.get_ssa_reg(inst_ssa.full_reg)
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILLoadSsa:
-            log.debug("%s LoadReg", chr(int(arrow[2:], 16)))
+            logger.debug("%s LoadReg", chr(int(arrow[2:], 16)))
             # return inst_ssa
             return self.get_ssa_reg(inst_ssa.src)
         elif type(inst_ssa) == binaryninja.lowlevelil.LowLevelILZx:
@@ -778,12 +781,12 @@ class BinTaintAnalysis:
         return node
 
     def collect_calls(self, view, rootFun):
-        log.info("collect_calls")
+        logger.info("collect_calls")
         #  dict containing callee -> set(callers)    
         calls = {}
         if (self.rootFun == None):
             funs = view.functions
-            log.debug(funs)
+            logger.debug(funs)
             rootlines = ['ROOT']
         else:
             funs = map(lambda x: x.function, view.get_code_refs(self.rootFun.start))
@@ -848,7 +851,7 @@ class BinTaintAnalysis:
     def visit(self, illest, expr, operations):
         # print(illest, expr)
         # print(expr.operation)
-        log.debug(expr)
+        logger.debug(expr)
         # print(operations[expr.operation])
         for field in operations[expr.operation]:
             print(field, getattr(expr, field[0]))
@@ -861,20 +864,20 @@ class BinTaintAnalysis:
         # taint_uses = self.rootFun.mlil.ssa_form.get_ssa_var_uses(self.taint_var)    
         # print(taint_uses, self.taint_list)
         visited = list()
-        log.info("Taint propagation forward")
+        logger.info("Taint propagation forward")
         # exit()
         while len(self.taint_list) > 0:
             self.taint_inst = self.taint_list.pop()
             if self.taint_inst in visited:
                 continue
             elif type(self.taint_inst) == binaryninja.mediumlevelil.SSAVariable:
-                log.debug("%s", self.taint_inst)
+                logger.debug("%s", self.taint_inst)
                 print()
                 taint_uses = self.currFun.mlil.ssa_form.get_ssa_var_uses(self.taint_inst)
                 for use in taint_uses:
                     use: MediumLevelILInstruction
-                    log.warning("%s", use)
-                    log.warning("%s %s", chr(int(arrow[2:], 16)), use.operation)
+                    logger.warning("%s", use)
+                    logger.warning("%s %s", chr(int(arrow[2:], 16)), use.operation)
                     print()
                     self.taint_list.append(use)
                 visited.append(self.taint_inst)
@@ -882,8 +885,8 @@ class BinTaintAnalysis:
                 use_refs = self.currFun.mlil.ssa_form.get_ssa_var_uses(self.taint_inst.dest)
                 for ref in use_refs:
                     ref: MediumLevelILInstruction
-                    log.warning("%s", ref)
-                    log.warning("%s %s", chr(int(arrow[2:], 16)), ref.operation)
+                    logger.warning("%s", ref)
+                    logger.warning("%s %s", chr(int(arrow[2:], 16)), ref.operation)
                     print()
                     self.taint_list.append(ref)
                 # Update the taint_var as the taint variable gets propagated.
@@ -895,7 +898,7 @@ class BinTaintAnalysis:
                 dest_fun_name = dest_fun.name
                 
                 if self.check_import_fun(dest_fun_name):
-                    log.error("Import fun: %s", dest_fun_name)
+                    logger.error("Import fun: %s", dest_fun_name)
                 else:
                     fun_param_len = len(self.taint_inst.params)-1
                     # Need to add the function into the function set with proper argument
@@ -913,38 +916,38 @@ class BinTaintAnalysis:
                         print("Inserting: ", type(dest_fun), idx)
                         self.fun_param_info.add((dest_fun, fun_param_len))
                         self.fun_set.add((dest_fun, idx))
-                    log.critical("Fun to visit: %s", dest_fun_name)
+                    logger.critical("Fun to visit: %s", dest_fun_name)
                 print()
                 
                 if dest_fun_name in self.taint_funs:
-                    log.error("Danger fun found")                   
+                    logger.error("Danger fun found")                   
                 else:
                     # IF output register exists for the call inst (i.e., var = atoi)
                     if len(self.taint_inst.output) > 0:
-                        # log.warning("Inserting %s", self.taint_inst.output[0])
+                        # logger.warning("Inserting %s", self.taint_inst.output[0])
                         self.taint_list.append(self.taint_inst.output[0])
                 visited.append(self.taint_inst)
             elif self.taint_inst.operation == MediumLevelILOperation.MLIL_VAR_PHI:
                 # var_c#4 = ϕ(var_c#1, var_c#2, var_c#3) 
-                # log.debug(self.taint_inst.dest)
+                # logger.debug(self.taint_inst.dest)
                 use_refs = self.currFun.mlil.ssa_form.get_ssa_var_uses(self.taint_inst.dest)
                 for ref in use_refs:
                     ref: MediumLevelILInstruction
-                    log.warning("%s", ref)
-                    log.warning("%s %s", chr(int(arrow[2:], 16)), ref.operation)
+                    logger.warning("%s", ref)
+                    logger.warning("%s %s", chr(int(arrow[2:], 16)), ref.operation)
                     print()
                     self.taint_list.append(ref)
                 visited.append(self.taint_inst)
             elif self.taint_inst.operation == MediumLevelILOperation.MLIL_ADDRESS_OF:
                 # This is because mlil_fun.get_var_uses cannot be used for address of variable taken
-                log.debug("Search through address of variable uses")
+                logger.debug("Search through address of variable uses")
                 for bb in self.currFun.mlil.ssa_form:
                     for inst in bb:
-                        # log.debug("%s %s", self.taint_inst, inst)
+                        # logger.debug("%s %s", self.taint_inst, inst)
                         self.taint_inst.vars_address_taken[0]
                         if len(inst.vars_address_taken) > 0:
                             if self.taint_inst.src == inst.vars_address_taken[0]:
-                                # log.critical(inst)
+                                # logger.critical(inst)
                                 self.taint_list.append(inst)
             elif self.taint_inst.operation == MediumLevelILOperation.MLIL_IF:
                 # May need to revamp this part.
@@ -959,8 +962,8 @@ class BinTaintAnalysis:
             elif self.taint_inst.operation == MediumLevelILOperation.MLIL_JUMP_TO:
                 visited.append(self.taint_inst)
             else:
-                log.error("Not taken consideration")
-                log.debug("%s %s", self.taint_inst.operation, self.taint_inst)
+                logger.error("Not taken consideration")
+                logger.debug("%s %s", self.taint_inst.operation, self.taint_inst)
                 exit()
                 
                 # self.taint_list.append(inst)
@@ -968,10 +971,10 @@ class BinTaintAnalysis:
                 
     def taint_prop_bw(self):
         arrow = 'U+21B3'
-        log.info("Taint propagation backward")
+        logger.info("Taint propagation backward")
         for op in self.currFunNode.operands:
             ssa_reg = self.get_ssa_reg(op.taint_inst)
-            log.warning("%s %s", op.taint_inst, ssa_reg)
+            logger.warning("%s %s", op.taint_inst, ssa_reg)
             if ssa_reg == None:
                 # this means we don't need to find the definition
                 offset = self.calc_ssa_off_expr(op.taint_inst)
@@ -980,14 +983,14 @@ class BinTaintAnalysis:
                 taint_defs = self.currFun.llil.ssa_form.get_ssa_reg_definition(ssa_reg)  
                 offset = self.calc_ssa_off_expr(taint_defs)
                 op.offset = self.extract_offset(offset)
-            log.debug(op)
+            logger.debug(op)
         
     
     def dwarf_fun_analysis(self, fun_name):
         for fun in self.dwarf_info:
             # print(fun, fun_name)
             if fun == fun_name:
-                log.critical("Found")
+                logger.critical("Found")
                 temp_list = list()
                 temp_list = self.dwarf_info[fun].copy()
                 return temp_list
@@ -1022,20 +1025,20 @@ class BinTaintAnalysis:
         temp_fun = self.currFunNode
         # if temp_fun.function_name == "log_access":
         if True:
-            log.info("Analyzing callee for %s | %d", temp_fun.function_name, temp_fun.checked)
+            logger.info("Analyzing callee for %s | %d", temp_fun.function_name, temp_fun.checked)
             
             var_list = self.dwarf_fun_analysis(self.currFun.name)
             pprint.pprint(var_list)
             if var_list == None:
                 # Not a right function to analyze
-                log.error("No dwarf information available %s", self.currFun.name)
+                logger.error("No dwarf information available %s", self.currFun.name)
                 return
             local_list = []
             param_list = []
             param_idx = 0
             for var in var_list:
                 if var.tag == "DW_TAG_variable":
-                    log.debug("Local variable %s", var)
+                    logger.debug("Local variable %s", var)
                     if var.base_type == "DW_TAG_structure_type":
                         # Still need to add actual variable because of the case where struct object is passed
                         temp_data = LocalData(var.name, None, int(var.offset))
@@ -1048,7 +1051,7 @@ class BinTaintAnalysis:
                         temp_data = LocalData(var.name, None, var.offset)
                         local_list.append(temp_data)
                 if var.tag == "DW_TAG_formal_parameter":
-                    log.debug("Formal parameter %s", var)
+                    logger.debug("Formal parameter %s", var)
                     temp_data = LocalData(var.name, param_idx, int(var.offset))
                     param_list.append(temp_data)
                     param_idx += 1
@@ -1064,7 +1067,7 @@ class BinTaintAnalysis:
                     if len(symbol) > 0:
                         # for sym_type in symbol:
                         if symbol[0].type != SymbolType.ImportedFunctionSymbol:
-                            log.info("Adding: %s", callee_fun.name)
+                            logger.info("Adding: %s", callee_fun.name)
                             # self.fun_to_check.add(callee_fun)
                             for ref in self.bv.get_code_refs(callee_addr):
                                 if ref not in visited:
@@ -1081,7 +1084,7 @@ class BinTaintAnalysis:
                                                         pointer = False
                                                         if var_def.src.operation == MediumLevelILOperation.MLIL_ADDRESS_OF:
                                                             pointer = True
-                                                        log.warning("%s %s", var_def.src, var_def.src.operation)
+                                                        logger.warning("%s %s", var_def.src, var_def.src.operation)
                                                         callee_fun_data.add_operand(OperandData(callee_fun, oper_idx, self.taint_var, None, pointer))
                                             self.currFunNode = callee_fun_data
                                             self.taint_prop_bw()
@@ -1095,7 +1098,7 @@ class BinTaintAnalysis:
                 try:
                     self.currFunNode = self.fun_to_check.pop()
                     self.currFun = self.currFunNode.fun
-                    log.debug("Checking %s", self.currFunNode.function_name)
+                    logger.debug("Checking %s", self.currFunNode.function_name)
                     self.analyze_callee()
                     # exit()
                 except Exception as e:
@@ -1105,7 +1108,7 @@ class BinTaintAnalysis:
         # exit()
 
     def analyze_offset(self):
-        log.info("Analyze offset")
+        logger.info("Analyze offset")
         self.bv: BinaryView
         arrow = 'U+21B3'
         #  dict containing callee -> set(callers)    
@@ -1134,9 +1137,9 @@ class BinTaintAnalysis:
         for fun in calls:
             if False:
                 if len(calls[fun]) > 0:
-                    log.info("Callee: %s", fun.name)
+                    logger.info("Callee: %s", fun.name)
                     for caller in calls[fun]:
-                        log.debug("Caller %s", caller)
+                        logger.debug("Caller %s", caller)
         
         # print(self.analysis_list)
         # exit()
@@ -1145,7 +1148,7 @@ class BinTaintAnalysis:
         for fun in self.analysis_list:
             if fun != '':
             # if fun == "process":
-                log.info(fun)
+                logger.info(fun)
                 self.rootFun = self.bv.get_function_at(fun_to_addr[fun])
                 self.currFun: Function
                 self.currFun = self.rootFun
@@ -1175,18 +1178,18 @@ class BinTaintAnalysis:
                 #         existing_tree.print_tree()
                 #         ptr_tree.print_tree()
                 #         if compare_trees(existing_tree, ptr_tree) == False:
-                #             log.critical("Adding tree")
+                #             logger.critical("Adding tree")
                 #             self.ptr_trees.append(ptr_tree)
                 # elif len(self.ptr_trees) == 0 and ptr_tree != None:
-                #     log.critical("initial adding tree")
+                #     logger.critical("initial adding tree")
                 #     self.ptr_trees.append(ptr_tree)
                 # ptr_tree.print_tree()
         # exit()
             # print(analyze_tree(tree))
         
-        for tree in self.ptr_trees:
-            tree.print_tree()
-        exit()
+        # for tree in self.ptr_trees:
+        #     tree.print_tree()
+        # exit()
             
         
         # Get the entry point function
@@ -1204,7 +1207,7 @@ class BinTaintAnalysis:
         # param_idx = 0
         # for var in var_list:
         #     if var.tag == "DW_TAG_variable":
-        #         log.debug("Local variable %s", var)
+        #         logger.debug("Local variable %s", var)
         #         if var.base_type == "DW_TAG_structure_type":
         #             # Still need to add actual variable because of the case where struct object is passed
         #             temp_data = LocalData(var.name, None, int(var.offset))
@@ -1217,7 +1220,7 @@ class BinTaintAnalysis:
         #             temp_data = LocalData(var.name, None, var.offset)
         #             local_list.append(temp_data)
         #     if var.tag == "DW_TAG_formal_parameter":
-        #         # log.debug("Formal paramter %s", var)
+        #         # logger.debug("Formal paramter %s", var)
         #         temp_data = LocalData(var.name, param_idx, var.offset)
         #         param_list.append(temp_data)
         #         param_idx += 1
@@ -1262,7 +1265,7 @@ class BinTaintAnalysis:
         #     try:
         #         self.currFunNode = self.fun_to_check.pop()
         #         self.currFun = self.currFunNode.fun
-        #         log.debug("Checking %s", self.currFunNode.function_name)
+        #         logger.debug("Checking %s", self.currFunNode.function_name)
         #         self.analyze_callee()
         #     except Exception as e:
         #         print(f"An unexpected error occurred: {e}")
@@ -1297,12 +1300,12 @@ class BinTaintAnalysis:
             # Need to check available callee functions of all functions in a program, for dangerous functions
             # Put those callers into the list of functions
             if callee.name in fun_names:
-                log.warning(callee.name)    
+                logger.warning(callee.name)    
                 for fun in calls[callee]:
-                    log.debug(fun.name)
+                    logger.debug(fun.name)
                     self.fun_to_check.append(fun.name)
             else:
-                log.error("Not in %s", callee.name)
+                logger.error("Not in %s", callee.name)
         
         # Get the entry point function
         start_fun = self.bv.get_function_at(self.bv.entry_point)
@@ -1342,12 +1345,12 @@ class BinTaintAnalysis:
         else:
         # In this case, argv is empty and we need to search for other potential source of taint funs
         # Add sensitive functions creating potential taint sources
-            log.info("Search for sensitive functions")
+            logger.info("Search for sensitive functions")
             for callee_addr in self.rootFun.callee_addresses:
                 callee_fun = self.bv.get_function_at(callee_addr).name
                 if callee_fun in fun_names:
                     # What if it is multi-source? How to handle this case? Allow multiple taint src var?
-                    log.critical("Track it's taint variable")
+                    logger.critical("Track it's taint variable")
                     param_idx = self.search_fun_indx(callee_fun)
                     for ref in self.bv.get_code_refs(callee_addr):
                         # print(hex(ref.address))
@@ -1385,6 +1388,6 @@ class BinTaintAnalysis:
             
             
         for fun in self.fun_graph:
-            log.critical("%s: Operand Index: %d", fun[0].name, fun[1])
+            logger.critical("%s: Operand Index: %d", fun[0].name, fun[1])
             
         return self.fun_graph

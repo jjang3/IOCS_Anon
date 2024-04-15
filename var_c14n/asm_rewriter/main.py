@@ -34,8 +34,6 @@ from pathlib import Path
 import pprint 
 from dataclasses import dataclass, field
 
-
-
 class CustomFormatter(logging.Formatter):
 
     # FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s | %(levelname)s"
@@ -64,12 +62,16 @@ class CustomFormatter(logging.Formatter):
     
 # Debug options here
 debug_level = logging.DEBUG
-ch = logging.StreamHandler()
-ch.setLevel(debug_level) 
-ch.setFormatter(CustomFormatter())
-
+# Set up the logger
 log = logging.getLogger(__name__)
-log.setLevel(debug_level)
+log.setLevel(debug_level)  # Set the debug level
+if not log.handlers:
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+    ch.setFormatter(CustomFormatter())
+    log.addHandler(ch)
+log.propagate = False  # Disable propagation to prevent duplicate logging
+
 
 # create console handler with a higher log level
 log_disable = False
@@ -359,25 +361,35 @@ def add_to_target_fun_var_info(cand, all_dwarf_info, target_fun_var_info):
                 target_fun_var_info[cand.fun_name].append(var)
 
 def process_candidates(ptr_offset_trees, target_fun_var_info, all_dwarf_info):
+    log.info("Processing candidates")
     new_node_candidates, remove_node_candidates = [], []
     
     for fun, vars in target_fun_var_info.items():
         for var in vars:
             for tree in ptr_offset_trees:
+                tree.print_tree()
                 target_node = tree.find_node_by_fun_name_and_offset(var.fun_name, var.offset)
                 if target_node:
+                    target_node: taint_analysis.PtrOffsetTreeNode
+                    
                     parent_node = tree.find_parent(target_node, find_root=True)
+                    # parent_node.print_node()
+                    # target_node.print_node()
                     if any(search_var.offset == parent_node.local_offset for search_var in dwarf_fun_var_info[parent_node.fun_name]):
                         new_node_candidates.append(parent_node)
                         remove_node_candidates.append(target_node)
                         break
 
     # Process removals
+    # log.info("Removal candidates")
     for cand in remove_node_candidates:
+        # cand.print_node()
         remove_target_var_info(cand, target_fun_var_info)
 
     # Process additions
+    # log.info("Addition candidates")
     for cand in new_node_candidates:
+        # cand.print_node()
         add_to_target_fun_var_info(cand, all_dwarf_info, target_fun_var_info)
     
 
@@ -483,13 +495,14 @@ def main():
         process_file(binary_item, analysis_list, taint_insts_set)
 
         ptr_offset_trees          = taint_analysis.process_offset(binary_item, all_dwarf_info, analysis_list)
-        # pprint.pprint(ptr_offset_trees)
+        pprint.pprint(ptr_offset_trees)
         # exit()
         # print(len(ptr_offset_trees))
         if len(ptr_offset_trees) != 0 and ptr_offset_trees.pop() != None:
             for tree in ptr_offset_trees:
                 tree.print_tree()
         # pprint.pprint(all_dwarf_info)
+        # print(log.handlers)
         log.warning("Before") 
         # pprint.pprint(target_fun_var_info)
         for fun in target_fun_var_info:
@@ -498,13 +511,12 @@ def main():
                     log.debug("Fun: %s | Offset: %d", var.fun_name, var.offset)
         process_candidates(ptr_offset_trees, target_fun_var_info, all_dwarf_info)
         log.warning("After")
-
-        # pprint.pprint(target_fun_var_info)   
-        
         for fun in target_fun_var_info:
             for var in target_fun_var_info[fun]:
                 if var != None:
-                    log.debug("Fun: %s | Offset: %d", var.fun_name, var.offset) 
+                    log.debug("Fun: %s | Offset: %d", var.fun_name, var.offset)
+        
+        # exit()
         # exit()
         # exit()
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
