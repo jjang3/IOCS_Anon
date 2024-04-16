@@ -28,11 +28,14 @@ def generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir):
             vars = dwarf_fun_var_info[fun]
             # print(fun)
             for var_idx, var in enumerate(vars):
+                
                 if True:
                     print(var)
-                # if var_idx == 1: #Not work: 1,4,5
-                #     print(var)
+                # if var_idx == 0: #Not work: 1,4,5
+                    # print(var)
                     #     exit()
+                    if var.tag == "DW_TAG_formal_parameter":
+                        continue
                     if var_idx < var_patch: #and var_idx != 5: # and var_idx == 6: # (and var_idx is used to debug)
                         if var.base_type == "DW_TAG_base_type":
                             if var.offset_expr != None:

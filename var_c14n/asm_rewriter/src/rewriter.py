@@ -603,7 +603,7 @@ def patch_inst(dis_inst, temp_inst: PatchingInst, bn_var, bn_var_info: list, tgt
             logger.info("Patching with cmp_gs")
             if store_or_load == "store":
                 new_inst_type = "cmp_store_gs"
-                line = re.sub(r"(\b[a-z]+\b).*", "%s\t#%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
+                line = re.sub(r"(\b[a-z]+\b).*", "#%s\t%s\t%s, %d, %d" % (dis_inst, new_inst_type, temp_inst.src, tgt_offset, value), dis_inst)
                 patch_inst_line = "\t%s\t%s, %d, %d" % (new_inst_type, temp_inst.src, tgt_offset, value)
             elif store_or_load == "load":
                 new_inst_type = "cmp_load_gs"

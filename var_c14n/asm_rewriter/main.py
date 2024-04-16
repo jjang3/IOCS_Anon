@@ -321,27 +321,37 @@ def process_file(input_item, analysis_list, taint_sets):
     # exit()
     pprint.pprint(dwarf_fun_var_info)
     
-        
+    # print(taint_sets)
     # Print the extracted instructions
-    # if taint_sets != None:
-    for idx, var in enumerate(taint_sets):
-        print(f"Var target: {idx, var[0]} - Fun: {var[1]}")
-        try:
-            pprint.pprint(dwarf_fun_var_info[var[1]])
+    if len(taint_sets) != 0:
+        for idx, var in enumerate(taint_sets):
+            print(f"Var target: {idx, var[0]} - Fun: {var[1]}")
+            try:
+                pprint.pprint(dwarf_fun_var_info[var[1]])
+                target_var_list = list()
+                for dwarf_var in dwarf_fun_var_info[var[1]]:
+                    # print(dwarf_var)
+                    dwarf_var: VarData
+                    if dwarf_var.name == var[0]:
+                        log.critical("Found")
+                        dwarf_var.vuln = True
+                        target_var_list.append(dwarf_var)
+                target_fun_var_info[var[1]] = target_var_list.copy()
+            except:
+                # pprint.pprint(dwarf_fun_var_info[var[1]])
+                log.error("Not part of tainted path")
+    else:
+        log.info("No taint information given")
+        for fun in analysis_list:
             target_var_list = list()
-            for dwarf_var in dwarf_fun_var_info[var[1]]:
+            for dwarf_var in dwarf_fun_var_info[fun]:
                 # print(dwarf_var)
                 dwarf_var: VarData
-                if dwarf_var.name == var[0]:
-                    log.critical("Found")
-                    dwarf_var.vuln = True
-                    target_var_list.append(dwarf_var)
-            target_fun_var_info[var[1]] = target_var_list.copy()
-        except:
-            # pprint.pprint(dwarf_fun_var_info[var[1]])
-            log.error("Not part of tainted path")
-    # else:
-    #     target_fun_var_info = all_dwarf_info
+                target_var_list.append(dwarf_var)
+            target_fun_var_info[fun] = target_var_list.copy()
+    
+        # target_fun_var_info = all_dwarf_info
+    pprint.pprint(target_fun_var_info)
     # exit()
     
 def remove_target_var_info(cand, target_fun_var_info):
@@ -364,32 +374,40 @@ def process_candidates(ptr_offset_trees, target_fun_var_info, all_dwarf_info):
     log.info("Processing candidates")
     new_node_candidates, remove_node_candidates = [], []
     
+    # for tree in ptr_offset_trees:
+    #     tree.print_tree()
     for fun, vars in target_fun_var_info.items():
         for var in vars:
             for tree in ptr_offset_trees:
-                tree.print_tree()
                 target_node = tree.find_node_by_fun_name_and_offset(var.fun_name, var.offset)
                 if target_node:
                     target_node: taint_analysis.PtrOffsetTreeNode
-                    
                     parent_node = tree.find_parent(target_node, find_root=True)
-                    # parent_node.print_node()
-                    # target_node.print_node()
+                    if parent_node is target_node:
+                        log.debug("Skipping: Parent and target are the same node.")
+                        continue
+                    print("Parent:")
+                    parent_node.print_node()
+                    print("Target:")
+                    target_node.print_node()
                     if any(search_var.offset == parent_node.local_offset for search_var in dwarf_fun_var_info[parent_node.fun_name]):
                         new_node_candidates.append(parent_node)
                         remove_node_candidates.append(target_node)
                         break
 
+    for tree in ptr_offset_trees:
+        tree.print_tree()
+
     # Process removals
-    # log.info("Removal candidates")
+    log.info("Removal candidates")
     for cand in remove_node_candidates:
-        # cand.print_node()
+        cand.print_node()
         remove_target_var_info(cand, target_fun_var_info)
 
     # Process additions
-    # log.info("Addition candidates")
+    log.info("Addition candidates")
     for cand in new_node_candidates:
-        # cand.print_node()
+        cand.print_node()
         add_to_target_fun_var_info(cand, all_dwarf_info, target_fun_var_info)
     
 
@@ -437,7 +455,12 @@ def main():
         # 1) generate table based on DWARF information
         for file_item in target_files:
             log.info("Analyzing %s", file_item)
-            process_file(file_item.obj_path, analysis_list, set())
+            process_file(file_item.obj_path, file_item.fun_list, set())
+            ptr_offset_trees          = taint_analysis.process_offset(file_item.obj_path, all_dwarf_info, file_item.fun_list)
+            if len(ptr_offset_trees) != 0 and ptr_offset_trees.pop() != None:
+                for tree in ptr_offset_trees:
+                    tree.print_tree()
+        exit()
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
         fun_table_offsets = generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir)
         # print(colored(f"{empty_space}\n"), 'grey', attrs=['underline'])
@@ -495,16 +518,20 @@ def main():
         process_file(binary_item, analysis_list, taint_insts_set)
 
         ptr_offset_trees          = taint_analysis.process_offset(binary_item, all_dwarf_info, analysis_list)
-        pprint.pprint(ptr_offset_trees)
+        # pprint.pprint(ptr_offset_trees)
+        # for tree in ptr_offset_trees:
+        #     tree.print_tree()
         # exit()
         # print(len(ptr_offset_trees))
         if len(ptr_offset_trees) != 0 and ptr_offset_trees.pop() != None:
             for tree in ptr_offset_trees:
                 tree.print_tree()
+        # exit()
         # pprint.pprint(all_dwarf_info)
         # print(log.handlers)
         log.warning("Before") 
-        # pprint.pprint(target_fun_var_info)
+        pprint.pprint(target_fun_var_info)
+        # exit()
         for fun in target_fun_var_info:
             for var in target_fun_var_info[fun]:
                 if var != None:
@@ -516,9 +543,8 @@ def main():
                 if var != None:
                     log.debug("Fun: %s | Offset: %d", var.fun_name, var.offset)
         
-        # exit()
-        # exit()
-        # exit()
+        exit()
+        
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
         # fun_table_offsets = generate_table(dwarf_var_count, dwarf_fun_var_info, result_dir)
         fun_table_offsets = generate_table(dwarf_var_count, target_fun_var_info, result_dir)
@@ -535,22 +561,23 @@ def main():
         custom_pprint(fun_table_offsets)
         # exit()
         failed_insts = list()
-        result, failed_insts = static_verifier(intel_file, "PRE", None, None)
-        result = True
-        if not result:
-            log.error("Failed check")
-            for inst in failed_insts:
-                log.debug(inst)
-            # exit()
+        # result, failed_insts = static_verifier(intel_file, "PRE", None, None)
+        # result = True
+        # if not result:
+        #     log.error("Failed check")
+        #     for inst in failed_insts:
+        #         log.debug(inst)
+        #     # exit()
             
-        else:
-            patch_count = rewriter.rewriter(analysis_list, result_dir, str(asm_item), dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
-            log.critical("Patch count %d", patch_count)
-            exit()
-            gen_obj_file(temp_file)
-            # # time.sleep(5)
-            static_verifier(temp_file.obj_path, "POST", analysis_list, target_fun_var_info)
-        
+        # else:
+        #     patch_count = rewriter.rewriter(analysis_list, result_dir, str(asm_item), dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
+        #     log.critical("Patch count %d", patch_count)
+        #     exit()
+        #     gen_obj_file(temp_file)
+        #     # # time.sleep(5)
+        #     static_verifier(temp_file.obj_path, "POST", analysis_list, target_fun_var_info)
+        patch_count = rewriter.rewriter(analysis_list, result_dir, str(asm_item), dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
+        log.critical("Patch count %d", patch_count)
         # patch_count = rewriter(analysis_list, result_dir, str(asm_item), dwarf_fun_var_info, bn_fun_var_info, fun_table_offsets)
         # log.critical("Patch count %d", patch_count)
         #  There should be a new output file here to be passed into verifier
