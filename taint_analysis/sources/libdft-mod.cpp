@@ -221,7 +221,7 @@ void callUnwinding(ADDRINT callrtn_addr, char *dis, ADDRINT ins_addr)
 		if(!(strstr(routineName.c_str(),pltName.c_str()))) {
 			cerr << hex << ins_addr << " [*] " << RTN_Name(callRtn) << endl <<endl;
 			
-			// fprintf(trace, "%s,", RTN_Name(callRtn).c_str());
+			fprintf(trace, "%s,", RTN_Name(callRtn).c_str());
 		}
 		#endif
 		RTN_Close(callRtn);
@@ -676,12 +676,14 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 		return;
 	#if DBG_FLAG
 	cerr << "read(2) fd: " << ctx->arg[SYSCALL_ARG0] << endl;
+	// fprintf(trace, "Taint source readv(2): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
 	#endif
 	/* taint-source */
 	if (fdset.find(ctx->arg[SYSCALL_ARG0]) != fdset.end())
 	{
 		/* set the tag markings */
-		// cerr << "\t► read(2) taint set | " << unwindStack.top() << endl;
+		cerr << "\t► read(2) taint set | " << unwindStack.top() << endl;
+		// fprintf(trace, "Taint source readv(2): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
 		taintSrc = true;
 		auto addr = (uintptr_t)(addressStack.top()-offset_addr);
 		result = findVar(addr);
@@ -692,7 +694,7 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 		}
 		
 		#endif
-		//cerr << "\t - Routine: " << routineStack.top() << endl;
+		cerr << "\t - Routine: " << routineStack.top() << endl;
 		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
 		unwindStack.pop();
 	}
@@ -744,7 +746,7 @@ post_readv_hook(THREADID tid, syscall_ctx_t *ctx)
 			#if DBG_FLAG
 			// fprintf(trace, "Taint source readv(2): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
 			#endif
-			//cerr << "\t► readv(2) taint set | " << unwindStack.top() << endl;
+			cerr << "\t► readv(2) taint set | " << unwindStack.top() << endl;
 			tagmap_setn((size_t)iov->iov_base, iov_tot, TAG);
 		}
 		else{
@@ -775,6 +777,7 @@ static void post_socket_hook(THREADID tid, syscall_ctx_t *ctx)
 
 		#if DBG_FLAG
         cerr << "\t► socket(2) fd add " << (int)ctx->ret << endl;
+		// fprintf(trace, "Socket: 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
 		#endif
 		fdset.insert((int)ctx->ret);
 		//printf("fdset insert\n");
@@ -795,6 +798,11 @@ static void post_accept_hook(THREADID tid, syscall_ctx_t *ctx)
 	if (likely(fdset.find(ctx->arg[SYSCALL_ARG0]) !=fdset.end())){
 		#if DBG_FLAG
         cerr << "fd add accept 7\n";
+
+		#if DBG_FLAG
+        cerr << "\t► accept " << (int)ctx->ret << endl;
+		// fprintf(trace, "Accept: 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
+		#endif
 		#endif
 		// Fix this bug later
 		//if ((int)ctx->ret < 8)
@@ -818,9 +826,9 @@ static void post_recvfrom_hook(THREADID tid, syscall_ctx_t *ctx)
 	{
 		/* set the tag markings */
         printf("Taint set recvfrom\n");
-		#if DBG_FLAG
+		// #if DBG_FLAG
 		// fprintf(trace, "Taint source recvfrom(2): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
-		#endif
+		// #endif
 		tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);
 		printf("tag the buffer\n");
 	}
@@ -889,7 +897,7 @@ static void post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 			#if DBG_FLAG
 			// fprintf(trace, "Taint source recvmsg(2): 0x%lx\n", addressStack.top());
 			#endif
-			//cerr << "\t► recvmsg(2) taint set | " << unwindStack.top() << endl;
+			cerr << "\t► recvmsg(2) taint set | " << unwindStack.top() << endl;
 			tagmap_setn((size_t)msg->msg_control,
 				msg->msg_controllen, TAG);
 		}
@@ -924,8 +932,8 @@ static void post_recvmsg_hook(THREADID tid, syscall_ctx_t *ctx)
 		/* taint-source */	
 		if (it != fdset.end()){
 			/* set the tag markings */
-			fprintf(trace, "Taint source recvmsg(2): 0x%lx\n", addressStack.top());
-			//cerr << "Taint set recvmsg\n";
+			// fprintf(trace, "Taint source recvmsg(2): 0x%lx\n", addressStack.top());
+			cerr << "Taint set recvmsg\n";
 			tagmap_setn((size_t)iov->iov_base,
 						iov_tot, TAG);}
 		else
@@ -1050,9 +1058,9 @@ dta_tainted_mem_write(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg, ADDRI
 			if (result.found == true) {
 				printf("Tagged Mem Write (TMW) offset: 0x%lx 0x%lx 0x%lx %d\n", var_offset, stack_rbp_addr,  (uintptr_t)(addressStack.top()-offset_addr), taintSrc);
 				// if (result.mem_name == "")
-				// 	fprintf(trace, "\tW 0x%lx: %s\n", (uintptr_t)(var_offset), result.var_name.c_str());
+				// fprintf(trace, "\tW 0x%lx: %s\n", (uintptr_t)(var_offset), result.var_name.c_str());
 				// else
-				// 	fprintf(trace, "\tW 0x%lx: %s.%s\n", (uintptr_t)(var_offset), result.var_name.c_str(), result.mem_name.c_str());
+				// fprintf(trace, "\tW 0x%lx: %s.%s\n", (uintptr_t)(var_offset), result.var_name.c_str(), result.mem_name.c_str());
 			}
 			// }
 			
@@ -1063,10 +1071,10 @@ dta_tainted_mem_write(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg, ADDRI
 			
 		// 	//cerr << "\t▷ dta_mem_write() " << endl;
 		// 	printf("\tTaint sink dta_mem_write(): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
-		// 	//fprintf(trace, "\tTaint sink: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), tag_val);
+		// fprintf(trace, "\tTaint sink: %s 0x%lx\n", routineStack.top(), addressStack.top());
 		// 	#if DBG_FLAG
 			
-		// 	fprintf(trace, "\tTaint sink dta_mem_write(): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
+		// fprintf(trace, "\tTaint sink dta_mem_write(): 0x%lx\n", (uintptr_t)(addressStack.top()-offset_addr));
 		// 	#endif
 		// }
 		//fprintf(trace, "\tTMW: %s | %p", rtn_name.c_str(), (void *)ip);
@@ -1106,9 +1114,9 @@ dta_tainted_mem_read(CONTEXT* ctx, ADDRINT paddr, ADDRINT eaddr, REG reg)
 		// if (taintSrc == false){
 		// 	//cerr << "\t▷ dta_mem_read()" << std::hex << " " << endl;
 		// 	//printf("dta_mem_read\n");
-		// 	//fprintf(trace, "\tTaint sink: %s 0x%lx %d\n", routineStack.top(), addressStack.top(), tag_val);
+		// fprintf(trace, "\tTaint sink: %s 0x%lx\n", routineStack.top(), addressStack.top());
 		// 	#if DBG_FLAG
-		// 	fprintf(trace, "\tTaint sink dta_mem_read(): 0x%lx\n",  (uintptr_t)(addressStack.top()-offset_addr));
+		// fprintf(trace, "\tTaint sink dta_mem_read(): 0x%lx\n",  (uintptr_t)(addressStack.top()-offset_addr));
 		// 	#endif
 			
 		// }
@@ -1504,11 +1512,11 @@ main(int argc, char **argv)
 		/* failed */
 		goto err;
 	
-	// trace = fopen("dft.out", "w");
+	trace = fopen("dft.out", "w");
 	if (trace != NULL)
 	{
-		//printf("Success\n");
-		//fprintf(trace, "Output file\n");
+		printf("Success\n");
+		// fprintf(trace, "Output file\n");
 	}
 	IMG_AddInstrumentFunction(getMetadata, 0);
 	INS_AddInstrumentFunction(Instruction, 0);

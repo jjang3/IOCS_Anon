@@ -90,8 +90,9 @@ taint()
     sleep 1
     # python3 $useful_path/dwarf_analysis.py --binary ${arcs_bin_file} ${arcs_dwarf_file}
     # file ${arcs_dwarf_file}
-    #    $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file}
-        $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- /home/jaewon/Downloads/nbench-byte-2.2.3/nbench
+    # $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-default.so -- ${arcs_bin_file}
+    $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file}
+#        $PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- /home/jaewon/Downloads/nbench-byte-2.2.3/nbench
     #$PIN_ROOT/pin -follow-execv -t $taint_path/lib/libdft-mod.so -- ${arcs_bin_file} -c ~/Downloads/nginx-1.3.9/conf/nginx_taint.conf
     #mv dft.out ${arcs_i_result_path} 
     mv dft.out ${arcs_analysis_file}

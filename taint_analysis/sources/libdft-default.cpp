@@ -435,7 +435,7 @@ post_read_hook(THREADID tid, syscall_ctx_t *ctx)
 	std::list<int>::iterator findIter = std::find(fdset.begin(), fdset.end(), ctx->arg[SYSCALL_ARG0]);
 	if (findIter != fdset.end()){
         	/* set the tag markings */
-            //cerr << "Taint set read\n";
+            cerr << "Taint set read\n";
 
             tagmap_setn(ctx->arg[SYSCALL_ARG1], (size_t)ctx->ret, TAG);}
 	else

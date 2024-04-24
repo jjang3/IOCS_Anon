@@ -1,3 +1,4 @@
+from email import generator
 import sys, getopt
 import logging, os
 import re
@@ -6,6 +7,7 @@ import copy
 from tkinter import FALSE
 from binaryninja.types import MemberName
 
+from elftools import *
 from elftools.dwarf.die import DIE
 from elftools.elf.elffile import DWARFInfo, ELFFile
 from elftools.dwarf.dwarf_expr import DWARFExprParser, DWARFExprOp
@@ -27,16 +29,37 @@ from dataclasses import dataclass, field
 
 
 
+@dataclass(unsafe_hash = True)
+class MemberData:
+    name: str = None
+    offset: str = None
+    var_type: str = None
+    base_type: Optional[str] = None
+    offset_expr: str = None
+
+struct_list = list()
+@dataclass(unsafe_hash = True)
+class StructData:
+    name: Optional[str] = None
+    offset: str = None
+    size: int = None
+    line: int = None
+    member_list: Optional[list] = None
+    # fun_name: str = None
+    # begin: Optional[str] = None
+    # end: Optional[str] = None
+    # offset_expr: str = None
+
 var_list = list()
 @dataclass(unsafe_hash=True)
 class VarData:
     name: Optional[str] = None
     offset: str = None
-    var_type: str = None    
     base_type: Optional[str] = None
+    var_type: str = None    
     # fun_name: str = None
     offset_expr: str = None
-    # struct: Optional[StructData] = None
+    struct: Optional[StructData] = None
     type_size: Optional[str] = None
     local: bool = False
 
@@ -68,8 +91,11 @@ class DwarfAnalysis:
         self.elffile = ELFFile(self.file_stream)  # ELFFile is now associated with the open file stream
         self.dwarfinfo = self.load_dwarf_info()
         self.arrow = 'U+21B3'
-        self.currFun = None
-        self.currVar = None
+        self.currFun: FunData = None
+        self.currVar: VarData = None
+        self.temp_struct: StructData = None
+        self.var_list = list()
+        self.last_DIE_tag = list()
 
     def load_dwarf_info(self):
         if not self.elffile.has_dwarf_info():
@@ -88,10 +114,15 @@ class DwarfAnalysis:
         loc_parser = LocationParser(location_lists)
 
         for CU in self.dwarfinfo.iter_CUs():
-            for DIE in CU.iter_DIEs():
-                self.process_die(DIE, loc_parser, CU)
+            length = sum(1 for _ in CU.iter_DIEs()) - 1
+            for idx, DIE in enumerate(CU.iter_DIEs()):
+                self.process_die(DIE, loc_parser, CU, idx, length)
 
-    def process_die(self, DIE, loc_parser, CU):
+    def process_die(self, DIE, loc_parser, CU, idx, size):
+        last_tag = None
+        # print(DIE.tag, self.currVar)
+        if len(self.last_DIE_tag) > 0:
+            last_tag = self.last_DIE_tag.pop()
         if DIE.tag == "DW_TAG_base_type":
             self.process_base_type(DIE)
         elif DIE.tag == "DW_TAG_subprogram":
@@ -100,10 +131,34 @@ class DwarfAnalysis:
             self.process_variable(DIE, loc_parser, CU)
         elif DIE.tag == "DW_TAG_variable":
             self.process_variable(DIE, loc_parser, CU)
+        elif DIE.tag == "DW_TAG_structure_type":
+            self.process_struct(DIE)
+        elif DIE.tag == "DW_TAG_member":
+            self.process_member(DIE, loc_parser, CU)
+        elif DIE.tag == None and idx == size:
+            # Final function at the end of DWARF information
+            if self.currFun != None:
+                self.currFun.var_list = self.var_list
+                pprint.pprint(self.currFun)
+                logger.critical("Fun %s finished", self.currFun.name)
+                self.var_list.clear()
+        elif DIE.tag == None and last_tag == "DW_TAG_member":
+            # Finished the struct analysis
+            self.temp_struct.member_list = self.var_list.copy()
+            pprint.pprint(self.temp_struct)
+            struct_list.append(self.temp_struct)
+            self.temp_struct = None
+            self.var_list.clear()
+            # exit()
+        
+        self.last_DIE_tag.append(DIE.tag)
 
     def process_subprogram(self, DIE, loc_parser, CU):
         if self.currFun != None:
+            self.currFun.var_list = self.var_list
+            pprint.pprint(self.currFun)
             logger.critical("Fun %s finished", self.currFun.name)
+            self.var_list.clear()
         rbp_regex = r"(?<=\(DW_OP_breg.\s\(rbp\):\s)(.*)(?=\))"
         for attr in DIE.attributes.values():
             if loc_parser.attribute_has_location(attr, CU['version']):
@@ -170,31 +225,59 @@ class DwarfAnalysis:
             if (var_attr.name == "DW_AT_type"):
                 # Getting the type of a variable
                 self.get_dwarf_type(DIE)
-        logger.info(self.currVar)
-        logger.warning("Finished: %s\n", var_name)
+        if var_name != None:
+            # Only consider a variable with name
+            logger.info(self.currVar)
+            logger.warning("Finished: %s\n", var_name)
+            self.var_list.append(self.currVar)
         self.currVar = None
 
-    def get_dwarf_type(self, DIE):
-        """ Retrieves and logs the primary type of a DIE and attempts to resolve pointers if present. """
-        refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
-        type_die = self.dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
-        logger.debug("BaseType: %s", type_die.tag)
-        self.currVar.base_type = type_die.tag
-        if type_die.tag != "DW_TAG_base_type":
-            resolved_type = self.resolve_ptr_type(type_die)
-            if resolved_type:
-                logger.debug("ResolvedType: %s", resolved_type.tag)
-                self.currVar.var_type = resolved_type.tag
-                if resolved_type.tag == "DW_TAG_base_type":
-                    type_name = self.get_attribute_value(resolved_type, 'DW_AT_name')
-                    if type_name != None:
-                        self.currVar.type_size = str(self.type_dict[type_name])
-            else:
-                logger.error("Failed to resolve type for DIE at CU offset: %d", DIE.cu.cu_offset)
-        elif type_die.tag == "DW_TAG_base_type":
-            type_name = self.get_attribute_value(type_die, 'DW_AT_name')
-            if type_name != None:
-                self.currVar.type_size = str(self.type_dict[type_name])
+    def process_member(self, DIE, loc_parser, CU):
+        off_regex = r"(?<=\(DW_OP_plus_uconst:\s)(.*)(?=\))"
+        logger.info("Processing: %s", DIE.tag)
+        self.currVar = MemberData()
+        member_name = None
+        for mem_attr in DIE.attributes.values():
+            if (mem_attr.name == "DW_AT_name"):
+                # Getting the name of a variable (skip a variable which doesn't have name)
+                member_name = self.get_attribute_value(DIE, 'DW_AT_name')
+                self.currVar.name = member_name
+                logger.debug("%s Name: %s",chr(int(self.arrow[2:], 16)), member_name)
+            if (loc_parser.attribute_has_location(mem_attr, CU['version'])):
+                loc = loc_parser.parse_from_attribute(mem_attr, CU['version'])
+                if(mem_attr.name == "DW_AT_data_member_location"):
+                    if isinstance(loc, LocationExpr):
+                        offset = re.search(off_regex, describe_DWARF_expr(loc.loc_expr, self.dwarfinfo.structs,
+                                                                          CU.cu_offset))
+                        var_offset = offset.group(1)
+                        logger.debug("\t Offset: %s", var_offset)
+                        self.currVar.offset = var_offset
+                # Calculating the offset of a variable
+            if (mem_attr.name == "DW_AT_type"):
+                # Getting the type of a variable
+                self.get_dwarf_type(DIE)
+        logger.info(self.currVar)
+        logger.warning("Finished: %s\n", member_name)
+        self.var_list.append(self.currVar)
+        self.currVar = None
+        # exit()
+
+    def process_struct(self, DIE):
+        """
+        Recursively resolve the type until a non-pointer or non-array type is found.
+        """
+        struct_name = self.get_attribute_value(DIE, 'DW_AT_name')
+        byte_size = None
+        line_num = None
+        if struct_name != None:
+            logger.debug("StructName: %s", struct_name)
+        if 'DW_AT_byte_size' in DIE.attributes:
+            byte_size   = DIE.attributes['DW_AT_byte_size'].value
+        if 'DW_AT_decl_line' in DIE.attributes:
+            line_num    = DIE.attributes['DW_AT_decl_line'].value
+        if byte_size != None and line_num != None:
+            logger.warning("Creating temp_struct: %s %s %s", struct_name, byte_size, line_num)
+            self.temp_struct = StructData(name=struct_name, size=byte_size, line=line_num)
 
     def resolve_ptr_type(self, type_die):
         """
@@ -216,6 +299,54 @@ class DwarfAnalysis:
                 # No more type attributes to resolve; current_die is the final type DIE.
                 break
         return current_die
+    
+    def resolve_struct_type(self, type_die):
+        byte_size = None
+        line_num = None
+        if 'DW_AT_byte_size' in type_die.attributes:
+            byte_size   = type_die.attributes['DW_AT_byte_size'].value
+        if 'DW_AT_decl_line' in type_die.attributes:
+            line_num    = type_die.attributes['DW_AT_decl_line'].value
+        for struct_item in struct_list:
+            if (byte_size == struct_item.size and line_num == struct_item.line):
+                pprint.pprint(struct_item)
+                self.currVar.struct = copy.deepcopy(struct_item)
+                # exit()
+                
+    
+    def get_dwarf_type(self, DIE):
+        """ Retrieves and logs the primary type of a DIE and attempts to resolve pointers if present. """
+        refaddr = DIE.attributes['DW_AT_type'].value + DIE.cu.cu_offset
+        type_die = self.dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
+        logger.debug("BaseType: %s", type_die.tag)
+        self.currVar.base_type = type_die.tag
+        if type_die.tag != "DW_TAG_base_type":
+            resolved_type = self.resolve_ptr_type(type_die)
+            if resolved_type:
+                logger.debug("ResolvedType: %s", resolved_type.tag)
+                self.currVar.var_type = resolved_type.tag
+                if resolved_type.tag == "DW_TAG_base_type":
+                    type_name = self.get_attribute_value(resolved_type, 'DW_AT_name')
+                    if type_name != None:
+                        self.currVar.type_size = str(self.type_dict[type_name])
+                elif resolved_type.tag == "DW_TAG_structure_type":
+                    self.resolve_struct_type(resolved_type)
+                    # exit()
+                    None
+            else:
+                logger.error("Failed to resolve type for DIE at CU offset: %d", DIE.cu.cu_offset)
+        elif type_die.tag == "DW_TAG_base_type":
+            type_name = self.get_attribute_value(type_die, 'DW_AT_name')
+            if type_name != None:
+                self.currVar.type_size = str(self.type_dict[type_name])
+        elif type_die.tag == "DW_TAG_structure_type":
+            self.resolve_struct_type(type_die)
+            # exit()
+            None
+            
+            # type_name = self.get_attribute_value(type_die, 'DW_AT_name')
+            # if type_name != None:
+            #     logger.debug("StructName: %s", type_name)
 
     def get_offset(self, DIE, loc, CU):
         reg_regex = r"DW_OP_fbreg:\s*(-?\d+)"

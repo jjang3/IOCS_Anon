@@ -15,8 +15,9 @@ import os
 sys.path.append(os.path.join(os.getcwd(), 'src'))
 # sys.path.append('src')  # Add the src directory to the import path
 
-#from dwarf_analysis import *
+# from dwarf_analysis import *
 from dwarf_analysis_old import *
+# from dwarf_analysis_new import *
 from gen_table import *
 # from bin_analysis import *
 # from rewriter import *
@@ -306,7 +307,10 @@ target_fun_var_info = dict()
 
 def process_file(input_item, analysis_list, taint_sets):
     global dwarf_var_count
+    # dwarf_analysis = DwarfAnalysis(input_item)
+    # dwarf_analysis.process_dwarf_info()
     dwarf_output: list[FunData] = []
+    # dwarf_output = process_dwarf_info(input_item)
     dwarf_output = dwarf_analysis(input_item)
     # exit()
     # exit()
@@ -516,7 +520,7 @@ def main():
         log.info("Analyzing %s", binary_item)
         # exit()
         process_file(binary_item, analysis_list, taint_insts_set)
-
+        # exit()
         ptr_offset_trees          = taint_analysis.process_offset(binary_item, all_dwarf_info, analysis_list)
         # pprint.pprint(ptr_offset_trees)
         # for tree in ptr_offset_trees:
@@ -543,9 +547,9 @@ def main():
                 if var != None:
                     log.debug("Fun: %s | Offset: %d", var.fun_name, var.offset)
         
-        exit()
         
         print(colored(f"{empty_space}\n", 'grey', attrs=['underline']))
+        exit()
         # fun_table_offsets = generate_table(dwarf_var_count, dwarf_fun_var_info, result_dir)
         fun_table_offsets = generate_table(dwarf_var_count, target_fun_var_info, result_dir)
         # question here: do I need to just worry about specific offset or all members as well?

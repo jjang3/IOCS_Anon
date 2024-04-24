@@ -133,6 +133,8 @@ def parse_dwarf_type(DIE, dwarfinfo: DWARFInfo, var_name, fun_name, type_name, s
     type_die = dwarfinfo.get_DIE_from_refaddr(refaddr, DIE.cu)
     logger.info(type_die.tag)
     # var_list = list()
+    byte_size = None
+    line_num = None
     if type_die.tag == "DW_TAG_base_type":
         type_name = type_die.attributes['DW_AT_name'].value.decode()
         logger.error("base_type: %s | size: %d",type_name, type_dict[type_name])
@@ -155,7 +157,6 @@ def parse_dwarf_type(DIE, dwarfinfo: DWARFInfo, var_name, fun_name, type_name, s
             if 'DW_AT_name' in ptr_type_die.attributes:
                 # If first deref is success, we can get the type name
                 type_name = ptr_type_die.attributes['DW_AT_name'].value.decode()
-            
             if ptr_type_die.tag == "DW_TAG_structure_type":
                 if 'DW_AT_byte_size' in ptr_type_die.attributes:
                     byte_size   = ptr_type_die.attributes['DW_AT_byte_size'].value
@@ -170,7 +171,7 @@ def parse_dwarf_type(DIE, dwarfinfo: DWARFInfo, var_name, fun_name, type_name, s
                         temp_var = copy.deepcopy(struct_item)
                         struct_var  = True
                         base_var    = False
-                        logger.debug(temp_var)
+                        # logger.debug(temp_var)
                         # last_var.append(temp_var)
                         return base_var, struct_var, temp_var
             elif 'DW_AT_type' in ptr_type_die.attributes:
@@ -747,7 +748,7 @@ def dwarf_analysis(input_binary):
                             print("Returns", temp_var)
                             last_var.append(temp_var)
                        
-                    logger.warning("DW_TAG_Variable finished\n\t%s", temp_var)
+                    logger.warning("DW_TAG_Variable finished\n\t%s", temp_var.name)
                     print()
                             
                 if (DIE.tag == "DW_TAG_union_type"):
