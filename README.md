@@ -1,34 +1,16 @@
-# Automatic Redirection Compartmentalization Systems (ARCS)
-Repository for the ARCS project
+# IBCS
 
 ## What's included
 
 ```
 ./
-├── taint_analysis (used for both fun_c14n and var_c14n)
-├── prepare.sh
 ├── useful_scripts
 |       ├── dwarf_analysis.py
-├── fun_c14n
-|       ├── taint.sh
-|       ├── comp_analysis
-|       |       ├── e9stuff         (script files for e9patch)
-|       |       ├── pku             (PKU-related files)
-|       |       ├── e9patch         (submodule)
-|       |       ├── inst-gcc-plugin (submodule)
-|       |       └── scripts/comp_analysis.sh
-|       └── OR_analysis (OR = Overprivilege)
 └── var_c14n
-        ├── taint.sh
         ├── arcs.sh
         ├── asm_rewriter
-        |       ├── binary_patch.py (for individual source file)
-        |       └── core.sh         (for coreutils)
-        └── static_analysis (for alias analysis)
-                ├── include         (header files for LLVM ARCS pass)
-                ├── src             (source files for LLVM ARCS pass)
-                ├── spdlog          (submodule)
-                └── SVF             (submodule)
+                ├── main.py (for individual source file)
+                └── core.sh         (for coreutils)
 ```
 
 ## How to use (To-do)
