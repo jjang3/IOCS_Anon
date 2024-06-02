@@ -83,14 +83,12 @@ def generate_table(dwarf_var_count, dwarf_fun_var_info, target_dir):
                                 offset_expr_to_table.add((var.offset_expr, table_offset))
                                 table_offset += 8
                                 off_var_count += 1
-                        # Commented for NGINX
                         elif (var.base_type == "DW_TAG_array_type"):
                             if var.offset_expr != None:
                                 logger.warning("Added")
                                 offset_expr_to_table.add((var.offset_expr, table_offset))
                                 table_offset += 8
                                 off_var_count += 1
-                        # Commented for NGINX, not sure where the error is happening
                         elif (var.base_type == "DW_TAG_pointer_type"):
                             if var.offset_expr != None:
                                 # logger.critical(var)

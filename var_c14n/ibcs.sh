@@ -7,7 +7,7 @@ input=$1
 
 CFLAGS="-O0 -gdwarf-2"
 
-options=("Build" "Rewrite")
+options=("Build" "Analyze" "Rewrite")
 
 # This is used to setup test path
 grandp_path=$( cd ../../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
@@ -15,9 +15,6 @@ parent_path=$( cd ../"$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 current_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 
 useful_path=$parent_path/useful_scripts
-
-ibcs_build_path=${static_path}/build
-ibcs_lib_path=${ibcs_build_path}/lib
 
 ibcs_input_path=${current_path}/input
 
@@ -39,7 +36,17 @@ build()
         echo "Input result directory doesn't exist"
         mkdir $ibcs_i_result_path
     fi
+
     cd ${ibcs_input_path} && make ${input}.out
+    cp table.c ${ibcs_i_result_path}
+}
+
+analyze()
+{
+    echo "Analyze"
+    cd ${rewrite_path} && cd src
+    #pwd
+    python3 dwarf_analysis.py --binary ${ibcs_i_result_path}/${input}.out
 }
 
 rewrite()
@@ -54,7 +61,8 @@ while true; do
     do
         case $REPLY in
             1) echo "Selected $option"; build; break;;
-            2) echo "Selected $option"; rewrite; break;;
+            2) echo "Selected $option"; analyze; break;;
+            3) echo "Selected $option"; rewrite; break;;
             $((${#options[@]}+1))) echo "Finished!"; break 2;;
             *) echo "Wrong input"; break;
         esac;
