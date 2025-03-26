@@ -1,5 +1,5 @@
-# Architecture-agnostic Redirect Compartmentalization System (ARCS)
-Repository for the ARCS project
+# IOCS
+Repository for the IOCS project
 
 ## Available branches:
 
