@@ -1,5 +1,5 @@
-# Automatic Redirection Compartmentalization Systems (ARCS)
-Repository for the ARCS project
+# IOCS
+Repository for the IOCS project
 
 ## What's included
 
@@ -20,13 +20,13 @@ Repository for the ARCS project
 |       └── OR_analysis (OR = Overprivilege)
 └── var_c14n
         ├── taint.sh
-        ├── arcs.sh
+        ├── iocs.sh
         ├── asm_rewriter
         |       ├── binary_patch.py (for individual source file)
         |       └── core.sh         (for coreutils)
         └── static_analysis (for alias analysis)
-                ├── include         (header files for LLVM ARCS pass)
-                ├── src             (source files for LLVM ARCS pass)
+                ├── include         (header files for LLVM iocs pass)
+                ├── src             (source files for LLVM iocs pass)
                 ├── spdlog          (submodule)
                 └── SVF             (submodule)
 ```
@@ -35,6 +35,6 @@ Repository for the ARCS project
 1) `git submodule init && git submodule update` - This will load all submodules per respective folders
 2) `bash prepare.sh` - This will prepare everything needed for `fun_c14n` and `var_c14n`
 3) `cd fun_c14n && cd comp_analysis && bash comp_analysis.sh epoll` - This will apply `fun_c14n` on the `epoll`
-4) `cd var_c14n && bash arcs.sh epoll` - This will apply `ARCS` static pass on the `epoll`
+4) `cd var_c14n && bash iocs.sh epoll` - This will apply `iocs` static pass on the `epoll`
 
 ---
